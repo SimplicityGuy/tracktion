@@ -1,0 +1,13 @@
+[project]
+name = "tracktion-shared"
+version = "0.1.0"
+description = "Shared components for Tracktion services"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2.10.4",
+    "structlog>=24.5.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

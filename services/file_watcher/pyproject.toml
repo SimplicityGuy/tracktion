@@ -1,0 +1,16 @@
+[project]
+name = "file-watcher"
+version = "0.1.0"
+description = "File monitoring service for tracktion"
+requires-python = ">=3.13"
+dependencies = [
+    "watchdog>=6.0.0",
+    "pika>=1.3.2",
+    "python-dotenv>=1.0.1",
+    "pydantic>=2.10.4",
+    "structlog>=24.5.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

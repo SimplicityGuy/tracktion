@@ -1,0 +1,12 @@
+[project]
+name = "tracktion-core-types"
+version = "0.1.0"
+description = "Core type definitions for Tracktion"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2.10.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
