@@ -1,13 +1,13 @@
 """Integration tests for Docker Compose setup."""
 
 import subprocess
-import time
 import unittest
-from typing import Any, Dict
 
 
 class TestDockerCompose(unittest.TestCase):
     """Test Docker Compose configuration and service health."""
+
+    compose_file: str = "infrastructure/docker-compose.yaml"
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -31,7 +31,7 @@ class TestDockerCompose(unittest.TestCase):
             text=True,
         )
         self.assertEqual(result.returncode, 0)
-        
+
         services = result.stdout.strip().split("\n")
         required_services = [
             "postgres",
@@ -43,7 +43,7 @@ class TestDockerCompose(unittest.TestCase):
             "analysis_service",
             "tracklist_service",
         ]
-        
+
         for service in required_services:
             self.assertIn(service, services, f"Service {service} not found in docker-compose")
 

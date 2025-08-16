@@ -1,11 +1,11 @@
 """Unit tests for the File Watcher service."""
 
 import os
+import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../services/file_watcher/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../services/file_watcher/src"))
 
 from main import FileWatcherService
 
@@ -39,10 +39,10 @@ class TestFileWatcherService(unittest.TestCase):
     def test_start_stop(self, mock_sleep: MagicMock) -> None:
         """Test service start and stop behavior."""
         service = FileWatcherService()
-        
+
         # Simulate immediate shutdown
         mock_sleep.side_effect = lambda x: setattr(service, "running", False)
-        
+
         service.start()
         self.assertFalse(service.running)
         mock_sleep.assert_called()
