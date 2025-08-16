@@ -13,10 +13,10 @@ This section defines the strategy for managing and updating project dependencies
 
 Pre-commit hooks ensure code quality and consistency. They must be managed carefully:
 
-  * **Update Command:** `pre-commit autoupdate --freeze`
+  * **Update Command:** `uv run pre-commit autoupdate --freeze`
   * **Frozen Versions:** Always use frozen commit hashes for reproducible builds
-  * **Installation:** Run `pre-commit install` after cloning the repository
-  * **Manual Run:** Use `pre-commit run --all-files` to check all files
+  * **Installation:** Run `uv run pre-commit install` after cloning the repository
+  * **Manual Run:** Use `uv run pre-commit run --all-files` to check all files
   * **Skip Hooks:** In emergencies only, use `git commit --no-verify`
 
 ### **Comprehensive Update Script**
@@ -24,10 +24,10 @@ Pre-commit hooks ensure code quality and consistency. They must be managed caref
 A single, top-level script will be created to manage project maintenance tasks on-demand. This script will perform the following actions:
 
   * Update all Python dependencies using `uv`
-  * Update `pre-commit` hooks using `pre-commit autoupdate --freeze`
+  * Update `pre-commit` hooks using `uv run pre-commit autoupdate --freeze`
   * Synchronize dependencies and linting rules across all services and shared packages
   * Ensure all GitHub workflows are up-to-date and correctly configured
-  * Run full test suite to validate all updates
+  * Run full test suite to validate all updates using `uv run pytest`
 
 ### **Tool Versions**
 
@@ -55,10 +55,10 @@ uv pip sync requirements.txt
 #### Updating Pre-commit Hooks
 ```bash
 # Update hooks with frozen versions
-pre-commit autoupdate --freeze
+uv run pre-commit autoupdate --freeze
 
 # Test the updated hooks
-pre-commit run --all-files
+uv run pre-commit run --all-files
 
 # Commit the changes
 git add .pre-commit-config.yaml

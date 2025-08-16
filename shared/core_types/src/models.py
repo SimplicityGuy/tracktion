@@ -1,0 +1,171 @@
+"""SQLAlchemy models for Tracktion data entities."""
+
+import uuid
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import Column, String, DateTime, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import relationship, Mapped, mapped_column
+from sqlalchemy.sql import func
+
+from .database import Base
+
+
+class Recording(Base):
+    """Model for music recording files."""
+    
+    __tablename__ = "recordings"
+    
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), 
+        primary_key=True, 
+        default=uuid.uuid4,
+        server_default=func.uuid_generate_v4()
+    )
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_name: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256_hash: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
+    xxh128_hash: Mapped[Optional[str]] = mapped_column(String(32), unique=True, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        default=datetime.utcnow,
+        server_default=func.current_timestamp()
+    )
+    
+    # Relationships
+    metadata_items: Mapped[List["Metadata"]] = relationship(
+        "Metadata", 
+        back_populates="recording", 
+        cascade="all, delete-orphan"
+    )
+    tracklist: Mapped[Optional["Tracklist"]] = relationship(
+        "Tracklist", 
+        back_populates="recording", 
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
+    
+    def __repr__(self) -> str:
+        """String representation of Recording."""
+        return f"<Recording(id={self.id}, file_name={self.file_name})>"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert Recording to dictionary.
+        
+        Returns:
+            Dictionary representation of the recording
+        """
+        return {
+            "id": str(self.id),
+            "file_path": self.file_path,
+            "file_name": self.file_name,
+            "sha256_hash": self.sha256_hash,
+            "xxh128_hash": self.xxh128_hash,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class Metadata(Base):
+    """Model for recording metadata key-value pairs."""
+    
+    __tablename__ = "metadata"
+    
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), 
+        primary_key=True, 
+        default=uuid.uuid4,
+        server_default=func.uuid_generate_v4()
+    )
+    recording_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), 
+        ForeignKey("recordings.id"),
+        nullable=False,
+        index=True
+    )
+    key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # Relationships
+    recording: Mapped["Recording"] = relationship("Recording", back_populates="metadata_items")
+    
+    def __repr__(self) -> str:
+        """String representation of Metadata."""
+        return f"<Metadata(id={self.id}, key={self.key}, value={self.value})>"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert Metadata to dictionary.
+        
+        Returns:
+            Dictionary representation of the metadata
+        """
+        return {
+            "id": str(self.id),
+            "recording_id": str(self.recording_id),
+            "key": self.key,
+            "value": self.value
+        }
+
+
+class Tracklist(Base):
+    """Model for recording tracklists."""
+    
+    __tablename__ = "tracklists"
+    
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), 
+        primary_key=True, 
+        default=uuid.uuid4,
+        server_default=func.uuid_generate_v4()
+    )
+    recording_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), 
+        ForeignKey("recordings.id"),
+        nullable=False,
+        unique=True
+    )
+    source: Mapped[str] = mapped_column(String(255), nullable=False)
+    tracks: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
+    cue_file_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Relationships
+    recording: Mapped["Recording"] = relationship("Recording", back_populates="tracklist")
+    
+    def __repr__(self) -> str:
+        """String representation of Tracklist."""
+        return f"<Tracklist(id={self.id}, source={self.source})>"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert Tracklist to dictionary.
+        
+        Returns:
+            Dictionary representation of the tracklist
+        """
+        return {
+            "id": str(self.id),
+            "recording_id": str(self.recording_id),
+            "source": self.source,
+            "tracks": self.tracks,
+            "cue_file_path": self.cue_file_path
+        }
+    
+    def validate_tracks(self) -> bool:
+        """Validate the tracks JSONB structure.
+        
+        Returns:
+            True if tracks structure is valid, False otherwise
+        """
+        if not self.tracks:
+            return True  # Empty tracks is valid
+        
+        if not isinstance(self.tracks, list):
+            return False
+        
+        required_keys = {"title", "artist", "start_time"}
+        for track in self.tracks:
+            if not isinstance(track, dict):
+                return False
+            if not required_keys.issubset(track.keys()):
+                return False
+        
+        return True

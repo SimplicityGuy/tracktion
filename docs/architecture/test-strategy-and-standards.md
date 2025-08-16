@@ -12,6 +12,7 @@ This section defines the comprehensive test strategy for the **tracktion** proje
 
   * **Unit Tests:**
       * **Framework:** `pytest` will be used as the primary unit testing framework.
+      * **Execution:** All test commands must use `uv run pytest` instead of `pytest` directly.
       * **File Convention:** Test files will be named `test_*.py` and located in the `tests/unit/` directory.
       * **AI Agent Requirements:** Developers should generate tests for all public methods and cover edge cases and error conditions.
   * **Integration Tests:**
