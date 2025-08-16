@@ -1,0 +1,99 @@
+{
+  "rabbit_version": "4.0",
+  "rabbitmq_version": "4.0",
+  "product_name": "RabbitMQ",
+  "product_version": "4.0",
+  "users": [],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [],
+  "topic_permissions": [],
+  "parameters": [],
+  "policies": [],
+  "queues": [
+    {
+      "name": "file_events",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 86400000
+      }
+    },
+    {
+      "name": "catalog_tasks",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 86400000
+      }
+    },
+    {
+      "name": "analysis_tasks",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 86400000
+      }
+    },
+    {
+      "name": "tracklist_tasks",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 86400000
+      }
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "tracktion.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "tracktion.events",
+      "vhost": "/",
+      "destination": "file_events",
+      "destination_type": "queue",
+      "routing_key": "file.new",
+      "arguments": {}
+    },
+    {
+      "source": "tracktion.events",
+      "vhost": "/",
+      "destination": "catalog_tasks",
+      "destination_type": "queue",
+      "routing_key": "catalog.*",
+      "arguments": {}
+    },
+    {
+      "source": "tracktion.events",
+      "vhost": "/",
+      "destination": "analysis_tasks",
+      "destination_type": "queue",
+      "routing_key": "analysis.*",
+      "arguments": {}
+    },
+    {
+      "source": "tracktion.events",
+      "vhost": "/",
+      "destination": "tracklist_tasks",
+      "destination_type": "queue",
+      "routing_key": "tracklist.*",
+      "arguments": {}
+    }
+  ]
+}
