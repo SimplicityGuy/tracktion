@@ -205,3 +205,24 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Project specific - Tracktion
+.ai/
+infrastructure/data/
+data/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker volumes
+postgres_data/
+neo4j_data/
+redis_data/
+rabbitmq_data/
+
+# uv specific
+uv.lock
+.uv/
