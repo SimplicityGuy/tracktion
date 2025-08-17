@@ -62,7 +62,7 @@ uv pip install -e . --all-extras
 
 3. Install pre-commit hooks:
 ```bash
-pre-commit install
+uv run pre-commit install
 ```
 
 4. Set up databases (see Database Setup section below)
@@ -71,6 +71,20 @@ pre-commit install
 ```bash
 uv run pytest
 ```
+
+## Development Standards
+
+**IMPORTANT**: This project enforces strict quality standards. Please review:
+- [Coding Standards](docs/architecture/coding-standards.md) - Mandatory coding conventions and pre-commit requirements
+- [Development Workflow](docs/development/development-workflow.md) - Required workflow for implementing features
+- [Test Strategy](docs/architecture/test-strategy-and-standards.md) - Testing requirements and standards
+
+### Quality Requirements
+- ✅ All pre-commit hooks MUST pass before committing
+- ✅ All unit tests MUST pass after each task
+- ✅ All integration tests MUST pass before marking a story as done
+- ✅ Minimum 80% code coverage for new code
+- ✅ Type hints required for all functions
 
 ## Services
 
