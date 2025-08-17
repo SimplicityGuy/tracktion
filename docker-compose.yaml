@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:17-alpine
+    container_name: tracktion-postgres
+    environment:
+      POSTGRES_DB: tracktion
+      POSTGRES_USER: tracktion_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - tracktion-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracktion_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Neo4j Graph Database
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: tracktion-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-changeme}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_pagecache_size: 512M
+      NEO4J_dbms_memory_heap_initial__size: 512M
+      NEO4J_dbms_memory_heap_max__size: 1G
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - tracktion-network
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    container_name: tracktion-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-tracktion}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-changeme}
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - tracktion-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Analysis Service
+  analysis-service:
+    build:
+      context: .
+      dockerfile: services/analysis_service/Dockerfile
+    container_name: tracktion-analysis
+    environment:
+      DATABASE_URL: postgresql://tracktion_user:${POSTGRES_PASSWORD:-changeme}@postgres:5432/tracktion
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-changeme}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-tracktion}:${RABBITMQ_PASSWORD:-changeme}@rabbitmq:5672/
+      ANALYSIS_QUEUE: analysis_queue
+      EXCHANGE_NAME: tracktion_exchange
+      ANALYSIS_ROUTING_KEY: file.analyze
+      MAX_RETRIES: 3
+      RETRY_DELAY: 5.0
+      PYTHONUNBUFFERED: 1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./services/analysis_service:/app
+      - ./shared:/app/shared:ro
+      - ${MUSIC_DIRECTORY:-./test_music}:/music:ro
+    networks:
+      - tracktion-network
+    restart: unless-stopped
+
+networks:
+  tracktion-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  neo4j_logs:
+  rabbitmq_data:
