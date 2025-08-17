@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Column, String, DateTime, ForeignKey, Text
+from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -25,12 +25,21 @@ class Recording(Base):
     )
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     file_name: Mapped[str] = mapped_column(Text, nullable=False)
+    file_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     sha256_hash: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
     xxh128_hash: Mapped[Optional[str]] = mapped_column(String(32), unique=True, nullable=True)
+    processing_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="pending")
+    processing_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 
         default=datetime.utcnow,
         server_default=func.current_timestamp()
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        onupdate=datetime.utcnow,
+        nullable=True
     )
     
     # Relationships
@@ -60,9 +69,14 @@ class Recording(Base):
             "id": str(self.id),
             "file_path": self.file_path,
             "file_name": self.file_name,
+            "file_hash": self.file_hash,
+            "file_size": self.file_size,
             "sha256_hash": self.sha256_hash,
             "xxh128_hash": self.xxh128_hash,
-            "created_at": self.created_at.isoformat() if self.created_at else None
+            "processing_status": self.processing_status,
+            "processing_error": self.processing_error,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
 
 
