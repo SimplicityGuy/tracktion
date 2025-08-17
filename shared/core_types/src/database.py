@@ -160,3 +160,24 @@ class DatabaseManager:
 
 # Global database manager instance
 db_manager = DatabaseManager()
+
+
+# Convenience functions for backward compatibility
+def get_db_session() -> Session:
+    """Get a database session.
+    
+    Returns:
+        SQLAlchemy session
+    """
+    if not db_manager.SessionLocal:
+        raise RuntimeError("Database not initialized")
+    return db_manager.SessionLocal()
+
+
+def get_neo4j_driver() -> Driver:
+    """Get Neo4j driver instance.
+    
+    Returns:
+        Neo4j driver for graph database operations
+    """
+    return db_manager.get_neo4j_driver()
