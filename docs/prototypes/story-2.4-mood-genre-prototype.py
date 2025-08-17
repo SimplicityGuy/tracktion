@@ -22,9 +22,8 @@ essentia.log.warningActive = False
 from dataclasses import dataclass
 from json import dump, load
 from os import path
-from pathlib import Path
 from sys import argv
-from typing import List
+from typing import Any
 
 import numpy as np
 from essentia.standard import (
@@ -43,46 +42,42 @@ class Model:
         self.__model_file = model + ".pb"
         self.__classifier = None
 
-        with open(path.join(MODELS_DIRECTORY, self.__metadata_file), "r") as metadata_file:
+        with open(path.join(MODELS_DIRECTORY, self.__metadata_file)) as metadata_file:
             self.__metadata = load(metadata_file)
 
         self.__labels = list(map(self.__process_labels, self.__metadata["classes"]))
 
-    def __process_labels(self, label):
+    def __process_labels(self, label: str) -> str:
         return label.replace("---", "/")
 
-    def get_type(self):
+    def get_type(self) -> str:
         return self.__type
 
     type = property(get_type)
 
-    def get_labels(self):
+    def get_labels(self) -> list[str]:
         return self.__labels
 
     labels = property(get_labels)
 
-    def get_metadata(self):
-        return self.__metadata_file
+    def get_metadata(self) -> dict[str, Any]:
+        return dict(self.__metadata)
 
     metadata = property(get_metadata)
 
-    def get_model(self):
+    def get_model(self) -> Any:
         return self.__model_file
 
     model = property(get_model)
 
-    def get_classifier(self):
+    def get_classifier(self) -> Any:
         if self.__classifier is not None:
             return self.__classifier
 
         if "musicnn" in self.__model_file.lower():
-            self.__classifier = TensorflowPredictMusiCNN(
-                graphFilename=path.join(MODELS_DIRECTORY, self.__model_file)
-            )
+            self.__classifier = TensorflowPredictMusiCNN(graphFilename=path.join(MODELS_DIRECTORY, self.__model_file))
         elif "vggish" in self.__model_file.lower():
-            self.__classifier = TensorflowPredictVGGish(
-                graphFilename=path.join(MODELS_DIRECTORY, self.__model_file)
-            )
+            self.__classifier = TensorflowPredictVGGish(graphFilename=path.join(MODELS_DIRECTORY, self.__model_file))
         else:
             raise Exception("Unknown classifier.")
 
@@ -94,27 +89,27 @@ class Model:
 @dataclass
 class ModelSet:
     name: str
-    models: List[Model]
+    models: list[Model]
 
 
 class MusicAttributePredictor:
-    def __init__(self, filename: str, sample_rate: int = 16000):
+    def __init__(self, filename: str, sample_rate: int = 16000) -> None:
         self.__sample_rate = sample_rate
         self.__audio = MonoLoader(filename=filename, sampleRate=self.__sample_rate)()
 
-    def __enter__(self):
+    def __enter__(self) -> "MusicAttributePredictor":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
         self.__audio = None
         return True
 
-    def __predict_single_model(self, model: Model):
+    def __predict_single_model(self, model: Model) -> Any:
         activations = model.classifier(self.__audio)
         return np.mean(activations, axis=0)
 
-    def predict(self, model_set: ModelSet):
-        results = {}
+    def predict(self, model_set: ModelSet) -> dict[str, Any]:
+        results: dict[str, Any] = {}
         for model in model_set.models:
             predictions = self.__predict_single_model(model).tolist()
             results[model.type] = []

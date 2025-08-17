@@ -10,33 +10,31 @@ Dependencies:
 Note: This code is part of research spike Story 2.2 to validate approach.
 """
 
-from os import environ
-
-environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-
-import essentia
-
-essentia.log.infoActive = False
-essentia.log.warningActive = False
-
 from itertools import chain
 from json import load
+from os import environ
 from sys import argv
+from typing import Any
 
+import essentia
 import essentia.standard as es
 import numpy as np
 
+environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+essentia.log.infoActive = False
+essentia.log.warningActive = False
 
-def process_labels(label):
+
+def process_labels(label: str) -> str:
     return label.replace("---", "/")
 
 
-def get_genres_per_minute(filename):
+def get_genres_per_minute(filename: str) -> dict[str, Any]:
     top_n = 5
     json_file = "discogs/discogs-effnet-bs64-1.json"
     model_file = "discogs/discogs-effnet-bs64-1.pb"
 
-    with open(json_file, "r") as f:
+    with open(json_file) as f:
         metadata = load(f)
 
     sample_rate = metadata["inference"]["sample_rate"]

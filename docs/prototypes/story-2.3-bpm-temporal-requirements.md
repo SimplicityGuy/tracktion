@@ -29,7 +29,7 @@
 ##### Always Store
 - Average BPM (float)
 - Start BPM (float)
-- End BPM (float) 
+- End BPM (float)
 - Stability Score (float, 0-1)
 - Confidence Score (float, 0-1)
 
