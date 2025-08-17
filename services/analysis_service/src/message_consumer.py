@@ -45,44 +45,33 @@ class MessageConsumer:
         """Establish connection to RabbitMQ with retry logic."""
         while self._retry_count < self._max_retries:
             try:
-                self.connection = pika.BlockingConnection(
-                    pika.URLParameters(self.rabbitmq_url)
-                )
+                self.connection = pika.BlockingConnection(pika.URLParameters(self.rabbitmq_url))
                 self.channel = self.connection.channel()
-                
+
                 # Declare exchange
-                self.channel.exchange_declare(
-                    exchange=self.exchange_name,
-                    exchange_type="topic",
-                    durable=True
-                )
-                
+                self.channel.exchange_declare(exchange=self.exchange_name, exchange_type="topic", durable=True)
+
                 # Declare queue
                 self.channel.queue_declare(queue=self.queue_name, durable=True)
-                
+
                 # Bind queue to exchange
                 self.channel.queue_bind(
-                    exchange=self.exchange_name,
-                    queue=self.queue_name,
-                    routing_key=self.routing_key
+                    exchange=self.exchange_name, queue=self.queue_name, routing_key=self.routing_key
                 )
-                
+
                 # Set QoS
                 self.channel.basic_qos(prefetch_count=1)
-                
+
                 logger.info(f"Connected to RabbitMQ queue: {self.queue_name}")
                 self._retry_count = 0
                 return
-                
+
             except pika.exceptions.AMQPConnectionError as e:
                 self._retry_count += 1
-                delay = self._base_delay * (2 ** self._retry_count)
-                logger.warning(
-                    f"Connection attempt {self._retry_count} failed: {e}. "
-                    f"Retrying in {delay} seconds..."
-                )
+                delay = self._base_delay * (2**self._retry_count)
+                logger.warning(f"Connection attempt {self._retry_count} failed: {e}. Retrying in {delay} seconds...")
                 time.sleep(delay)
-                
+
         raise ConnectionError(f"Failed to connect to RabbitMQ after {self._max_retries} attempts")
 
     def consume(self, callback: Callable[[Dict[str, Any], str], None]) -> None:
@@ -95,60 +84,42 @@ class MessageConsumer:
             self.connect()
 
         def message_callback(
-            ch: BlockingChannel,
-            method: Basic.Deliver,
-            properties: BasicProperties,
-            body: bytes
+            ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes
         ) -> None:
             """Process incoming message."""
             correlation_id = properties.correlation_id or "unknown"
-            
+
             try:
                 # Parse message
                 message = json.loads(body.decode())
                 logger.info(
-                    f"Received message",
-                    extra={
-                        "correlation_id": correlation_id,
-                        "routing_key": method.routing_key
-                    }
+                    "Received message", extra={"correlation_id": correlation_id, "routing_key": method.routing_key}
                 )
-                
+
                 # Process message
                 callback(message, correlation_id)
-                
+
                 # Acknowledge message
                 ch.basic_ack(delivery_tag=method.delivery_tag)
-                logger.info(
-                    f"Message processed successfully",
-                    extra={"correlation_id": correlation_id}
-                )
-                
+                logger.info("Message processed successfully", extra={"correlation_id": correlation_id})
+
             except json.JSONDecodeError as e:
-                logger.error(
-                    f"Invalid JSON in message: {e}",
-                    extra={"correlation_id": correlation_id}
-                )
+                logger.error(f"Invalid JSON in message: {e}", extra={"correlation_id": correlation_id})
                 # Reject message without requeue (bad format)
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-                
+
             except Exception as e:
-                logger.error(
-                    f"Error processing message: {e}",
-                    extra={"correlation_id": correlation_id}
-                )
+                logger.error(f"Error processing message: {e}", extra={"correlation_id": correlation_id})
                 # Requeue message for retry
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
-        self.channel.basic_consume(
-            queue=self.queue_name,
-            on_message_callback=message_callback,
-            auto_ack=False
-        )
-        
+        if self.channel:
+            self.channel.basic_consume(queue=self.queue_name, on_message_callback=message_callback, auto_ack=False)
+
         logger.info("Starting message consumption...")
         try:
-            self.channel.start_consuming()
+            if self.channel:
+                self.channel.start_consuming()
         except KeyboardInterrupt:
             logger.info("Stopping message consumption...")
             self.stop()
