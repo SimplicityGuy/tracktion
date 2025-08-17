@@ -35,17 +35,17 @@ cp .env.example .env
 
 3. Start all services:
 ```bash
-docker-compose -f infrastructure/docker-compose.yaml up -d
+docker-compose up -d
 ```
 
 4. Verify services are running:
 ```bash
-docker-compose -f infrastructure/docker-compose.yaml ps
+docker-compose ps
 ```
 
 5. Check logs:
 ```bash
-docker-compose -f infrastructure/docker-compose.yaml logs -f
+docker-compose logs -f
 ```
 
 ## Development Setup
@@ -76,7 +76,7 @@ uv run pytest
 
 - **file_watcher**: Monitors directories for new audio files
 - **cataloging_service**: Catalogs files in PostgreSQL
-- **analysis_service**: Analyzes audio metadata and stores in Neo4j
+- **analysis_service**: Extracts and stores audio metadata (MP3, FLAC, WAV, M4A)
 - **tracklist_service**: Retrieves tracklists from external sources
 
 ## Project Structure
