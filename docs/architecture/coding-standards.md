@@ -30,19 +30,19 @@ All Python-related commands MUST use `uv` as the package and environment manager
   * **Package Installation:**
     - ❌ NEVER: `pip install package`, `pip3 install package`
     - ✅ ALWAYS: `uv pip install package`
-  
+
   * **Python Execution:**
     - ❌ NEVER: `python script.py`, `python3 script.py`
     - ✅ ALWAYS: `uv run python script.py`
-  
+
   * **Tool Execution:**
     - ❌ NEVER: `pytest`, `mypy`, `ruff`, `alembic`
     - ✅ ALWAYS: `uv run pytest`, `uv run mypy`, `uv run ruff`, `uv run alembic`
-  
+
   * **Virtual Environments:**
     - ❌ NEVER: `python -m venv`, `virtualenv`
     - ✅ ALWAYS: `uv venv`
-  
+
   * **Dependency Management:**
     - Use `uv pip compile` for dependency resolution
     - Use `uv pip sync` for dependency installation

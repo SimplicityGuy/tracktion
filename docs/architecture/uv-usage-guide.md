@@ -130,7 +130,7 @@ uv run pre-commit install
    ```bash
    # Install project dependencies
    uv pip install -e ".[dev]"
-   
+
    # Install pre-commit hooks
    uv run pre-commit install
    ```
@@ -139,7 +139,7 @@ uv run pre-commit install
    ```bash
    # Run all tests
    uv run pytest
-   
+
    # Run with coverage
    uv run pytest --cov=src --cov-report=html
    ```
@@ -148,10 +148,10 @@ uv run pre-commit install
    ```bash
    # Linting
    uv run ruff check .
-   
+
    # Formatting
    uv run ruff format .
-   
+
    # Type checking
    uv run mypy src/
    ```

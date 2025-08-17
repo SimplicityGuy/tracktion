@@ -103,9 +103,9 @@ uv run alembic upgrade head
 psql postgresql://tracktion:tracktion@localhost:5432/tracktion
 
 -- Find duplicates (example for recordings)
-SELECT file_path, COUNT(*) 
-FROM recordings 
-GROUP BY file_path 
+SELECT file_path, COUNT(*)
+FROM recordings
+GROUP BY file_path
 HAVING COUNT(*) > 1;
 ```
 
@@ -124,13 +124,13 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 1. **Check for locks**:
 ```sql
 -- View active locks
-SELECT pid, usename, application_name, client_addr, query 
-FROM pg_stat_activity 
+SELECT pid, usename, application_name, client_addr, query
+FROM pg_stat_activity
 WHERE datname = 'tracktion';
 
 -- Kill blocking query if needed (use carefully)
-SELECT pg_terminate_backend(pid) 
-FROM pg_stat_activity 
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
 WHERE pid = <blocking_pid>;
 ```
 
@@ -162,7 +162,7 @@ EXPLAIN ANALYZE SELECT * FROM metadata WHERE recording_id = '...';
 2. **Add missing indexes**:
 ```sql
 -- If metadata queries are slow
-CREATE INDEX IF NOT EXISTS idx_metadata_recording_key 
+CREATE INDEX IF NOT EXISTS idx_metadata_recording_key
 ON metadata(recording_id, key);
 ```
 
@@ -221,7 +221,7 @@ SELECT uuid_generate_v4();
 tracks = [
     {
         "title": "Track Name",
-        "artist": "Artist Name", 
+        "artist": "Artist Name",
         "start_time": "00:00:00"
     }
 ]
@@ -375,5 +375,5 @@ nc -zv localhost 7687
 
 4. Review configuration files:
 - `.env` - Environment variables
-- `alembic.ini` - Migration configuration  
+- `alembic.ini` - Migration configuration
 - `infrastructure/docker-compose.yaml` - Container setup

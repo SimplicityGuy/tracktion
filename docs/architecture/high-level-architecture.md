@@ -24,7 +24,7 @@ graph TD
     analysis_service --> neo4j[Neo4j DB];
     analysis_service --> redis[Redis Cache];
     tracklist_service --> website[1001tracklists.com];
-    
+
     style file_system fill:#f9f,stroke:#333,stroke-width:2px;
     style file_watcher fill:#bbf,stroke:#333,stroke-width:2px;
     style rabbitmq fill:#bbf,stroke:#333,stroke-width:2px;

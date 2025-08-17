@@ -152,7 +152,7 @@ Required database environment variables in `.env`:
 # PostgreSQL
 DATABASE_URL=postgresql://tracktion:tracktion@localhost:5432/tracktion
 
-# Neo4j  
+# Neo4j
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=your_password_here

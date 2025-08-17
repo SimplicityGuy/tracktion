@@ -10,7 +10,6 @@ from typing import Any, Callable, Generator, Optional
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
-from sqlalchemy.exc import IntegrityError, OperationalError
 from neo4j import GraphDatabase, Driver
 from dotenv import load_dotenv
 
@@ -25,21 +24,22 @@ Base = declarative_base()
 
 def retry_on_failure(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0) -> Callable:
     """Decorator for retrying database operations on failure.
-    
+
     Args:
         max_attempts: Maximum number of retry attempts
         delay: Initial delay between retries in seconds
         backoff: Multiplier for delay after each retry
-        
+
     Returns:
         Decorated function with retry logic
     """
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             attempt = 1
             current_delay = delay
-            
+
             while attempt <= max_attempts:
                 try:
                     return func(*args, **kwargs)
@@ -47,27 +47,29 @@ def retry_on_failure(max_attempts: int = 3, delay: float = 1.0, backoff: float =
                     if attempt == max_attempts:
                         logger.error(f"Failed after {max_attempts} attempts: {e}")
                         raise
-                    
+
                     logger.warning(f"Attempt {attempt} failed, retrying in {current_delay}s: {e}")
                     time.sleep(current_delay)
                     current_delay *= backoff
                     attempt += 1
-            
+
             return None
+
         return wrapper
+
     return decorator
 
 
 class DatabaseManager:
     """Manages database connections for PostgreSQL and Neo4j."""
-    
+
     def __init__(self) -> None:
         """Initialize database connections with retry logic."""
         self.pg_engine: Optional[Engine] = None
         self.neo4j_driver: Optional[Driver] = None
         self.SessionLocal: Optional[sessionmaker] = None
         self._initialize_connections()
-    
+
     @retry_on_failure(max_attempts=5, delay=2.0)
     def _initialize_connections(self) -> None:
         """Initialize database connections with retry logic."""
@@ -76,7 +78,7 @@ class DatabaseManager:
             database_url = os.getenv("DATABASE_URL")
             if not database_url:
                 raise ValueError("DATABASE_URL environment variable not set")
-            
+
             self.pg_engine = create_engine(
                 database_url,
                 pool_size=10,
@@ -85,48 +87,48 @@ class DatabaseManager:
                 pool_recycle=3600,  # Recycle connections after 1 hour
                 connect_args={
                     "connect_timeout": 10,
-                    "options": "-c statement_timeout=30000"  # 30 second statement timeout
-                }
+                    "options": "-c statement_timeout=30000",  # 30 second statement timeout
+                },
             )
-            
+
             # Test connection
             with self.pg_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            
+
             self.SessionLocal = sessionmaker(bind=self.pg_engine)
             logger.info("PostgreSQL connection established")
-        
+
         # Neo4j connection
         if not self.neo4j_driver:
             neo4j_uri = os.getenv("NEO4J_URI")
             neo4j_user = os.getenv("NEO4J_USER")
             neo4j_password = os.getenv("NEO4J_PASSWORD")
-            
+
             if not all([neo4j_uri, neo4j_user, neo4j_password]):
                 raise ValueError("Neo4j connection environment variables not set")
-            
+
             self.neo4j_driver = GraphDatabase.driver(
                 neo4j_uri,
                 auth=(neo4j_user, neo4j_password),
                 max_connection_lifetime=3600,
                 max_connection_pool_size=50,
-                connection_acquisition_timeout=30
+                connection_acquisition_timeout=30,
             )
-            
+
             # Test connection
             self.neo4j_driver.verify_connectivity()
             logger.info("Neo4j connection established")
-    
+
     @contextmanager
     def get_db_session(self) -> Generator[Session, None, None]:
         """Context manager for database sessions.
-        
+
         Yields:
             SQLAlchemy session with automatic commit/rollback
         """
         if not self.SessionLocal:
             raise RuntimeError("Database not initialized")
-            
+
         session = self.SessionLocal()
         try:
             yield session
@@ -136,23 +138,23 @@ class DatabaseManager:
             raise
         finally:
             session.close()
-    
+
     def get_neo4j_driver(self) -> Driver:
         """Get Neo4j driver instance.
-        
+
         Returns:
             Neo4j driver for graph database operations
         """
         if not self.neo4j_driver:
             raise RuntimeError("Neo4j driver not initialized")
         return self.neo4j_driver
-    
+
     def close(self) -> None:
         """Close all database connections."""
         if self.pg_engine:
             self.pg_engine.dispose()
             logger.info("PostgreSQL connection closed")
-        
+
         if self.neo4j_driver:
             self.neo4j_driver.close()
             logger.info("Neo4j connection closed")
@@ -165,7 +167,7 @@ db_manager = DatabaseManager()
 # Convenience functions for backward compatibility
 def get_db_session() -> Session:
     """Get a database session.
-    
+
     Returns:
         SQLAlchemy session
     """
@@ -176,7 +178,7 @@ def get_db_session() -> Session:
 
 def get_neo4j_driver() -> Driver:
     """Get Neo4j driver instance.
-    
+
     Returns:
         Neo4j driver for graph database operations
     """

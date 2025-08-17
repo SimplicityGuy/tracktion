@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
+
 from shared.core_types.src.neo4j_repository import Neo4jRepository
 
 # Load environment variables
@@ -21,12 +22,12 @@ def setup_neo4j():
     uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
     user = os.getenv("NEO4J_USER", "neo4j")
     password = os.getenv("NEO4J_PASSWORD", "changeme")
-    
+
     print(f"Connecting to Neo4j at {uri}...")
-    
+
     # Create repository and set up constraints
     repo = Neo4jRepository(uri, user, password)
-    
+
     try:
         print("Creating constraints and indexes...")
         repo.create_constraints()
@@ -36,7 +37,7 @@ def setup_neo4j():
         return 1
     finally:
         repo.close()
-    
+
     return 0
 
 

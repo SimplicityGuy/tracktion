@@ -179,7 +179,7 @@ This epic builds upon the foundation established in Epic 1 to deliver the core a
 - Memory management is critical for processing large audio files and TensorFlow models
 - GPU acceleration could be beneficial for large-scale BPM/key detection and neural network inference
 - Results should be versioned to allow for algorithm improvements without data loss
-- **Model Management**: 
+- **Model Management**:
   - Pre-trained models need to be downloaded and cached (approximately 2-3GB total)
   - Model versioning strategy required for updates
   - Consider containerizing models with the service

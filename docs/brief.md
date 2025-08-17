@@ -39,7 +39,7 @@ The high-level vision is to create a dynamic, self-organizing digital music libr
 This segment consists of individuals who have a large, actively growing personal library of digital music, with a significant portion being live recordings and DJ mixes. They are technically proficient enough to manage their files but lack an effective, automated system for organization. Their primary goal is to efficiently catalog their collection, quickly find specific tracks, and discover new listening experiences based on metadata like BPM or mood.
 
 **Secondary User Segment: The music-loving developer**
-This segment represents the user who is able to provide a code base, and is able to install the project with some direction. They are technical and have an expansive knowledge of the genre, but they are not the primary target of the project itself, rather the project is for their own personal use. This user may provide additional functionality or modules, so this should be considered. 
+This segment represents the user who is able to provide a code base, and is able to install the project with some direction. They are technical and have an expansive knowledge of the genre, but they are not the primary target of the project itself, rather the project is for their own personal use. This user may provide additional functionality or modules, so this should be considered.
 
 ## Goals & Success Metrics
 #### **Business Objectives**
