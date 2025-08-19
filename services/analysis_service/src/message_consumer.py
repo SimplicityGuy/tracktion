@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import time
 from typing import Any, Callable, Dict, Optional
 
@@ -9,6 +10,10 @@ import pika
 import pika.exceptions
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
+
+from .audio_cache import AudioCache
+from .bpm_detector import BPMDetector
+from .temporal_analyzer import TemporalAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +27,10 @@ class MessageConsumer:
         queue_name: str = "analysis_queue",
         exchange_name: str = "tracktion_exchange",
         routing_key: str = "file.analyze",
+        redis_host: str = "localhost",
+        redis_port: int = 6379,
+        enable_cache: bool = True,
+        enable_temporal_analysis: bool = True,
     ) -> None:
         """Initialize the message consumer.
 
@@ -30,6 +39,10 @@ class MessageConsumer:
             queue_name: Name of the queue to consume from
             exchange_name: Name of the exchange
             routing_key: Routing key for message binding
+            redis_host: Redis server hostname for caching
+            redis_port: Redis server port
+            enable_cache: Whether to use Redis caching
+            enable_temporal_analysis: Whether to perform temporal BPM analysis
         """
         self.rabbitmq_url = rabbitmq_url
         self.queue_name = queue_name
@@ -40,6 +53,20 @@ class MessageConsumer:
         self._retry_count = 0
         self._max_retries = 5
         self._base_delay = 2.0
+        self.enable_temporal_analysis = enable_temporal_analysis
+
+        # Initialize BPM detection components
+        self.bpm_detector = BPMDetector()
+        self.temporal_analyzer = TemporalAnalyzer() if enable_temporal_analysis else None
+
+        # Initialize cache if enabled
+        self.cache: Optional[AudioCache] = None
+        if enable_cache:
+            try:
+                self.cache = AudioCache(redis_host=redis_host, redis_port=redis_port)
+            except Exception as e:
+                logger.warning(f"Failed to initialize cache: {e}. Processing without cache.")
+                self.cache = None
 
     def connect(self) -> None:
         """Establish connection to RabbitMQ with retry logic."""
@@ -74,11 +101,85 @@ class MessageConsumer:
 
         raise ConnectionError(f"Failed to connect to RabbitMQ after {self._max_retries} attempts")
 
-    def consume(self, callback: Callable[[Dict[str, Any], str], None]) -> None:
+    def process_audio_file(self, file_path: str, recording_id: str) -> Dict[str, Any]:
+        """Process audio file for BPM detection.
+
+        Args:
+            file_path: Path to the audio file
+            recording_id: Recording ID for database storage
+
+        Returns:
+            Processing results including BPM data
+        """
+        results: Dict[str, Any] = {"recording_id": recording_id, "file_path": file_path}
+
+        # Check if file exists
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Audio file not found: {file_path}")
+
+        # Check cache first
+        if self.cache:
+            cached_bpm = self.cache.get_bpm_results(file_path)
+            if cached_bpm:
+                logger.info(f"Using cached BPM results for {file_path}")
+                results["bpm_data"] = cached_bpm
+                results["from_cache"] = True
+
+                # Check for cached temporal data
+                if self.enable_temporal_analysis:
+                    cached_temporal = self.cache.get_temporal_results(file_path)
+                    if cached_temporal:
+                        results["temporal_data"] = cached_temporal
+
+                return results
+
+        # Perform BPM detection
+        try:
+            logger.info(f"Detecting BPM for {file_path}")
+            bpm_results = self.bpm_detector.detect_bpm(file_path)
+            results["bpm_data"] = bpm_results
+            results["from_cache"] = False
+
+            # Cache BPM results
+            if self.cache:
+                self.cache.set_bpm_results(
+                    file_path,
+                    bpm_results,
+                    confidence=bpm_results.get("confidence", 0.0),
+                    failed=bpm_results.get("error") is not None,
+                )
+
+            # Perform temporal analysis if enabled and BPM was successful
+            if self.enable_temporal_analysis and self.temporal_analyzer and not bpm_results.get("error"):
+                try:
+                    logger.info(f"Performing temporal analysis for {file_path}")
+                    temporal_results = self.temporal_analyzer.analyze_temporal_bpm(file_path)
+                    results["temporal_data"] = temporal_results
+
+                    # Cache temporal results
+                    if self.cache:
+                        self.cache.set_temporal_results(
+                            file_path, temporal_results, stability_score=temporal_results.get("stability_score", 0.0)
+                        )
+                except Exception as e:
+                    logger.error(f"Temporal analysis failed for {file_path}: {e}")
+                    results["temporal_data"] = {"error": str(e)}
+
+        except Exception as e:
+            logger.error(f"BPM detection failed for {file_path}: {e}")
+            results["bpm_data"] = {"error": str(e)}
+
+            # Cache the failure to avoid re-processing immediately
+            if self.cache:
+                self.cache.set_bpm_results(file_path, {"error": str(e)}, failed=True)
+
+        return results
+
+    def consume(self, callback: Optional[Callable[[Dict[str, Any], str], None]] = None) -> None:
         """Start consuming messages from the queue.
 
         Args:
-            callback: Function to process each message
+            callback: Optional function to process results after BPM detection
         """
         if not self.channel:
             self.connect()
@@ -96,16 +197,45 @@ class MessageConsumer:
                     "Received message", extra={"correlation_id": correlation_id, "routing_key": method.routing_key}
                 )
 
-                # Process message
-                callback(message, correlation_id)
+                # Extract required fields
+                file_path = message.get("file_path")
+                recording_id = message.get("recording_id")
+
+                if not file_path or not recording_id:
+                    raise ValueError("Message must contain 'file_path' and 'recording_id'")
+
+                # Process audio file for BPM
+                results = self.process_audio_file(file_path, recording_id)
+
+                # Call user callback if provided
+                if callback:
+                    callback(results, correlation_id)
 
                 # Acknowledge message
                 ch.basic_ack(delivery_tag=method.delivery_tag)
-                logger.info("Message processed successfully", extra={"correlation_id": correlation_id})
+                logger.info(
+                    "Message processed successfully",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "bpm": results.get("bpm_data", {}).get("bpm"),
+                        "confidence": results.get("bpm_data", {}).get("confidence"),
+                        "from_cache": results.get("from_cache", False),
+                    },
+                )
 
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid JSON in message: {e}", extra={"correlation_id": correlation_id})
                 # Reject message without requeue (bad format)
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+
+            except FileNotFoundError as e:
+                logger.error(f"File not found: {e}", extra={"correlation_id": correlation_id})
+                # Don't requeue - file won't magically appear
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+
+            except ValueError as e:
+                logger.error(f"Invalid message format: {e}", extra={"correlation_id": correlation_id})
+                # Don't requeue - message format is wrong
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
             except Exception as e:
