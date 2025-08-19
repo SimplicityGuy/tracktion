@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "structlog>=24.7.0",
     "python-dotenv>=1.0.1",
+    "psutil>=7.0.0",
 ]
 
 [build-system]
