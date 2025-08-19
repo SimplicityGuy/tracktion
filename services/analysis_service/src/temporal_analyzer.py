@@ -25,27 +25,38 @@ class TemporalAnalyzer:
 
     def __init__(
         self,
+        config: Optional[Any] = None,
         window_size: float = 10.0,
         hop_size: Optional[float] = None,
         sample_rate: int = 44100,
         start_duration: float = 30.0,
         end_duration: float = 30.0,
-    ):
+    ) -> None:
         """
         Initialize temporal analyzer with configuration.
 
         Args:
-            window_size: Size of analysis window in seconds
-            hop_size: Hop between windows in seconds (default: window_size / 2)
-            sample_rate: Sample rate for audio processing
-            start_duration: Duration to analyze for start BPM (seconds)
-            end_duration: Duration to analyze for end BPM (seconds)
+            config: TemporalConfig object (preferred) or None to use individual parameters
+            window_size: Size of analysis window in seconds (used if config is None)
+            hop_size: Hop between windows in seconds (used if config is None, default: window_size / 2)
+            sample_rate: Sample rate for audio processing (used if config is None)
+            start_duration: Duration to analyze for start BPM (used if config is None)
+            end_duration: Duration to analyze for end BPM (used if config is None)
         """
-        self.window_size = window_size
-        self.hop_size = hop_size or window_size / 2
-        self.sample_rate = sample_rate
-        self.start_duration = start_duration
-        self.end_duration = end_duration
+        if config is not None:
+            # Use config object
+            self.window_size = config.window_size_seconds
+            self.hop_size = hop_size or self.window_size / 2  # hop_size not in config
+            self.sample_rate = sample_rate  # sample_rate not in config
+            self.start_duration = config.start_window_seconds
+            self.end_duration = config.end_window_seconds
+        else:
+            # Use individual parameters
+            self.window_size = window_size
+            self.hop_size = hop_size or window_size / 2
+            self.sample_rate = sample_rate
+            self.start_duration = start_duration
+            self.end_duration = end_duration
 
         # Initialize rhythm extractor for windowed analysis
         self.rhythm_extractor = es.RhythmExtractor2013()

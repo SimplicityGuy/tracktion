@@ -7,7 +7,7 @@ confidence scoring and fallback algorithms for improved accuracy.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import essentia.standard as es
 import numpy as np
@@ -23,26 +23,41 @@ class BPMDetector:
     Fallback algorithm: PercivalBpmEstimator
     """
 
-    def __init__(self, confidence_threshold: float = 0.7, agreement_tolerance: float = 5.0, sample_rate: int = 44100):
+    def __init__(
+        self,
+        config: Optional[Any] = None,
+        confidence_threshold: float = 0.7,
+        agreement_tolerance: float = 5.0,
+        sample_rate: int = 44100,
+    ) -> None:
         """
         Initialize BPM detector with configuration.
 
         Args:
-            confidence_threshold: Minimum confidence for primary algorithm
-            agreement_tolerance: BPM difference tolerance for algorithm agreement
-            sample_rate: Sample rate for audio loading
+            config: BPMConfig object (preferred) or None to use individual parameters
+            confidence_threshold: Minimum confidence for primary algorithm (used if config is None)
+            agreement_tolerance: BPM difference tolerance for algorithm agreement (used if config is None)
+            sample_rate: Sample rate for audio loading (used if config is None)
         """
-        self.confidence_threshold = confidence_threshold
-        self.agreement_tolerance = agreement_tolerance
-        self.sample_rate = sample_rate
+        if config is not None:
+            # Use config object
+            self.confidence_threshold = config.confidence_threshold
+            self.agreement_tolerance = config.agreement_tolerance
+            # BPMConfig doesn't have sample_rate, use default
+            self.sample_rate = sample_rate
+        else:
+            # Use individual parameters
+            self.confidence_threshold = confidence_threshold
+            self.agreement_tolerance = agreement_tolerance
+            self.sample_rate = sample_rate
 
         # Initialize extractors
         self.rhythm_extractor = es.RhythmExtractor2013()
         self.percival_estimator = es.PercivalBpmEstimator()
 
         logger.info(
-            f"BPMDetector initialized with confidence_threshold={confidence_threshold}, "
-            f"agreement_tolerance={agreement_tolerance}"
+            f"BPMDetector initialized with confidence_threshold={self.confidence_threshold}, "
+            f"agreement_tolerance={self.agreement_tolerance}"
         )
 
     def detect_bpm(self, audio_path: str) -> Dict[str, Any]:
@@ -79,6 +94,14 @@ class BPMDetector:
 
             # Primary BPM detection using RhythmExtractor2013
             bpm, beats, confidence, _, beat_intervals = self._extract_rhythm(audio)
+
+            # Normalize confidence to 0-1 range if needed
+            # Essentia's RhythmExtractor2013 can return confidence > 1
+            if confidence > 1.0:
+                confidence = min(1.0, confidence / 5.0)  # Rough normalization based on observed values
+
+            # Ensure confidence is in valid range
+            confidence = max(0.0, min(1.0, confidence))
 
             # Determine if we need fallback
             algorithm_used = "primary"
