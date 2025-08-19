@@ -406,6 +406,313 @@ class StorageHandler:
                 extra={"correlation_id": correlation_id},
             )
 
+    def store_key_data(
+        self,
+        recording_id: UUID,
+        key_data: Dict[str, Any],
+        correlation_id: str = "unknown",
+    ) -> bool:
+        """Store musical key detection results in both databases.
+
+        Args:
+            recording_id: UUID of the recording
+            key_data: Key detection results
+            correlation_id: Correlation ID for tracing
+
+        Returns:
+            True if storage was successful
+        """
+        try:
+            # Prepare key metadata for storage
+            key_metadata: Dict[str, Optional[str]] = {}
+
+            # Store core key values
+            if "key" in key_data:
+                key_metadata["musical_key"] = key_data["key"]
+
+            if "scale" in key_data:
+                key_metadata["musical_scale"] = key_data["scale"]
+                # Also store combined key notation
+                key_metadata["key_notation"] = f"{key_data['key']} {key_data['scale']}"
+
+            if "confidence" in key_data:
+                key_metadata["key_confidence"] = str(key_data["confidence"])
+
+            if "agreement" in key_data:
+                key_metadata["key_agreement"] = str(key_data["agreement"])
+
+            if "needs_review" in key_data:
+                key_metadata["key_needs_review"] = str(key_data["needs_review"])
+
+            # Store alternative key if present
+            if "alternative" in key_data:
+                alt = key_data["alternative"]
+                if "key" in alt:
+                    key_metadata["key_alternative"] = alt["key"]
+                if "scale" in alt:
+                    key_metadata["key_alternative_scale"] = alt["scale"]
+
+            # Store error if key detection failed
+            if "error" in key_data:
+                key_metadata["key_error"] = str(key_data["error"])
+                key_metadata["key_status"] = "failed"
+            else:
+                key_metadata["key_status"] = "completed"
+
+            # Store using existing metadata storage method
+            success = self.store_metadata(recording_id, key_metadata, correlation_id)
+
+            # Create key-based relationships in Neo4j
+            if success and not key_data.get("error"):
+                self._create_key_relationships(recording_id, key_metadata, correlation_id)
+
+            logger.info(
+                f"Stored key data for recording {recording_id}",
+                extra={
+                    "correlation_id": correlation_id,
+                    "key": key_metadata.get("key_notation"),
+                    "confidence": key_metadata.get("key_confidence"),
+                },
+            )
+
+            return success
+
+        except Exception as e:
+            logger.error(
+                f"Failed to store key data for recording {recording_id}: {e}",
+                extra={"correlation_id": correlation_id},
+            )
+            raise StorageError(f"Failed to store key data: {e}")
+
+    def store_mood_data(
+        self,
+        recording_id: UUID,
+        mood_data: Dict[str, Any],
+        correlation_id: str = "unknown",
+    ) -> bool:
+        """Store mood and genre analysis results in both databases.
+
+        Args:
+            recording_id: UUID of the recording
+            mood_data: Mood analysis results
+            correlation_id: Correlation ID for tracing
+
+        Returns:
+            True if storage was successful
+        """
+        try:
+            # Prepare mood metadata for storage
+            mood_metadata: Dict[str, Optional[str]] = {}
+
+            # Store mood scores
+            if "mood_scores" in mood_data and mood_data["mood_scores"]:
+                for mood_dimension, score in mood_data["mood_scores"].items():
+                    mood_metadata[f"mood_{mood_dimension}"] = str(score)
+
+            # Store genre information
+            if "primary_genre" in mood_data:
+                mood_metadata["genre_primary"] = mood_data["primary_genre"]
+
+            if "genre_confidence" in mood_data:
+                mood_metadata["genre_confidence"] = str(mood_data["genre_confidence"])
+
+            # Store top 3 genres
+            if "genres" in mood_data and mood_data["genres"]:
+                for i, genre_info in enumerate(mood_data["genres"][:3]):
+                    if isinstance(genre_info, dict):
+                        mood_metadata[f"genre_{i + 1}"] = genre_info.get("genre", "")
+                        mood_metadata[f"genre_{i + 1}_confidence"] = str(genre_info.get("confidence", 0))
+
+            # Store additional attributes
+            if "danceability" in mood_data:
+                mood_metadata["danceability"] = str(mood_data["danceability"])
+
+            if "energy" in mood_data:
+                mood_metadata["energy"] = str(mood_data["energy"])
+
+            if "valence" in mood_data:
+                mood_metadata["valence"] = str(mood_data["valence"])
+
+            if "arousal" in mood_data:
+                mood_metadata["arousal"] = str(mood_data["arousal"])
+
+            if "voice_instrumental" in mood_data:
+                mood_metadata["voice_instrumental"] = mood_data["voice_instrumental"]
+
+            if "overall_confidence" in mood_data:
+                mood_metadata["mood_confidence"] = str(mood_data["overall_confidence"])
+
+            if "needs_review" in mood_data:
+                mood_metadata["mood_needs_review"] = str(mood_data["needs_review"])
+
+            # Store error if mood analysis failed
+            if "error" in mood_data:
+                mood_metadata["mood_error"] = str(mood_data["error"])
+                mood_metadata["mood_status"] = "failed"
+            else:
+                mood_metadata["mood_status"] = "completed"
+
+            # Store using existing metadata storage method
+            success = self.store_metadata(recording_id, mood_metadata, correlation_id)
+
+            # Create mood-based relationships in Neo4j
+            if success and not mood_data.get("error"):
+                self._create_mood_relationships(recording_id, mood_metadata, correlation_id)
+
+            logger.info(
+                f"Stored mood data for recording {recording_id}",
+                extra={
+                    "correlation_id": correlation_id,
+                    "genre": mood_metadata.get("genre_primary"),
+                    "danceability": mood_metadata.get("danceability"),
+                    "confidence": mood_metadata.get("mood_confidence"),
+                },
+            )
+
+            return success
+
+        except Exception as e:
+            logger.error(
+                f"Failed to store mood data for recording {recording_id}: {e}",
+                extra={"correlation_id": correlation_id},
+            )
+            raise StorageError(f"Failed to store mood data: {e}")
+
+    def _create_key_relationships(
+        self, recording_id: UUID, metadata: Dict[str, Optional[str]], correlation_id: str
+    ) -> None:
+        """Create musical key-based relationships in Neo4j.
+
+        Args:
+            recording_id: UUID of the recording
+            metadata: Dictionary containing key metadata
+            correlation_id: Correlation ID for tracing
+        """
+        try:
+            if not self.neo4j_repo:
+                return
+
+            # Get key notation
+            key_notation = metadata.get("key_notation")
+            if not key_notation:
+                return
+
+            # Create Key node and relationship
+            key_id = self.neo4j_repo.create_or_get_key(key_notation)
+            self.neo4j_repo.create_relationship(
+                from_id=recording_id,
+                to_id=key_id,
+                relationship_type="HAS_KEY",
+                properties={
+                    "confidence": metadata.get("key_confidence"),
+                    "agreement": metadata.get("key_agreement"),
+                    "source": "key_detection",
+                },
+            )
+
+            # Create harmonic compatibility relationships with other recordings
+            # This would find recordings in compatible keys (e.g., relative major/minor, circle of fifths)
+            # Implementation depends on Neo4j repository having these methods
+
+            logger.debug(
+                f"Created key relationships in Neo4j for recording {recording_id}",
+                extra={"correlation_id": correlation_id, "key": key_notation},
+            )
+
+        except Exception as e:
+            # Log but don't fail - key relationships are supplementary
+            logger.warning(
+                f"Failed to create key relationships: {e}",
+                extra={"correlation_id": correlation_id},
+            )
+
+    def _create_mood_relationships(
+        self, recording_id: UUID, metadata: Dict[str, Optional[str]], correlation_id: str
+    ) -> None:
+        """Create mood and genre-based relationships in Neo4j.
+
+        Args:
+            recording_id: UUID of the recording
+            metadata: Dictionary containing mood metadata
+            correlation_id: Correlation ID for tracing
+        """
+        try:
+            if not self.neo4j_repo:
+                return
+
+            # Create Genre node and relationship if primary genre exists
+            primary_genre = metadata.get("genre_primary")
+            if primary_genre:
+                genre_id = self.neo4j_repo.create_or_get_genre(primary_genre)
+                self.neo4j_repo.create_relationship(
+                    from_id=recording_id,
+                    to_id=genre_id,
+                    relationship_type="HAS_GENRE",
+                    properties={
+                        "confidence": metadata.get("genre_confidence"),
+                        "source": "mood_analysis",
+                    },
+                )
+
+            # Create Mood node and relationship based on dominant mood
+            # Find the dominant mood dimension
+            mood_scores = {}
+            for key, value in metadata.items():
+                if key.startswith("mood_") and not key.endswith("_status") and not key.endswith("_error"):
+                    mood_name = key.replace("mood_", "")
+                    if value and mood_name not in ["confidence", "needs_review"]:
+                        try:
+                            mood_scores[mood_name] = float(value)
+                        except ValueError:
+                            pass
+
+            if mood_scores:
+                # Get dominant mood
+                dominant_mood = max(mood_scores, key=lambda x: mood_scores.get(x, 0))
+                mood_id = self.neo4j_repo.create_or_get_mood(dominant_mood)
+                self.neo4j_repo.create_relationship(
+                    from_id=recording_id,
+                    to_id=mood_id,
+                    relationship_type="HAS_MOOD",
+                    properties={
+                        "score": mood_scores[dominant_mood],
+                        "valence": metadata.get("valence"),
+                        "arousal": metadata.get("arousal"),
+                        "source": "mood_analysis",
+                    },
+                )
+
+            # Create danceability relationship if significant
+            danceability_str = metadata.get("danceability")
+            if danceability_str:
+                try:
+                    danceability = float(danceability_str)
+                    if danceability > 0.7:  # High danceability
+                        dance_id = self.neo4j_repo.create_or_get_attribute("danceable")
+                        self.neo4j_repo.create_relationship(
+                            from_id=recording_id,
+                            to_id=dance_id,
+                            relationship_type="HAS_ATTRIBUTE",
+                            properties={
+                                "score": danceability,
+                                "source": "mood_analysis",
+                            },
+                        )
+                except ValueError:
+                    pass
+
+            logger.debug(
+                f"Created mood relationships in Neo4j for recording {recording_id}",
+                extra={"correlation_id": correlation_id, "genre": primary_genre},
+            )
+
+        except Exception as e:
+            # Log but don't fail - mood relationships are supplementary
+            logger.warning(
+                f"Failed to create mood relationships: {e}",
+                extra={"correlation_id": correlation_id},
+            )
+
     def _get_bpm_range(self, bpm: float) -> Optional[str]:
         """Categorize BPM into standard ranges.
 

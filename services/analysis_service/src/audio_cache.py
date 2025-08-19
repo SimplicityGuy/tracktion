@@ -23,6 +23,8 @@ class AudioCache:
     # Cache key prefixes
     BPM_PREFIX = "bpm"
     TEMPORAL_PREFIX = "temporal"
+    KEY_PREFIX = "key"
+    MOOD_PREFIX = "mood"
 
     # Default TTL values (in seconds)
     DEFAULT_TTL = 30 * 24 * 60 * 60  # 30 days
@@ -282,6 +284,156 @@ class AudioCache:
             logger.error(f"Failed to cache temporal results: {str(e)}")
             return False
 
+    def get_key_results(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """
+        Get cached key detection results for a file.
+
+        Args:
+            file_path: Path to the audio file
+
+        Returns:
+            Cached key results or None if not in cache
+        """
+        if not self.enabled or not self.redis_client:
+            return None
+
+        file_hash = self._generate_file_hash(file_path)
+        if not file_hash:
+            return None
+
+        cache_key = self._build_cache_key(self.KEY_PREFIX, file_hash)
+
+        try:
+            cached_data = self.redis_client.get(cache_key)
+            if cached_data:
+                logger.debug(f"Cache hit for key analysis: {cache_key}")
+                return json.loads(str(cached_data))  # type: ignore[no-any-return]
+            else:
+                logger.debug(f"Cache miss for key analysis: {cache_key}")
+                return None
+
+        except (RedisError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to retrieve cached key results: {str(e)}")
+            return None
+
+    def set_key_results(self, file_path: str, results: Dict[str, Any], confidence: Optional[float] = None) -> bool:
+        """
+        Cache key detection results for a file.
+
+        Args:
+            file_path: Path to the audio file
+            results: Key detection results
+            confidence: Confidence score (0-1)
+
+        Returns:
+            True if successfully cached, False otherwise
+        """
+        if not self.enabled or not self.redis_client:
+            return False
+
+        file_hash = self._generate_file_hash(file_path)
+        if not file_hash:
+            return False
+
+        cache_key = self._build_cache_key(self.KEY_PREFIX, file_hash)
+
+        # Determine TTL based on confidence
+        if confidence is not None and confidence < 0.6:
+            ttl = self.LOW_CONFIDENCE_TTL
+        else:
+            ttl = self.default_ttl
+
+        # Add metadata
+        cache_data = {
+            **results,
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "algorithm_version": self.algorithm_version,
+        }
+
+        try:
+            self.redis_client.setex(cache_key, ttl, json.dumps(cache_data))
+            logger.debug(f"Cached key results: {cache_key} (TTL: {ttl}s)")
+            return True
+
+        except (RedisError, TypeError, ValueError) as e:
+            logger.error(f"Failed to cache key results: {str(e)}")
+            return False
+
+    def get_mood_results(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """
+        Get cached mood analysis results for a file.
+
+        Args:
+            file_path: Path to the audio file
+
+        Returns:
+            Cached mood results or None if not in cache
+        """
+        if not self.enabled or not self.redis_client:
+            return None
+
+        file_hash = self._generate_file_hash(file_path)
+        if not file_hash:
+            return None
+
+        cache_key = self._build_cache_key(self.MOOD_PREFIX, file_hash)
+
+        try:
+            cached_data = self.redis_client.get(cache_key)
+            if cached_data:
+                logger.debug(f"Cache hit for mood analysis: {cache_key}")
+                return json.loads(str(cached_data))  # type: ignore[no-any-return]
+            else:
+                logger.debug(f"Cache miss for mood analysis: {cache_key}")
+                return None
+
+        except (RedisError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to retrieve cached mood results: {str(e)}")
+            return None
+
+    def set_mood_results(self, file_path: str, results: Dict[str, Any], confidence: Optional[float] = None) -> bool:
+        """
+        Cache mood analysis results for a file.
+
+        Args:
+            file_path: Path to the audio file
+            results: Mood analysis results
+            confidence: Overall confidence score (0-1)
+
+        Returns:
+            True if successfully cached, False otherwise
+        """
+        if not self.enabled or not self.redis_client:
+            return False
+
+        file_hash = self._generate_file_hash(file_path)
+        if not file_hash:
+            return False
+
+        cache_key = self._build_cache_key(self.MOOD_PREFIX, file_hash)
+
+        # Determine TTL based on confidence
+        if confidence is not None and confidence < 0.6:
+            ttl = self.LOW_CONFIDENCE_TTL
+        else:
+            ttl = self.default_ttl
+
+        # Add metadata
+        cache_data = {
+            **results,
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "algorithm_version": self.algorithm_version,
+        }
+
+        try:
+            self.redis_client.setex(cache_key, ttl, json.dumps(cache_data))
+            logger.debug(f"Cached mood results: {cache_key} (TTL: {ttl}s)")
+            return True
+
+        except (RedisError, TypeError, ValueError) as e:
+            logger.error(f"Failed to cache mood results: {str(e)}")
+            return False
+
     def invalidate_cache(self, file_path: str) -> bool:
         """
         Invalidate cache entries for a specific file.
@@ -301,10 +453,12 @@ class AudioCache:
 
         bpm_key = self._build_cache_key(self.BPM_PREFIX, file_hash)
         temporal_key = self._build_cache_key(self.TEMPORAL_PREFIX, file_hash)
+        key_key = self._build_cache_key(self.KEY_PREFIX, file_hash)
+        mood_key = self._build_cache_key(self.MOOD_PREFIX, file_hash)
 
         try:
             deleted_count = 0
-            for key in [bpm_key, temporal_key]:
+            for key in [bpm_key, temporal_key, key_key, mood_key]:
                 if self.redis_client.delete(key):
                     deleted_count += 1
                     logger.debug(f"Invalidated cache key: {key}")
@@ -403,6 +557,8 @@ class AudioCache:
             # Get all keys matching our patterns
             bpm_keys_result = self.redis_client.keys(f"{self.BPM_PREFIX}:*")
             temporal_keys_result = self.redis_client.keys(f"{self.TEMPORAL_PREFIX}:*")
+            key_keys_result = self.redis_client.keys(f"{self.KEY_PREFIX}:*")
+            mood_keys_result = self.redis_client.keys(f"{self.MOOD_PREFIX}:*")
             # Handle both sync and async returns
             if hasattr(bpm_keys_result, "__await__"):
                 bpm_keys = []  # Skip async results
@@ -420,10 +576,26 @@ class AudioCache:
                 except TypeError:
                     temporal_keys = []
 
+            if hasattr(key_keys_result, "__await__"):
+                key_keys = []  # Skip async results
+            else:
+                try:
+                    key_keys = list(key_keys_result) if key_keys_result else []  # type: ignore[arg-type]
+                except TypeError:
+                    key_keys = []
+
+            if hasattr(mood_keys_result, "__await__"):
+                mood_keys = []  # Skip async results
+            else:
+                try:
+                    mood_keys = list(mood_keys_result) if mood_keys_result else []  # type: ignore[arg-type]
+                except TypeError:
+                    mood_keys = []
+
             # Calculate sizes
             total_size = 0
-            if bpm_keys or temporal_keys:
-                all_keys = bpm_keys + temporal_keys
+            if bpm_keys or temporal_keys or key_keys or mood_keys:
+                all_keys = bpm_keys + temporal_keys + key_keys + mood_keys
                 for key in all_keys:
                     size = self.redis_client.memory_usage(key)
                     if size and not hasattr(size, "__await__"):
@@ -438,7 +610,9 @@ class AudioCache:
                 "connected": True,
                 "bpm_keys": len(bpm_keys),
                 "temporal_keys": len(temporal_keys),
-                "total_keys": len(bpm_keys) + len(temporal_keys),
+                "key_keys": len(key_keys),
+                "mood_keys": len(mood_keys),
+                "total_keys": len(bpm_keys) + len(temporal_keys) + len(key_keys) + len(mood_keys),
                 "total_size_bytes": total_size,
                 "algorithm_version": self.algorithm_version,
             }
