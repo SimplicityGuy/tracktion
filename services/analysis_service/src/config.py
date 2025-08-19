@@ -87,6 +87,42 @@ class PerformanceConfig:
 
 
 @dataclass
+class ModelConfig:
+    """Configuration for TensorFlow model management."""
+
+    models_dir: str = "services/analysis_service/models"
+    auto_download: bool = True
+    verify_checksum: bool = True
+    lazy_load: bool = True
+    preload_models: list = field(default_factory=list)
+    model_repo_base: str = "https://essentia.upf.edu/models/"
+
+
+@dataclass
+class KeyDetectionConfig:
+    """Configuration for musical key detection."""
+
+    confidence_threshold: float = 0.7
+    agreement_boost: float = 1.2
+    disagreement_penalty: float = 0.8
+    needs_review_threshold: float = 0.7
+
+
+@dataclass
+class MoodAnalysisConfig:
+    """Configuration for mood and genre analysis."""
+
+    enable_mood_detection: bool = True
+    enable_genre_detection: bool = True
+    enable_danceability: bool = True
+    ensemble_voting_threshold: float = 0.5
+    confidence_threshold: float = 0.6
+    mood_dimensions: list = field(
+        default_factory=lambda: ["happy", "sad", "aggressive", "relaxed", "acoustic", "electronic", "party"]
+    )
+
+
+@dataclass
 class ServiceConfig:
     """Main configuration for the analysis service."""
 
@@ -96,6 +132,9 @@ class ServiceConfig:
     message_queue: MessageQueueConfig = field(default_factory=MessageQueueConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     performance: PerformanceConfig = field(default_factory=PerformanceConfig)
+    models: ModelConfig = field(default_factory=ModelConfig)
+    key_detection: KeyDetectionConfig = field(default_factory=KeyDetectionConfig)
+    mood_analysis: MoodAnalysisConfig = field(default_factory=MoodAnalysisConfig)
 
     # Service-level settings
     enable_temporal_analysis: bool = True
@@ -181,6 +220,39 @@ class ServiceConfig:
         if val := os.getenv("TRACKTION_PERF_PROCESSING_TIMEOUT_SECONDS"):
             config.performance.processing_timeout_seconds = int(val)
 
+        # Model configuration
+        config.models.models_dir = os.getenv("TRACKTION_MODELS_DIR", config.models.models_dir)
+        if val := os.getenv("TRACKTION_MODELS_AUTO_DOWNLOAD"):
+            config.models.auto_download = val.lower() in ("true", "1", "yes")
+        if val := os.getenv("TRACKTION_MODELS_VERIFY_CHECKSUM"):
+            config.models.verify_checksum = val.lower() in ("true", "1", "yes")
+        if val := os.getenv("TRACKTION_MODELS_LAZY_LOAD"):
+            config.models.lazy_load = val.lower() in ("true", "1", "yes")
+        if val := os.getenv("TRACKTION_MODELS_PRELOAD"):
+            config.models.preload_models = val.split(",")
+
+        # Key detection configuration
+        if val := os.getenv("TRACKTION_KEY_CONFIDENCE_THRESHOLD"):
+            config.key_detection.confidence_threshold = float(val)
+        if val := os.getenv("TRACKTION_KEY_AGREEMENT_BOOST"):
+            config.key_detection.agreement_boost = float(val)
+        if val := os.getenv("TRACKTION_KEY_DISAGREEMENT_PENALTY"):
+            config.key_detection.disagreement_penalty = float(val)
+        if val := os.getenv("TRACKTION_KEY_NEEDS_REVIEW_THRESHOLD"):
+            config.key_detection.needs_review_threshold = float(val)
+
+        # Mood analysis configuration
+        if val := os.getenv("TRACKTION_MOOD_ENABLE_MOOD"):
+            config.mood_analysis.enable_mood_detection = val.lower() in ("true", "1", "yes")
+        if val := os.getenv("TRACKTION_MOOD_ENABLE_GENRE"):
+            config.mood_analysis.enable_genre_detection = val.lower() in ("true", "1", "yes")
+        if val := os.getenv("TRACKTION_MOOD_ENABLE_DANCEABILITY"):
+            config.mood_analysis.enable_danceability = val.lower() in ("true", "1", "yes")
+        if val := os.getenv("TRACKTION_MOOD_ENSEMBLE_THRESHOLD"):
+            config.mood_analysis.ensemble_voting_threshold = float(val)
+        if val := os.getenv("TRACKTION_MOOD_CONFIDENCE_THRESHOLD"):
+            config.mood_analysis.confidence_threshold = float(val)
+
         # Service-level settings
         if val := os.getenv("TRACKTION_ENABLE_TEMPORAL_ANALYSIS"):
             config.enable_temporal_analysis = val.lower() in ("true", "1", "yes")
@@ -235,6 +307,24 @@ class ServiceConfig:
             for key, value in data["performance"].items():
                 if hasattr(config.performance, key):
                     setattr(config.performance, key, value)
+
+        # Update Model config
+        if "models" in data:
+            for key, value in data["models"].items():
+                if hasattr(config.models, key):
+                    setattr(config.models, key, value)
+
+        # Update Key Detection config
+        if "key_detection" in data:
+            for key, value in data["key_detection"].items():
+                if hasattr(config.key_detection, key):
+                    setattr(config.key_detection, key, value)
+
+        # Update Mood Analysis config
+        if "mood_analysis" in data:
+            for key, value in data["mood_analysis"].items():
+                if hasattr(config.mood_analysis, key):
+                    setattr(config.mood_analysis, key, value)
 
         # Update service-level settings
         for key in ["enable_temporal_analysis", "log_level", "metrics_enabled", "health_check_port"]:
@@ -295,6 +385,28 @@ class ServiceConfig:
                 "parallel_workers": self.performance.parallel_workers,
                 "memory_limit_mb": self.performance.memory_limit_mb,
                 "processing_timeout_seconds": self.performance.processing_timeout_seconds,
+            },
+            "models": {
+                "models_dir": self.models.models_dir,
+                "auto_download": self.models.auto_download,
+                "verify_checksum": self.models.verify_checksum,
+                "lazy_load": self.models.lazy_load,
+                "preload_models": self.models.preload_models,
+                "model_repo_base": self.models.model_repo_base,
+            },
+            "key_detection": {
+                "confidence_threshold": self.key_detection.confidence_threshold,
+                "agreement_boost": self.key_detection.agreement_boost,
+                "disagreement_penalty": self.key_detection.disagreement_penalty,
+                "needs_review_threshold": self.key_detection.needs_review_threshold,
+            },
+            "mood_analysis": {
+                "enable_mood_detection": self.mood_analysis.enable_mood_detection,
+                "enable_genre_detection": self.mood_analysis.enable_genre_detection,
+                "enable_danceability": self.mood_analysis.enable_danceability,
+                "ensemble_voting_threshold": self.mood_analysis.ensemble_voting_threshold,
+                "confidence_threshold": self.mood_analysis.confidence_threshold,
+                "mood_dimensions": self.mood_analysis.mood_dimensions,
             },
             "enable_temporal_analysis": self.enable_temporal_analysis,
             "log_level": self.log_level,
