@@ -29,6 +29,8 @@ class RenameProposal:
     warnings: Optional[List[str]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    metadata_source: Optional[str] = None
+    pattern_used: Optional[str] = None
 
     def __post_init__(self) -> None:
         """Initialize default values."""
@@ -86,6 +88,8 @@ class ProposalGenerator:
 
         # Generate proposed filename using pattern
         proposed_filename = self.pattern_manager.apply_pattern(metadata, file_extension)
+        # Get the pattern that was used
+        pattern_used = self.pattern_manager.get_pattern_for_type(file_extension)
 
         # Validate and sanitize the proposed filename
         sanitized_filename = self.validator.sanitize_filename(proposed_filename)
@@ -108,6 +112,8 @@ class ProposalGenerator:
             proposed_filename=sanitized_filename,
             full_proposed_path=full_proposed_path,
             confidence_score=confidence_score,
+            metadata_source="inferred",  # TODO: Determine actual metadata source
+            pattern_used=pattern_used,
         )
 
         # Check for potential issues
