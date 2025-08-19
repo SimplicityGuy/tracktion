@@ -231,3 +231,11 @@ rabbitmq_data/
 # uv specific
 uv.lock
 .uv/
+
+# Audio files
+# Ignore audio files to prevent large binary files in repository
+*.mp3
+*.m4a
+*.ogg
+*.flac
+*.wav
