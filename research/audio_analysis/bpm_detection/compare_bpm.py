@@ -300,7 +300,15 @@ def main():
     ground_truth_file = sample_dir / "ground_truth.csv"
     if ground_truth_file.exists():
         gt_df = pd.read_csv(ground_truth_file)
-        ground_truth = dict(zip(gt_df["filename"], gt_df["actual_bpm"]))
+        # Handle BPM ranges (e.g., "120-140") by taking the average
+        for _, row in gt_df.iterrows():
+            bpm_str = str(row["actual_bpm"])
+            if "-" in bpm_str:
+                # For ranges, take the average
+                start, end = map(float, bpm_str.split("-"))
+                ground_truth[row["filename"]] = (start + end) / 2
+            else:
+                ground_truth[row["filename"]] = float(bpm_str)
         print(f"Loaded ground truth for {len(ground_truth)} files")
 
     # Run comparison

@@ -1,6 +1,21 @@
-filename,bpm,key,genre,mood,duration,notes
-# Example entries - replace with actual test file data
-example_electronic_128bpm.mp3,128,A minor,Electronic,Energetic,180,Constant tempo electronic track
-example_classical_80bpm.wav,80,D major,Classical,Serene,240,Orchestral piece with stable tempo
-example_jazz_variable.flac,110,F major,Jazz,Playful,210,Tempo varies between 100-120 BPM
-example_rock_140bpm.mp3,140,E minor,Rock,Aggressive,195,High energy rock track
+filename,actual_bpm,actual_key,genre,mood,duration_seconds
+electronic_128bpm_Am_constant.mp3,128,Am,electronic,energetic,180
+electronic_140bpm_Cm_constant.wav,140,Cm,electronic,energetic,180
+classical_80bpm_D_constant.flac,80,D,classical,peaceful,180
+jazz_110bpm_F_variable.mp3,110,F,jazz,neutral,180
+rock_120bpm_E_constant.mp3,120,E,rock,energetic,180
+ambient_60bpm_G_constant.mp3,60,G,ambient,peaceful,180
+dnb_174bpm_Bm_constant.mp3,174,Bm,dnb,energetic,180
+transition_120to140bpm_C_gradual.mp3,120-140,C,electronic,neutral,180
+classical_90bpm_Cmajor_clear.wav,90,C,classical,peaceful,180
+classical_90bpm_Aminor_clear.wav,90,Am,classical,melancholic,180
+jazz_100bpm_Bb_modulation.mp3,100,Bb,jazz,neutral,180
+electronic_125bpm_Fsharp_minor.mp3,125,F#m,electronic,dark,180
+electronic_130bpm_Am_dark.mp3,130,Am,electronic,dark,180
+pop_115bpm_C_happy.mp3,115,C,pop,happy,180
+classical_70bpm_Dm_sad.wav,70,Dm,classical,sad,180
+ambient_85bpm_E_peaceful.flac,85,E,ambient,peaceful,180
+test_128bpm_C_format.mp3,128,C,electronic,neutral,60
+test_128bpm_C_format.flac,128,C,electronic,neutral,60
+test_128bpm_C_format.wav,128,C,electronic,neutral,60
+test_128bpm_C_format.m4a,128,C,electronic,neutral,60
