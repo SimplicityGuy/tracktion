@@ -91,6 +91,10 @@ uv run pytest
 - **file_watcher**: Monitors directories for new audio files
 - **cataloging_service**: Catalogs files in PostgreSQL
 - **analysis_service**: Extracts and stores audio metadata (MP3, FLAC, WAV, M4A)
+  - **BPM Detection**: Advanced tempo detection using Essentia algorithms
+  - **Temporal Analysis**: Time-based tempo analysis for variable tempo tracks
+  - **Performance Optimization**: Memory management, streaming, and parallel processing
+  - **Caching**: Redis-based caching for improved performance
 - **tracklist_service**: Retrieves tracklists from external sources
 
 ## Project Structure
@@ -103,6 +107,45 @@ tracktion/
 ├── tests/            # Test suites
 └── docs/             # Documentation
 ```
+
+## Features
+
+### 🎵 BPM Detection (Story 2.3)
+
+Advanced tempo detection system with high accuracy and performance optimization:
+
+#### Core Capabilities
+- **Multi-Algorithm Detection**: RhythmExtractor2013 (primary) with PercivalBpmEstimator fallback
+- **Temporal Analysis**: Time-based analysis for variable tempo tracks with stability scoring
+- **Confidence Scoring**: Normalized confidence values (0-1) with consensus validation
+- **Format Support**: MP3, WAV, FLAC, M4A, OGG, WMA, AAC
+
+#### Performance Features
+- **Redis Caching**: Intelligent caching with versioned keys and TTL management
+- **Streaming Support**: Memory-efficient processing for large files (>50MB)
+- **Parallel Processing**: Configurable worker threads for batch processing
+- **Memory Management**: Per-process memory limits with monitoring
+
+#### Testing
+- **Integration Tests**: Comprehensive end-to-end pipeline validation
+- **Synthetic Audio**: Generated test files with known BPM characteristics
+- **Edge Case Handling**: Silence, noise, corrupted files, variable tempo
+
+#### Configuration
+```bash
+# Quick setup
+export TRACKTION_BPM_CONFIDENCE_THRESHOLD=0.7
+export TRACKTION_CACHE_REDIS_HOST=localhost
+export TRACKTION_PERFORMANCE_PARALLEL_WORKERS=4
+
+# Run BPM detection tests
+uv run python tests/run_integration_tests.py
+```
+
+#### Documentation
+- [📖 BPM Detection Guide](docs/stories/story-2.3-bpm-detection-documentation.md)
+- [🔧 Configuration Reference](docs/configuration/bpm-detection-config.md)
+- [🚀 API Documentation](docs/api/bpm-detection-api.md)
 
 ## Database Setup
 

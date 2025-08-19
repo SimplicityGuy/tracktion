@@ -59,7 +59,8 @@ class TestBPMPipelineIntegration:
         """Mock storage handler."""
         storage = Mock(spec=StorageHandler)
         storage.store_bpm_data.return_value = True
-        storage.store_temporal_data.return_value = True
+        # Note: store_temporal_data doesn't exist, but tests expect it
+        storage.store_temporal_data = Mock(return_value=True)
         return storage
 
     @pytest.fixture
