@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import String, DateTime, ForeignKey, Text, Integer
+from sqlalchemy import String, DateTime, ForeignKey, Text, Integer, DECIMAL, ARRAY
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -41,6 +41,9 @@ class Recording(Base):
     )
     tracklist: Mapped[Optional["Tracklist"]] = relationship(
         "Tracklist", back_populates="recording", uselist=False, cascade="all, delete-orphan"
+    )
+    rename_proposals: Mapped[List["RenameProposal"]] = relationship(
+        "RenameProposal", back_populates="recording", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
@@ -154,3 +157,61 @@ class Tracklist(Base):
                 return False
 
         return True
+
+
+class RenameProposal(Base):
+    """Model for file rename proposals."""
+
+    __tablename__ = "rename_proposals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.uuid_generate_v4()
+    )
+    recording_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("recordings.id"), nullable=False, index=True
+    )
+    original_path: Mapped[str] = mapped_column(Text, nullable=False)
+    original_filename: Mapped[str] = mapped_column(Text, nullable=False)
+    proposed_filename: Mapped[str] = mapped_column(Text, nullable=False)
+    full_proposed_path: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence_score: Mapped[Optional[float]] = mapped_column(DECIMAL(3, 2), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    conflicts: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True)
+    warnings: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, server_default=func.current_timestamp()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        server_default=func.current_timestamp(),
+    )
+
+    # Relationships
+    recording: Mapped["Recording"] = relationship("Recording", back_populates="rename_proposals")
+
+    def __repr__(self) -> str:
+        """String representation of RenameProposal."""
+        return f"<RenameProposal(id={self.id}, status={self.status}, proposed={self.proposed_filename})>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert RenameProposal to dictionary.
+
+        Returns:
+            Dictionary representation of the rename proposal
+        """
+        return {
+            "id": str(self.id),
+            "recording_id": str(self.recording_id),
+            "original_path": self.original_path,
+            "original_filename": self.original_filename,
+            "proposed_filename": self.proposed_filename,
+            "full_proposed_path": self.full_proposed_path,
+            "confidence_score": float(self.confidence_score) if self.confidence_score else None,
+            "status": self.status,
+            "conflicts": self.conflicts,
+            "warnings": self.warnings,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
