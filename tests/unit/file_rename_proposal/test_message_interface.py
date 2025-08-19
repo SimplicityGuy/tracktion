@@ -1,6 +1,6 @@
 """Unit tests for message interface."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -10,6 +10,7 @@ from services.analysis_service.src.file_rename_proposal.message_interface import
     MessageTypes,
     RenameProposalMessageInterface,
 )
+from services.analysis_service.src.file_rename_proposal.proposal_generator import RenameProposal
 
 
 class TestMessageInterface:
@@ -69,15 +70,19 @@ class TestMessageInterface:
         mock_recording = Mock()
         mock_recording.file_name = "song.mp3"
         mock_recording.file_path = "/music/song.mp3"
-        mock_services["recording_repo"].get.return_value = mock_recording
+        mock_services["recording_repo"].get_by_id.return_value = mock_recording
 
-        mock_services["proposal_generator"].generate_proposal.return_value = {
-            "proposed_filename": "Artist - Title.mp3",
-            "full_proposed_path": "/music/Artist - Title.mp3",
-            "metadata": {"artist": "Artist", "title": "Title"},
-            "pattern_used": "{artist} - {title}",
-            "metadata_source": "id3",
-        }
+        mock_proposal_obj = RenameProposal(
+            recording_id=recording_id,
+            original_path="/music",
+            original_filename="song.mp3",
+            proposed_filename="Artist - Title.mp3",
+            full_proposed_path="/music/Artist - Title.mp3",
+            confidence_score=0.95,
+            metadata_source="id3",
+            pattern_used="{artist} - {title}",
+        )
+        mock_services["proposal_generator"].generate_proposal.return_value = mock_proposal_obj
 
         mock_services["conflict_detector"].detect_conflicts.return_value = {
             "conflicts": [],
@@ -99,7 +104,7 @@ class TestMessageInterface:
         mock_proposal.status = "pending"
         mock_proposal.conflicts = None
         mock_proposal.warnings = ["Minor issue"]
-        mock_proposal.created_at = datetime.utcnow()
+        mock_proposal.created_at = datetime.now(UTC)
         mock_services["proposal_repo"].create.return_value = mock_proposal
 
         message = {"type": MessageTypes.GENERATE_PROPOSAL, "request_id": request_id, "recording_id": str(recording_id)}
@@ -118,7 +123,7 @@ class TestMessageInterface:
     def test_generate_proposal_recording_not_found(self, interface, mock_services):
         """Test proposal generation when recording not found."""
         recording_id = uuid4()
-        mock_services["recording_repo"].get.return_value = None
+        mock_services["recording_repo"].get_by_id.return_value = None
 
         message = {"type": MessageTypes.GENERATE_PROPOSAL, "request_id": "test", "recording_id": str(recording_id)}
 
@@ -132,15 +137,15 @@ class TestMessageInterface:
         """Test proposal generation failure."""
         recording_id = uuid4()
         mock_recording = Mock()
-        mock_services["recording_repo"].get.return_value = mock_recording
-        mock_services["proposal_generator"].generate_proposal.return_value = None
+        mock_services["recording_repo"].get_by_id.return_value = mock_recording
+        mock_services["proposal_generator"].generate_proposal.side_effect = Exception("Generation failed")
 
         message = {"type": MessageTypes.GENERATE_PROPOSAL, "request_id": "test", "recording_id": str(recording_id)}
 
         response = interface.process_message(message)
 
         assert response["type"] == MessageTypes.ERROR
-        assert response["error"]["code"] == "GENERATION_FAILED"
+        assert response["error"]["code"] == "GENERATION_ERROR"
 
     def test_batch_process_success(self, interface, mock_services):
         """Test successful batch processing submission."""
@@ -150,7 +155,7 @@ class TestMessageInterface:
         mock_job.job_id = "batch_123"
         mock_job.status = "pending"
         mock_job.total_recordings = 2
-        mock_job.created_at = datetime.utcnow()
+        mock_job.created_at = datetime.now(UTC)
         mock_job.options = {"max_workers": 4}
 
         mock_services["batch_processor"].submit_batch_job.return_value = mock_job
@@ -184,7 +189,7 @@ class TestMessageInterface:
         mock_job.job_id = "batch_123"
         mock_job.status = "pending"
         mock_job.total_recordings = 1
-        mock_job.created_at = datetime.utcnow()
+        mock_job.created_at = datetime.now(UTC)
         mock_job.options = {}
 
         mock_services["batch_processor"].submit_batch_job.return_value = mock_job
@@ -219,8 +224,8 @@ class TestMessageInterface:
         mock_proposal.warnings = []
         mock_proposal.metadata_source = "id3"
         mock_proposal.pattern_used = "{artist} - {title}"
-        mock_proposal.created_at = datetime.utcnow()
-        mock_proposal.updated_at = datetime.utcnow()
+        mock_proposal.created_at = datetime.now(UTC)
+        mock_proposal.updated_at = datetime.now(UTC)
 
         mock_services["proposal_repo"].get.return_value = mock_proposal
 
@@ -251,8 +256,8 @@ class TestMessageInterface:
             proposal.warnings = []
             proposal.metadata_source = "id3"
             proposal.pattern_used = "{artist} - {title}"
-            proposal.created_at = datetime.utcnow()
-            proposal.updated_at = datetime.utcnow()
+            proposal.created_at = datetime.now(UTC)
+            proposal.updated_at = datetime.now(UTC)
 
         mock_services["proposal_repo"].get_by_recording.return_value = mock_proposals
 
@@ -293,7 +298,7 @@ class TestMessageInterface:
         mock_proposal.recording_id = uuid4()
         mock_proposal.status = "approved"
         mock_proposal.confidence_score = 0.95
-        mock_proposal.updated_at = datetime.utcnow()
+        mock_proposal.updated_at = datetime.now(UTC)
 
         mock_services["proposal_repo"].update.return_value = mock_proposal
 

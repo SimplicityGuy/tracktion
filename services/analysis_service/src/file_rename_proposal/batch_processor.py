@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .proposal_generator import ProposalGenerator
 from .conflict_detector import ConflictDetector
@@ -30,7 +30,7 @@ class BatchProcessingJob:
         self.job_id = job_id
         self.recording_ids = recording_ids
         self.options = options or {}
-        self.created_at = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
         self.started_at: Optional[datetime] = None
         self.completed_at: Optional[datetime] = None
         self.status = "pending"
@@ -95,7 +95,7 @@ class BatchProcessor:
             BatchProcessingJob instance
         """
         if not job_id:
-            job_id = f"batch_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{len(recording_ids)}"
+            job_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{len(recording_ids)}"
 
         job = BatchProcessingJob(
             job_id=job_id,
@@ -129,13 +129,13 @@ class BatchProcessor:
         if not job:
             raise ValueError(f"Job {job_id} not found")
 
-        job.started_at = datetime.utcnow()
+        job.started_at = datetime.now(timezone.utc)
         job.status = "running"
 
         try:
             self._process_recordings_in_batches(job)
             job.status = "completed"
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
 
             logger.info(
                 f"Batch job {job_id} completed: "
@@ -435,7 +435,7 @@ class BatchProcessor:
             return False
 
         job.status = "cancelled"
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
 
         logger.info(f"Cancelled batch job {job_id}")
         return True
@@ -449,7 +449,7 @@ class BatchProcessor:
         Returns:
             Number of jobs cleaned up
         """
-        cutoff_time = datetime.utcnow() - timedelta(hours=max_age_hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
         jobs_to_remove = []
 
         for job_id, job in self.active_jobs.items():

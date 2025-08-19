@@ -1,5 +1,6 @@
 """Unit tests for file rename proposal integration."""
 
+from datetime import UTC
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -102,23 +103,26 @@ class TestFileRenameProposalIntegration:
         proposal_repo.create.return_value = mock_proposal
 
         # Setup conflict detector and confidence scorer mocks
-        integration.conflict_detector.detect_conflicts.return_value = {"conflicts": [], "warnings": []}
-        integration.confidence_scorer.calculate_confidence.return_value = (0.95, {"test": 0.95})
+        with (
+            patch.object(
+                integration.conflict_detector, "detect_conflicts", return_value={"conflicts": [], "warnings": []}
+            ),
+            patch.object(integration.confidence_scorer, "calculate_confidence", return_value=(0.95, {"test": 0.95})),
+        ):
+            recording_id = uuid4()
+            metadata = {
+                "artist": "Test Artist",
+                "title": "Test Song",
+                "album": "Test Album",
+                "date": "2024",
+            }
+            correlation_id = "test_correlation"
 
-        recording_id = uuid4()
-        metadata = {
-            "artist": "Test Artist",
-            "title": "Test Song",
-            "album": "Test Album",
-            "date": "2024",
-        }
-        correlation_id = "test_correlation"
+            result = integration.process_recording_metadata(recording_id, metadata, correlation_id)
 
-        result = integration.process_recording_metadata(recording_id, metadata, correlation_id)
-
-        assert result == str(mock_proposal.id)
-        recording_repo.get_by_id.assert_called_once_with(recording_id)
-        proposal_repo.create.assert_called_once()
+            assert result == str(mock_proposal.id)
+            recording_repo.get_by_id.assert_called_once_with(recording_id)
+            proposal_repo.create.assert_called_once()
 
     @patch("os.path.exists")
     @patch("os.listdir")
@@ -143,21 +147,28 @@ class TestFileRenameProposalIntegration:
         proposal_repo.create.return_value = mock_proposal
 
         # Setup conflict detector to return conflicts, then resolve them
-        integration.conflict_detector.detect_conflicts.side_effect = [
-            {"conflicts": ["File already exists"], "warnings": []},
-            {"conflicts": [], "warnings": []},  # After resolution
-        ]
-        integration.conflict_detector.resolve_conflicts.return_value = "/music/Test Artist - Test Song_2.mp3"
-        integration.confidence_scorer.calculate_confidence.return_value = (0.8, {"test": 0.8})
+        with (
+            patch.object(
+                integration.conflict_detector,
+                "detect_conflicts",
+                side_effect=[
+                    {"conflicts": ["File already exists"], "warnings": []},
+                    {"conflicts": [], "warnings": []},  # After resolution
+                ],
+            ),
+            patch.object(
+                integration.conflict_detector, "resolve_conflicts", return_value="/music/Test Artist - Test Song_2.mp3"
+            ),
+            patch.object(integration.confidence_scorer, "calculate_confidence", return_value=(0.8, {"test": 0.8})),
+        ):
+            recording_id = uuid4()
+            metadata = {"artist": "Test Artist", "title": "Test Song"}
+            correlation_id = "test_correlation"
 
-        recording_id = uuid4()
-        metadata = {"artist": "Test Artist", "title": "Test Song"}
-        correlation_id = "test_correlation"
+            result = integration.process_recording_metadata(recording_id, metadata, correlation_id)
 
-        result = integration.process_recording_metadata(recording_id, metadata, correlation_id)
-
-        assert result == str(mock_proposal.id)
-        assert integration.conflict_detector.resolve_conflicts.called
+            assert result == str(mock_proposal.id)
+            assert integration.conflict_detector.resolve_conflicts.called
 
     def test_process_batch_recordings_disabled(self, integration):
         """Test batch processing when auto-generation is disabled."""
@@ -175,15 +186,15 @@ class TestFileRenameProposalIntegration:
         # Mock batch processor
         mock_job = Mock()
         mock_job.job_id = "test_job_123"
-        integration.batch_processor.submit_batch_job.return_value = mock_job
 
-        recording_ids = [uuid4(), uuid4()]
-        correlation_id = "test_correlation"
+        with patch.object(integration.batch_processor, "submit_batch_job", return_value=mock_job):
+            recording_ids = [uuid4(), uuid4()]
+            correlation_id = "test_correlation"
 
-        result = integration.process_batch_recordings(recording_ids, correlation_id)
+            result = integration.process_batch_recordings(recording_ids, correlation_id)
 
-        assert result == "test_job_123"
-        integration.batch_processor.submit_batch_job.assert_called_once()
+            assert result == "test_job_123"
+            integration.batch_processor.submit_batch_job.assert_called_once()
 
     def test_get_proposal_status_no_proposals(self, integration, mock_repos):
         """Test getting proposal status when no proposals exist."""
@@ -208,7 +219,7 @@ class TestFileRenameProposalIntegration:
         mock_proposal.status = "pending"
         mock_proposal.proposed_filename = "Artist - Title.mp3"
         mock_proposal.confidence_score = 0.85
-        mock_proposal.created_at = datetime.utcnow()
+        mock_proposal.created_at = datetime.now(UTC)
 
         proposal_repo.get_by_recording.return_value = [mock_proposal]
 
@@ -274,11 +285,11 @@ class TestFileRenameProposalIntegration:
         with (
             patch("os.path.exists", return_value=True),
             patch("os.listdir", side_effect=PermissionError("Permission denied")),
+            patch.object(
+                integration.conflict_detector, "detect_conflicts", return_value={"conflicts": [], "warnings": []}
+            ),
+            patch.object(integration.confidence_scorer, "calculate_confidence", return_value=(0.85, {"test": 0.85})),
         ):
-            # Setup other mocks
-            integration.conflict_detector.detect_conflicts.return_value = {"conflicts": [], "warnings": []}
-            integration.confidence_scorer.calculate_confidence.return_value = (0.85, {"test": 0.85})
-
             recording_id = uuid4()
             metadata = {"artist": "Test Artist", "title": "Test Song"}
             correlation_id = "test_correlation"

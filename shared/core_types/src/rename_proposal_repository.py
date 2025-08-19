@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict, List, Optional, cast
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, func
 
@@ -136,7 +136,7 @@ class RenameProposalRepository:
                 if hasattr(proposal, key):
                     setattr(proposal, key, value)
 
-            proposal.updated_at = datetime.utcnow()
+            proposal.updated_at = datetime.now(timezone.utc)
             session.flush()
             session.refresh(proposal)
 
@@ -160,7 +160,7 @@ class RenameProposalRepository:
                 return False
 
             proposal.status = status
-            proposal.updated_at = datetime.utcnow()
+            proposal.updated_at = datetime.now(timezone.utc)
             session.flush()
 
             logger.info(f"Updated status of proposal {proposal_id} to {status}")
@@ -182,7 +182,7 @@ class RenameProposalRepository:
                 proposal = session.query(RenameProposal).filter(RenameProposal.id == proposal_id).first()
                 if proposal:
                     proposal.status = status
-                    proposal.updated_at = datetime.utcnow()
+                    proposal.updated_at = datetime.now(timezone.utc)
                     count += 1
 
             session.flush()
@@ -280,7 +280,7 @@ class RenameProposalRepository:
             Number of proposals deleted
         """
         with self.db.get_db_session() as session:
-            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
             proposals = (
                 session.query(RenameProposal)

@@ -1,7 +1,7 @@
 """SQLAlchemy models for Tracktion data entities."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import String, DateTime, ForeignKey, Text, Integer, DECIMAL, ARRAY
@@ -29,10 +29,10 @@ class Recording(Base):
     processing_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="pending")
     processing_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, server_default=func.current_timestamp()
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.current_timestamp()
     )
     updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), onupdate=datetime.utcnow, nullable=True
+        DateTime(timezone=True), onupdate=lambda: datetime.now(timezone.utc), nullable=True
     )
 
     # Relationships
@@ -179,12 +179,12 @@ class RenameProposal(Base):
     conflicts: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True)
     warnings: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, server_default=func.current_timestamp()
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.current_timestamp()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         server_default=func.current_timestamp(),
     )
 

@@ -2,7 +2,7 @@
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional, cast
 from uuid import UUID, uuid4
 
@@ -104,7 +104,7 @@ class RenameProposalMessageInterface:
 
             response = cast(Dict[str, Any], handler(message, request_id))
             response["request_id"] = request_id
-            response["timestamp"] = datetime.utcnow().isoformat()
+            response["timestamp"] = datetime.now(timezone.utc).isoformat()
 
             return response
 
@@ -510,5 +510,5 @@ class RenameProposalMessageInterface:
             "type": MessageTypes.ERROR,
             "request_id": request_id,
             "error": {"code": error_code, "message": message},
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }

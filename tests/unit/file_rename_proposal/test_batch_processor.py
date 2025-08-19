@@ -1,6 +1,6 @@
 """Unit tests for batch processor."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -10,6 +10,7 @@ from services.analysis_service.src.file_rename_proposal.batch_processor import (
     BatchProcessingJob,
     BatchProcessor,
 )
+from services.analysis_service.src.file_rename_proposal.proposal_generator import RenameProposal
 
 
 class TestBatchProcessingJob:
@@ -148,12 +149,12 @@ class TestBatchProcessor:
         recording_ids = [uuid4()]
         old_job = processor.submit_batch_job(recording_ids, "old_job")
         old_job.status = "completed"
-        old_job.completed_at = datetime.utcnow() - timedelta(hours=25)
+        old_job.completed_at = datetime.now(UTC) - timedelta(hours=25)
 
         # Create recent completed job
         recent_job = processor.submit_batch_job(recording_ids, "recent_job")
         recent_job.status = "completed"
-        recent_job.completed_at = datetime.utcnow() - timedelta(hours=1)
+        recent_job.completed_at = datetime.now(UTC) - timedelta(hours=1)
 
         # Create pending job
         processor.submit_batch_job(recording_ids, "pending_job")
@@ -177,7 +178,7 @@ class TestBatchProcessor:
         recording3 = Mock()
         recording3.file_path = "/music/album2/song3.mp3"
 
-        mock_services["recording_repo"].get.side_effect = [recording1, recording2, recording3]
+        mock_services["recording_repo"].get_by_id.side_effect = [recording1, recording2, recording3]
 
         # Setup directory listing
         mock_exists.return_value = True
@@ -202,14 +203,18 @@ class TestBatchProcessor:
         recording.file_name = "song.mp3"
         recording.file_path = "/music/song.mp3"
 
-        mock_services["recording_repo"].get.return_value = recording
-        mock_services["proposal_generator"].generate_proposal.return_value = {
-            "proposed_filename": "Artist - Title.mp3",
-            "full_proposed_path": "/music/Artist - Title.mp3",
-            "metadata": {"artist": "Artist", "title": "Title"},
-            "pattern_used": "{artist} - {title}",
-            "metadata_source": "id3",
-        }
+        mock_services["recording_repo"].get_by_id.return_value = recording
+        mock_proposal_obj = RenameProposal(
+            recording_id=recording_id,
+            original_path="/music",
+            original_filename="song.mp3",
+            proposed_filename="Artist - Title.mp3",
+            full_proposed_path="/music/Artist - Title.mp3",
+            confidence_score=0.85,
+            metadata_source="id3",
+            pattern_used="{artist} - {title}",
+        )
+        mock_services["proposal_generator"].generate_proposal.return_value = mock_proposal_obj
 
         mock_services["conflict_detector"].detect_conflicts.return_value = {"conflicts": [], "warnings": []}
 
@@ -243,14 +248,18 @@ class TestBatchProcessor:
         recording.file_name = "song.mp3"
         recording.file_path = "/music/song.mp3"
 
-        mock_services["recording_repo"].get.return_value = recording
-        mock_services["proposal_generator"].generate_proposal.return_value = {
-            "proposed_filename": "Artist - Title.mp3",
-            "full_proposed_path": "/music/Artist - Title.mp3",
-            "metadata": {"artist": "Artist", "title": "Title"},
-            "pattern_used": "{artist} - {title}",
-            "metadata_source": "id3",
-        }
+        mock_services["recording_repo"].get_by_id.return_value = recording
+        mock_proposal_obj = RenameProposal(
+            recording_id=recording_id,
+            original_path="/music",
+            original_filename="song.mp3",
+            proposed_filename="Artist - Title.mp3",
+            full_proposed_path="/music/Artist - Title.mp3",
+            confidence_score=0.75,
+            metadata_source="id3",
+            pattern_used="{artist} - {title}",
+        )
+        mock_services["proposal_generator"].generate_proposal.return_value = mock_proposal_obj
 
         # Initial conflicts
         mock_services["conflict_detector"].detect_conflicts.side_effect = [
@@ -291,12 +300,18 @@ class TestBatchProcessor:
         recording.file_name = "song.mp3"
         recording.file_path = "/music/song.mp3"
 
-        mock_services["recording_repo"].get.return_value = recording
-        mock_services["proposal_generator"].generate_proposal.return_value = {
-            "proposed_filename": "Artist - Title.mp3",
-            "full_proposed_path": "/music/Artist - Title.mp3",
-            "metadata": {"artist": "Artist", "title": "Title"},
-        }
+        mock_services["recording_repo"].get_by_id.return_value = recording
+        mock_proposal_obj = RenameProposal(
+            recording_id=recording_id,
+            original_path="/music",
+            original_filename="song.mp3",
+            proposed_filename="Artist - Title.mp3",
+            full_proposed_path="/music/Artist - Title.mp3",
+            confidence_score=0.80,
+            metadata_source="id3",
+            pattern_used="{artist} - {title}",
+        )
+        mock_services["proposal_generator"].generate_proposal.return_value = mock_proposal_obj
 
         mock_services["conflict_detector"].detect_conflicts.return_value = {
             "conflicts": ["Directory traversal detected"],
@@ -327,7 +342,7 @@ class TestBatchProcessor:
     def test_process_single_recording_not_found(self, processor, mock_services):
         """Test processing when recording not found."""
         recording_id = uuid4()
-        mock_services["recording_repo"].get.return_value = None
+        mock_services["recording_repo"].get_by_id.return_value = None
 
         job = BatchProcessingJob("test", [recording_id])
 
@@ -342,16 +357,18 @@ class TestBatchProcessor:
         recording_id = uuid4()
         recording = Mock()
         recording.file_name = "song.mp3"
+        recording.file_path = "/music/song.mp3"
 
-        mock_services["recording_repo"].get.return_value = recording
-        mock_services["proposal_generator"].generate_proposal.return_value = None
+        mock_services["recording_repo"].get_by_id.return_value = recording
+        # Simulate an exception during proposal generation
+        mock_services["proposal_generator"].generate_proposal.side_effect = Exception("Generation failed")
 
         job = BatchProcessingJob("test", [recording_id])
 
         result = processor._process_single_recording(recording_id, job, {})
 
         assert result["success"] is False
-        assert "Could not generate proposal" in result["error"]
+        assert "Generation failed" in result["error"]
         assert result["proposal_id"] is None
 
     def test_update_job_progress(self, processor):
