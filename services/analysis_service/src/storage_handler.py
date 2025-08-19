@@ -1,10 +1,11 @@
 """Database storage handler for extracted metadata."""
 
+import json
 import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from uuid import UUID
 from datetime import datetime
 
@@ -193,6 +194,9 @@ class StorageHandler:
             # Update additional relationships based on metadata
             self._create_semantic_relationships(recording_id, metadata, correlation_id)
 
+            # Create BPM-specific relationships if BPM data exists
+            self._create_bpm_relationships(recording_id, metadata, correlation_id)
+
             logger.info(
                 f"Stored {stored_count} metadata nodes in Neo4j",
                 extra={"correlation_id": correlation_id, "recording_id": str(recording_id)},
@@ -253,6 +257,244 @@ class StorageHandler:
             logger.warning(
                 f"Failed to create some semantic relationships: {e}", extra={"correlation_id": correlation_id}
             )
+
+    def store_bpm_data(
+        self,
+        recording_id: UUID,
+        bpm_data: Dict[str, Any],
+        temporal_data: Optional[Dict[str, Any]] = None,
+        correlation_id: str = "unknown",
+    ) -> bool:
+        """Store BPM analysis results in both databases.
+
+        Args:
+            recording_id: UUID of the recording
+            bpm_data: BPM detection results
+            temporal_data: Optional temporal analysis results
+            correlation_id: Correlation ID for tracing
+
+        Returns:
+            True if storage was successful
+        """
+        try:
+            # Prepare BPM metadata for storage
+            bpm_metadata: Dict[str, Optional[str]] = {}
+
+            # Store core BPM values
+            if "bpm" in bpm_data:
+                bpm_metadata["bpm_average"] = str(bpm_data["bpm"])
+
+            if "confidence" in bpm_data:
+                bpm_metadata["bpm_confidence"] = str(bpm_data["confidence"])
+
+            if "algorithm" in bpm_data:
+                bpm_metadata["bpm_algorithm"] = bpm_data["algorithm"]
+
+            # Store temporal data if available
+            if temporal_data:
+                if "start_bpm" in temporal_data:
+                    bpm_metadata["bpm_start"] = str(temporal_data["start_bpm"])
+
+                if "end_bpm" in temporal_data:
+                    bpm_metadata["bpm_end"] = str(temporal_data["end_bpm"])
+
+                if "stability_score" in temporal_data:
+                    bpm_metadata["bpm_stability"] = str(temporal_data["stability_score"])
+
+                # Optionally store temporal array (based on configuration)
+                if "temporal_bpm" in temporal_data and temporal_data["temporal_bpm"]:
+                    # Store as JSON string for complex data
+                    bpm_metadata["bpm_temporal"] = json.dumps(temporal_data["temporal_bpm"])
+
+                if "average_bpm" in temporal_data:
+                    # Override with temporal average if different
+                    bpm_metadata["bpm_average"] = str(temporal_data["average_bpm"])
+
+            # Store error if BPM detection failed
+            if "error" in bpm_data:
+                bpm_metadata["bpm_error"] = str(bpm_data["error"])
+                bpm_metadata["bpm_status"] = "failed"
+            else:
+                bpm_metadata["bpm_status"] = "completed"
+
+            # Store using existing metadata storage method
+            success = self.store_metadata(recording_id, bpm_metadata, correlation_id)
+
+            logger.info(
+                f"Stored BPM data for recording {recording_id}",
+                extra={
+                    "correlation_id": correlation_id,
+                    "bpm": bpm_metadata.get("bpm_average"),
+                    "confidence": bpm_metadata.get("bpm_confidence"),
+                    "stability": bpm_metadata.get("bpm_stability"),
+                },
+            )
+
+            return success
+
+        except Exception as e:
+            logger.error(
+                f"Failed to store BPM data for recording {recording_id}: {e}",
+                extra={"correlation_id": correlation_id},
+            )
+            raise StorageError(f"Failed to store BPM data: {e}")
+
+    def _create_bpm_relationships(
+        self, recording_id: UUID, metadata: Dict[str, Optional[str]], correlation_id: str
+    ) -> None:
+        """Create BPM-based relationships in Neo4j.
+
+        Args:
+            recording_id: UUID of the recording
+            metadata: Dictionary containing BPM metadata
+            correlation_id: Correlation ID for tracing
+        """
+        try:
+            if not self.neo4j_repo:
+                return
+
+            # Get BPM value
+            bpm_str = metadata.get("bpm_average")
+            if not bpm_str:
+                return
+
+            try:
+                bpm = float(bpm_str)
+            except (ValueError, TypeError):
+                return
+
+            # Create BPM range node and relationship
+            bpm_range = self._get_bpm_range(bpm)
+            if bpm_range:
+                bpm_range_id = self.neo4j_repo.create_or_get_bpm_range(bpm_range)
+                self.neo4j_repo.create_relationship(
+                    from_id=recording_id,
+                    to_id=bpm_range_id,
+                    relationship_type="HAS_BPM_RANGE",
+                    properties={
+                        "bpm": bpm,
+                        "confidence": metadata.get("bpm_confidence"),
+                        "source": "bpm_detection",
+                    },
+                )
+
+            # Create tempo stability relationship if available
+            stability_str = metadata.get("bpm_stability")
+            if stability_str:
+                try:
+                    stability = float(stability_str)
+                    tempo_type = "constant" if stability > 0.8 else "variable"
+                    tempo_id = self.neo4j_repo.create_or_get_tempo_type(tempo_type)
+                    self.neo4j_repo.create_relationship(
+                        from_id=recording_id,
+                        to_id=tempo_id,
+                        relationship_type="HAS_TEMPO_TYPE",
+                        properties={"stability_score": stability, "source": "temporal_analysis"},
+                    )
+                except (ValueError, TypeError):
+                    pass
+
+            logger.debug(
+                f"Created BPM relationships in Neo4j for recording {recording_id}",
+                extra={"correlation_id": correlation_id, "bpm": bpm},
+            )
+
+        except Exception as e:
+            # Log but don't fail - BPM relationships are supplementary
+            logger.warning(
+                f"Failed to create BPM relationships: {e}",
+                extra={"correlation_id": correlation_id},
+            )
+
+    def _get_bpm_range(self, bpm: float) -> Optional[str]:
+        """Categorize BPM into standard ranges.
+
+        Args:
+            bpm: The BPM value
+
+        Returns:
+            BPM range category or None
+        """
+        if bpm < 60:
+            return "very_slow"  # Largo
+        elif bpm < 76:
+            return "slow"  # Adagio
+        elif bpm < 108:
+            return "moderate"  # Andante/Moderato
+        elif bpm < 120:
+            return "moderate_fast"  # Allegretto
+        elif bpm < 140:
+            return "fast"  # Allegro
+        elif bpm < 168:
+            return "very_fast"  # Vivace
+        elif bpm < 200:
+            return "extremely_fast"  # Presto
+        else:
+            return "ultra_fast"  # Prestissimo
+
+    def get_bpm_statistics(self, recording_ids: Optional[List[UUID]] = None) -> Dict[str, Any]:
+        """Get BPM statistics for recordings.
+
+        Args:
+            recording_ids: Optional list of recording IDs to filter
+
+        Returns:
+            Dictionary with BPM statistics
+        """
+        try:
+            stats: Dict[str, Any] = {
+                "total_analyzed": 0,
+                "successful": 0,
+                "failed": 0,
+                "average_bpm": None,
+                "average_confidence": None,
+                "bpm_ranges": {},
+            }
+
+            if not self.metadata_repo:
+                return stats
+
+            # Get BPM metadata
+            bpm_values = []
+            confidence_values = []
+
+            if recording_ids:
+                # Get metadata for specific recordings
+                for rec_id in recording_ids:
+                    metadata_items = self.metadata_repo.get_by_recording(rec_id)
+                    for item in metadata_items:
+                        if item.key == "bpm_average" and item.value:
+                            try:
+                                bpm_values.append(float(item.value))
+                                stats["successful"] += 1
+                            except ValueError:
+                                stats["failed"] += 1
+                        elif item.key == "bpm_confidence" and item.value:
+                            try:
+                                confidence_values.append(float(item.value))
+                            except ValueError:
+                                pass
+
+            stats["total_analyzed"] = stats["successful"] + stats["failed"]
+
+            # Calculate averages
+            if bpm_values:
+                stats["average_bpm"] = sum(bpm_values) / len(bpm_values)
+
+                # Count BPM ranges
+                for bpm in bpm_values:
+                    bpm_range = self._get_bpm_range(bpm)
+                    if bpm_range:
+                        stats["bpm_ranges"][bpm_range] = stats["bpm_ranges"].get(bpm_range, 0) + 1
+
+            if confidence_values:
+                stats["average_confidence"] = sum(confidence_values) / len(confidence_values)
+
+            return stats
+
+        except Exception as e:
+            logger.error(f"Failed to get BPM statistics: {e}")
+            return {"error": str(e)}
 
     def update_recording_status(
         self, recording_id: UUID, status: str, error_message: Optional[str] = None, correlation_id: Optional[str] = None
