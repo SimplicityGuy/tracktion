@@ -68,6 +68,9 @@ class MessageConsumer:
                 logger.warning(f"Failed to initialize cache: {e}. Processing without cache.")
                 self.cache = None
 
+        # Initialize storage handler (will be set by tests or main application)
+        self.storage: Optional[Any] = None
+
     def connect(self) -> None:
         """Establish connection to RabbitMQ with retry logic."""
         while self._retry_count < self._max_retries:
@@ -115,7 +118,10 @@ class MessageConsumer:
 
         # Check if file exists
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Audio file not found: {file_path}")
+            logger.error(f"Audio file not found: {file_path}")
+            results["error"] = f"Audio file not found: {file_path}"
+            results["bpm_data"] = None
+            return results
 
         # Check cache first
         if self.cache:
@@ -172,6 +178,19 @@ class MessageConsumer:
             # Cache the failure to avoid re-processing immediately
             if self.cache:
                 self.cache.set_bpm_results(file_path, {"error": str(e)}, failed=True)
+
+        # Store results in database if we have valid BPM data
+        if self.storage and "bpm_data" in results and results["bpm_data"] and "error" not in results["bpm_data"]:
+            try:
+                from uuid import UUID
+
+                recording_uuid = UUID(recording_id)
+                temporal_data = results.get("temporal_data")
+                stored = self.storage.store_bpm_data(recording_uuid, results["bpm_data"], temporal_data=temporal_data)
+                results["stored"] = stored
+            except Exception as e:
+                logger.error(f"Failed to store BPM data: {e}")
+                results["storage_error"] = str(e)
 
         return results
 
