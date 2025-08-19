@@ -48,6 +48,12 @@ class FileRenameProposalConfig:
     enable_conflict_detection: bool = True
     enable_unicode_normalization: bool = True
 
+    # Integration with analysis pipeline
+    auto_generate_proposals: bool = True
+
+    # Auto-approval threshold for confidence score
+    auto_approve_threshold: float = 0.9
+
     # Database settings
     proposal_retention_days: int = 30
 
@@ -75,5 +81,11 @@ class FileRenameProposalConfig:
 
         if enable_conflict := os.getenv("RENAME_ENABLE_CONFLICT_DETECTION"):
             config.enable_conflict_detection = enable_conflict.lower() == "true"
+
+        if auto_generate := os.getenv("RENAME_AUTO_GENERATE_PROPOSALS"):
+            config.auto_generate_proposals = auto_generate.lower() == "true"
+
+        if auto_approve_threshold := os.getenv("RENAME_AUTO_APPROVE_THRESHOLD"):
+            config.auto_approve_threshold = float(auto_approve_threshold)
 
         return config

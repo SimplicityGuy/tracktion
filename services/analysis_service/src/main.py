@@ -17,6 +17,11 @@ from message_consumer import MessageConsumer
 from metadata_extractor import MetadataExtractor
 from storage_handler import StorageHandler
 from exceptions import InvalidAudioFileError, MetadataExtractionError, StorageError, RetryableError
+from file_rename_proposal.integration import FileRenameProposalIntegration
+from file_rename_proposal.config import FileRenameProposalConfig
+from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
+from shared.core_types.src.repositories import RecordingRepository
+from shared.core_types.src.database import DatabaseManager
 
 # Load environment variables
 load_dotenv()
@@ -53,6 +58,7 @@ class AnalysisService:
         self.consumer: Optional[MessageConsumer] = None
         self.extractor: Optional[MetadataExtractor] = None
         self.storage: Optional[StorageHandler] = None
+        self.rename_integration: Optional[FileRenameProposalIntegration] = None
         self._shutdown_requested = False
 
         # Configuration
@@ -86,6 +92,23 @@ class AnalysisService:
                 routing_key=self.routing_key,
             )
             logger.info("Message consumer initialized")
+
+            # Initialize file rename proposal integration (optional)
+            try:
+                db_manager = DatabaseManager()
+                proposal_repo = RenameProposalRepository(db_manager)
+                recording_repo = RecordingRepository(db_manager)
+                rename_config = FileRenameProposalConfig.from_env()
+
+                self.rename_integration = FileRenameProposalIntegration(
+                    proposal_repo=proposal_repo,
+                    recording_repo=recording_repo,
+                    config=rename_config,
+                )
+                logger.info("File rename proposal integration initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize file rename proposal integration: {e}")
+                self.rename_integration = None
 
             # Setup signal handlers
             signal.signal(signal.SIGINT, self._handle_shutdown)
@@ -185,6 +208,25 @@ class AnalysisService:
                 if not self.storage:
                     raise RuntimeError("Storage not initialized")
                 self.storage.store_metadata(recording_id, metadata, correlation_id)
+
+                # Generate rename proposal if integration is available
+                if self.rename_integration:
+                    try:
+                        proposal_id = self.rename_integration.process_recording_metadata(
+                            recording_id, metadata, correlation_id
+                        )
+                        if proposal_id:
+                            logger.info(
+                                f"Generated rename proposal {proposal_id}",
+                                correlation_id=correlation_id,
+                                recording_id=str(recording_id),
+                            )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to generate rename proposal: {e}",
+                            correlation_id=correlation_id,
+                            recording_id=str(recording_id),
+                        )
 
                 # Update recording status
                 self.storage.update_recording_status(recording_id, "processed", None, correlation_id)
