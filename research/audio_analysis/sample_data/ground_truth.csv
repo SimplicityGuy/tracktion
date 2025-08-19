@@ -1,0 +1,6 @@
+filename,bpm,key,genre,mood,duration,notes
+# Example entries - replace with actual test file data
+example_electronic_128bpm.mp3,128,A minor,Electronic,Energetic,180,Constant tempo electronic track
+example_classical_80bpm.wav,80,D major,Classical,Serene,240,Orchestral piece with stable tempo
+example_jazz_variable.flac,110,F major,Jazz,Playful,210,Tempo varies between 100-120 BPM
+example_rock_140bpm.mp3,140,E minor,Rock,Aggressive,195,High energy rock track
