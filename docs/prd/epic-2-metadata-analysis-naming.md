@@ -128,23 +128,37 @@ This epic builds upon the foundation established in Epic 1 to deliver the core a
   - Optimization for batch processing and memory management
   - Integration strategy for model downloads and updates
 
-## Story 2.5: File Renaming Service Implementation
+## Story 2.5: File Rename Proposal Service
 
 **As a** music collector,
-**I want** automatic file renaming based on extracted metadata and configurable patterns,
-**so that** my music files have consistent, meaningful names that help me organize my collection.
+**I want** a service that proposes new filenames based on extracted metadata and configurable patterns,
+**so that** I can review and approve consistent, meaningful names for my music files before any actual renaming occurs.
 
 ### Acceptance Criteria
-1. A new file_renaming_service is created as a separate microservice or module within analysis_service.
-2. Configurable naming patterns are supported using template syntax (e.g., "{artist} - {title} - {bpm}BPM").
-3. The service validates new filenames for filesystem compatibility (removes invalid characters, handles length limits).
-4. A dry-run mode allows preview of rename operations without actual file changes.
-5. Batch renaming operations are supported with transaction-like behavior (all-or-nothing).
-6. Original filenames are preserved in the database for rollback capability.
-7. File rename events trigger catalog updates to maintain database consistency.
-8. Configuration allows for different patterns based on file type or metadata conditions.
-9. Safety checks prevent overwrites and handle naming conflicts (auto-increment or timestamp).
-10. Unit tests cover various naming patterns and edge cases.
+1. A new file_rename_proposal_service is created as a separate microservice or module within analysis_service.
+2. The service generates filename proposals using configurable naming patterns with template syntax (e.g., "{artist} - {title} - {bpm}BPM").
+3. Proposed filenames are validated for filesystem compatibility (removes invalid characters, handles length limits).
+4. Each proposal includes:
+   - Original filename and path
+   - Proposed new filename
+   - Confidence score based on metadata completeness
+   - Potential conflicts or warnings
+   - Preview of the full path with new name
+5. Proposals are stored in the database with status tracking (pending, approved, rejected, applied).
+6. The service detects and flags potential naming conflicts before any renaming occurs.
+7. Different naming patterns can be configured based on file type or metadata conditions.
+8. A batch proposal generation mode can process multiple files and store all proposals for later review.
+9. The service exposes an API/message interface to retrieve pending proposals for UI consumption.
+10. **NO actual file renaming occurs** - this service only generates and stores proposals.
+11. Unit tests cover various naming patterns, edge cases, and conflict detection.
+
+### Technical Notes
+- This service sets the foundation for a future UI feature where users can:
+  - Review proposed renames
+  - Approve/reject individual or batch proposals
+  - Trigger actual rename operations after approval
+- Actual file renaming will be implemented in a future story once the UI exists
+- Consider implementing proposal expiry/cleanup for old unreviewed proposals
 
 ## Story 2.6: Analysis Pipeline Optimization & Monitoring
 
