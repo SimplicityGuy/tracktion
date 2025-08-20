@@ -16,6 +16,7 @@ from .bpm_detector import BPMDetector
 from .key_detector import KeyDetector
 from .model_manager import ModelManager
 from .mood_analyzer import MoodAnalyzer
+from .priority_queue import PriorityCalculator, PriorityConfig, setup_priority_queue
 from .temporal_analyzer import TemporalAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ class MessageConsumer:
         enable_mood_analysis: bool = True,
         models_dir: Optional[str] = None,
         auto_download_models: bool = True,
+        priority_config: Optional[PriorityConfig] = None,
     ) -> None:
         """Initialize the message consumer.
 
@@ -54,6 +56,7 @@ class MessageConsumer:
             enable_mood_analysis: Whether to perform mood and genre analysis
             models_dir: Directory for TensorFlow models
             auto_download_models: Whether to auto-download missing models
+            priority_config: Configuration for priority queue behavior
         """
         self.rabbitmq_url = rabbitmq_url
         self.queue_name = queue_name
@@ -67,6 +70,10 @@ class MessageConsumer:
         self.enable_temporal_analysis = enable_temporal_analysis
         self.enable_key_detection = enable_key_detection
         self.enable_mood_analysis = enable_mood_analysis
+
+        # Initialize priority calculator
+        self.priority_config = priority_config or PriorityConfig()
+        self.priority_calculator = PriorityCalculator(self.priority_config)
 
         # Initialize BPM detection components
         self.bpm_detector = BPMDetector()
@@ -111,8 +118,12 @@ class MessageConsumer:
                 # Declare exchange
                 self.channel.exchange_declare(exchange=self.exchange_name, exchange_type="topic", durable=True)
 
-                # Declare queue
-                self.channel.queue_declare(queue=self.queue_name, durable=True)
+                # Declare priority queue if priority is enabled
+                if self.priority_config.enable_priority:
+                    setup_priority_queue(self.channel, self.queue_name, max_priority=self.priority_config.max_priority)
+                else:
+                    # Declare regular queue
+                    self.channel.queue_declare(queue=self.queue_name, durable=True)
 
                 # Bind queue to exchange
                 self.channel.queue_bind(
@@ -333,8 +344,17 @@ class MessageConsumer:
             try:
                 # Parse message
                 message = json.loads(body.decode())
+
+                # Extract priority if present
+                message_priority = message.get("priority", self.priority_config.default_priority)
+
                 logger.info(
-                    "Received message", extra={"correlation_id": correlation_id, "routing_key": method.routing_key}
+                    "Received message",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "routing_key": method.routing_key,
+                        "priority": message_priority,
+                    },
                 )
 
                 # Extract required fields
