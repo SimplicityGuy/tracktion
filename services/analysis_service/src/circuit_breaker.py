@@ -139,8 +139,8 @@ class CircuitBreaker:
                 logger.error(f"Error in on_open hook: {e}")
 
         # Record metric if available
-        if self.metrics:
-            self.metrics.record_error("circuit_open", self.name)
+        if self.metrics and hasattr(self.metrics, "update_circuit_breaker_state"):
+            self.metrics.update_circuit_breaker_state(self.name, "open")
 
     def _transition_to_closed(self) -> None:
         """Transition circuit to CLOSED state."""
@@ -172,6 +172,10 @@ class CircuitBreaker:
             except Exception as e:
                 logger.error(f"Error in on_close hook: {e}")
 
+        # Record metric if available
+        if self.metrics and hasattr(self.metrics, "update_circuit_breaker_state"):
+            self.metrics.update_circuit_breaker_state(self.name, "closed")
+
     def _transition_to_half_open(self) -> None:
         """Transition circuit to HALF_OPEN state."""
         old_state = self._state
@@ -196,6 +200,10 @@ class CircuitBreaker:
                 self.config.on_half_open(self.name)
             except Exception as e:
                 logger.error(f"Error in on_half_open hook: {e}")
+
+        # Record metric if available
+        if self.metrics and hasattr(self.metrics, "update_circuit_breaker_state"):
+            self.metrics.update_circuit_breaker_state(self.name, "half-open")
 
     def _record_success(self) -> None:
         """Record a successful call."""
@@ -265,8 +273,8 @@ class CircuitBreaker:
                 return self.config.fallback()  # type: ignore[no-any-return]
 
             # Record metric if available
-            if self.metrics:
-                self.metrics.record_error("circuit_rejected", self.name)
+            if self.metrics and hasattr(self.metrics, "track_external_service_call"):
+                self.metrics.track_external_service_call(self.name, False, 0.0)
 
             raise CircuitOpenError(f"Circuit breaker '{self.name}' is OPEN - calls are being rejected")
 
@@ -276,12 +284,12 @@ class CircuitBreaker:
             self._record_success()
             return result
 
-        except self.config.expected_exceptions as e:
+        except self.config.expected_exceptions:
             self._record_failure()
 
             # Record metric if available
-            if self.metrics:
-                self.metrics.record_error(type(e).__name__, self.name)
+            if self.metrics and hasattr(self.metrics, "track_external_service_call"):
+                self.metrics.track_external_service_call(self.name, False, 0.0)
 
             raise
 
