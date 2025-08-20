@@ -19,6 +19,7 @@ from .model_manager import ModelManager
 from .mood_analyzer import MoodAnalyzer
 from .priority_queue import PriorityCalculator, PriorityConfig, setup_priority_queue
 from .progress_tracker import ProgressTracker
+from .structured_logging import CorrelationIdFilter, PerformanceLogger
 from .temporal_analyzer import TemporalAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -191,6 +192,12 @@ class MessageConsumer:
         """
         results: Dict[str, Any] = {"recording_id": recording_id, "file_path": file_path}
 
+        # Add correlation ID to logger for this processing
+        correlation_filter = None
+        if correlation_id:
+            correlation_filter = CorrelationIdFilter(correlation_id)
+            logger.addFilter(correlation_filter)
+
         # Track processing start
         if self.progress_tracker and correlation_id:
             self.progress_tracker.track_file_started(correlation_id, "Starting analysis")
@@ -237,12 +244,13 @@ class MessageConsumer:
         # Perform BPM detection if not cached
         if not cache_hit:
             try:
-                logger.info(f"Detecting BPM for {file_path}")
-                # Update progress
-                if self.progress_tracker and correlation_id:
-                    self.progress_tracker.update_progress(correlation_id, 20.0, "Detecting BPM")
+                # Use performance logger for BPM detection
+                with PerformanceLogger(logger, "BPM detection", correlation_id=correlation_id, threshold_ms=5000.0):
+                    # Update progress
+                    if self.progress_tracker and correlation_id:
+                        self.progress_tracker.update_progress(correlation_id, 20.0, "Detecting BPM")
 
-                bpm_results = self.bpm_detector.detect_bpm(file_path)
+                    bpm_results = self.bpm_detector.detect_bpm(file_path)
                 results["bpm_data"] = bpm_results
                 results["from_cache"] = False
 
@@ -258,12 +266,14 @@ class MessageConsumer:
                 # Perform temporal analysis if enabled and BPM was successful
                 if self.enable_temporal_analysis and self.temporal_analyzer and not bpm_results.get("error"):
                     try:
-                        logger.info(f"Performing temporal analysis for {file_path}")
-                        # Update progress
-                        if self.progress_tracker and correlation_id:
-                            self.progress_tracker.update_progress(correlation_id, 40.0, "Analyzing temporal BPM")
+                        with PerformanceLogger(
+                            logger, "Temporal analysis", correlation_id=correlation_id, threshold_ms=3000.0
+                        ):
+                            # Update progress
+                            if self.progress_tracker and correlation_id:
+                                self.progress_tracker.update_progress(correlation_id, 40.0, "Analyzing temporal BPM")
 
-                        temporal_results = self.temporal_analyzer.analyze_temporal_bpm(file_path)
+                            temporal_results = self.temporal_analyzer.analyze_temporal_bpm(file_path)
                         results["temporal_data"] = temporal_results
 
                         # Cache temporal results
@@ -290,11 +300,11 @@ class MessageConsumer:
         # Perform key detection if enabled and not cached
         if self.enable_key_detection and self.key_detector and "key_data" not in results:
             try:
-                logger.info(f"Detecting musical key for {file_path}")
-                # Update progress
-                if self.progress_tracker and correlation_id:
-                    self.progress_tracker.update_progress(correlation_id, 60.0, "Detecting musical key")
-                key_result = self.key_detector.detect_key(file_path)
+                with PerformanceLogger(logger, "Key detection", correlation_id=correlation_id, threshold_ms=4000.0):
+                    # Update progress
+                    if self.progress_tracker and correlation_id:
+                        self.progress_tracker.update_progress(correlation_id, 60.0, "Detecting musical key")
+                    key_result = self.key_detector.detect_key(file_path)
                 if key_result:
                     results["key_data"] = {
                         "key": key_result.key,
@@ -321,11 +331,11 @@ class MessageConsumer:
         # Perform mood analysis if enabled and not cached
         if self.enable_mood_analysis and self.mood_analyzer and "mood_data" not in results:
             try:
-                logger.info(f"Analyzing mood and genre for {file_path}")
-                # Update progress
-                if self.progress_tracker and correlation_id:
-                    self.progress_tracker.update_progress(correlation_id, 80.0, "Analyzing mood and genre")
-                mood_result = self.mood_analyzer.analyze_mood(file_path)
+                with PerformanceLogger(logger, "Mood analysis", correlation_id=correlation_id, threshold_ms=6000.0):
+                    # Update progress
+                    if self.progress_tracker and correlation_id:
+                        self.progress_tracker.update_progress(correlation_id, 80.0, "Analyzing mood and genre")
+                    mood_result = self.mood_analyzer.analyze_mood(file_path)
                 if mood_result:
                     results["mood_data"] = {
                         "mood_scores": mood_result.mood_scores,
@@ -394,6 +404,10 @@ class MessageConsumer:
                 self.progress_tracker.track_file_completed(correlation_id, success=False, error_message=error_msg)
             else:
                 self.progress_tracker.track_file_completed(correlation_id, success=True)
+
+        # Remove correlation filter from logger
+        if correlation_filter:
+            logger.removeFilter(correlation_filter)
 
         return results
 
