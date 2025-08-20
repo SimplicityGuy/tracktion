@@ -15,6 +15,7 @@ from .audio_cache import AudioCache
 from .batch_processor import BatchConfig, BatchProcessor
 from .bpm_detector import BPMDetector
 from .key_detector import KeyDetector
+from .metrics_collector import MetricsCollector, MetricsTimer
 from .model_manager import ModelManager
 from .mood_analyzer import MoodAnalyzer
 from .priority_queue import PriorityCalculator, PriorityConfig, setup_priority_queue
@@ -139,6 +140,18 @@ class MessageConsumer:
             logger.warning(f"Failed to initialize progress tracker: {e}. Processing without progress tracking.")
             self.progress_tracker = None
 
+        # Initialize metrics collector
+        self.metrics: Optional[MetricsCollector] = None
+        try:
+            self.metrics = MetricsCollector(
+                service_name="analysis_service",
+                namespace="tracktion",
+            )
+            logger.info("Initialized metrics collector")
+        except Exception as e:
+            logger.warning(f"Failed to initialize metrics collector: {e}. Processing without metrics.")
+            self.metrics = None
+
     def connect(self) -> None:
         """Establish connection to RabbitMQ with retry logic."""
         while self._retry_count < self._max_retries:
@@ -202,6 +215,9 @@ class MessageConsumer:
         if self.progress_tracker and correlation_id:
             self.progress_tracker.track_file_started(correlation_id, "Starting analysis")
 
+        # Start overall processing timer
+        overall_start_time = time.perf_counter()
+
         # Check if file exists
         if not os.path.exists(file_path):
             logger.error(f"Audio file not found: {file_path}")
@@ -217,40 +233,68 @@ class MessageConsumer:
         # Check cache first for all results
         cache_hit = False
         if self.cache:
+            # Record cache access for metrics
             cached_bpm = self.cache.get_bpm_results(file_path)
             if cached_bpm:
                 logger.info(f"Using cached BPM results for {file_path}")
                 results["bpm_data"] = cached_bpm
                 cache_hit = True
+                if self.metrics:
+                    self.metrics.record_cache_access("bpm", hit=True)
 
                 # Check for cached temporal data
                 if self.enable_temporal_analysis:
                     cached_temporal = self.cache.get_temporal_results(file_path)
                     if cached_temporal:
                         results["temporal_data"] = cached_temporal
+                        if self.metrics:
+                            self.metrics.record_cache_access("temporal", hit=True)
 
                 # Check for cached key data
                 if self.enable_key_detection:
                     cached_key = self.cache.get_key_results(file_path)
                     if cached_key:
                         results["key_data"] = cached_key
+                        if self.metrics:
+                            self.metrics.record_cache_access("key", hit=True)
 
                 # Check for cached mood data
                 if self.enable_mood_analysis:
                     cached_mood = self.cache.get_mood_results(file_path)
                     if cached_mood:
                         results["mood_data"] = cached_mood
+                        if self.metrics:
+                            self.metrics.record_cache_access("mood", hit=True)
 
         # Perform BPM detection if not cached
         if not cache_hit:
+            if self.metrics:
+                self.metrics.record_cache_access("bpm", hit=False)
+
             try:
-                # Use performance logger for BPM detection
+                # Use performance logger and metrics timer for BPM detection
+                bpm_timer = (
+                    MetricsTimer(self.metrics, "bpm_detection", record_confidence=True, analysis_type="bpm")
+                    if self.metrics
+                    else None
+                )
+
                 with PerformanceLogger(logger, "BPM detection", correlation_id=correlation_id, threshold_ms=5000.0):
+                    if bpm_timer:
+                        bpm_timer.__enter__()
+
                     # Update progress
                     if self.progress_tracker and correlation_id:
                         self.progress_tracker.update_progress(correlation_id, 20.0, "Detecting BPM")
 
                     bpm_results = self.bpm_detector.detect_bpm(file_path)
+
+                    # Set confidence for metrics
+                    if bpm_timer and "confidence" in bpm_results:
+                        bpm_timer.set_confidence(bpm_results["confidence"])
+
+                    if bpm_timer:
+                        bpm_timer.__exit__(None, None, None)
                 results["bpm_data"] = bpm_results
                 results["from_cache"] = False
 
@@ -290,6 +334,8 @@ class MessageConsumer:
             except Exception as e:
                 logger.error(f"BPM detection failed for {file_path}: {e}")
                 results["bpm_data"] = {"error": str(e)}
+                if self.metrics:
+                    self.metrics.record_error("processing", "bpm_detection")
 
                 # Cache the failure to avoid re-processing immediately
                 if self.cache:
@@ -313,6 +359,9 @@ class MessageConsumer:
                         "agreement": key_result.agreement,
                         "needs_review": key_result.needs_review,
                     }
+                    # Record key detection confidence
+                    if self.metrics:
+                        self.metrics.record_analysis_confidence("key", key_result.confidence)
                     if key_result.alternative_key:
                         results["key_data"]["alternative"] = {
                             "key": key_result.alternative_key,
@@ -350,6 +399,9 @@ class MessageConsumer:
                         "overall_confidence": mood_result.overall_confidence,
                         "needs_review": mood_result.needs_review,
                     }
+                    # Record mood analysis confidence
+                    if self.metrics:
+                        self.metrics.record_analysis_confidence("mood", mood_result.overall_confidence)
 
                     # Cache the mood analysis results
                     if self.cache:
@@ -405,6 +457,31 @@ class MessageConsumer:
             else:
                 self.progress_tracker.track_file_completed(correlation_id, success=True)
 
+        # Record overall processing metrics
+        if self.metrics:
+            overall_time = time.perf_counter() - overall_start_time
+
+            # Determine file format from path
+            file_format = file_path.split(".")[-1].lower() if "." in file_path else "unknown"
+
+            # Determine status
+            processing_status = "failed" if has_error else "success"
+
+            # Get file size if possible
+            file_size_mb = None
+            try:
+                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            except Exception:
+                pass
+
+            # Record file processed metrics
+            self.metrics.record_file_processed(
+                status=processing_status,
+                file_format=file_format,
+                processing_time=overall_time,
+                file_size_mb=file_size_mb,
+            )
+
         # Remove correlation filter from logger
         if correlation_filter:
             logger.removeFilter(correlation_filter)
@@ -452,6 +529,12 @@ class MessageConsumer:
                 # Track file as queued
                 if self.progress_tracker:
                     self.progress_tracker.track_file_queued(file_path, recording_id, correlation_id)
+
+                    # Update queue depth metric
+                    if self.metrics:
+                        queue_status = self.progress_tracker.get_queue_status()
+                        self.metrics.update_queue_depth(self.queue_name, queue_status.get("queue_depth", 0))
+                        self.metrics.update_active_processing(queue_status.get("active_count", 0))
 
                 # Process in batch mode or immediately
                 if self.enable_batch_processing and self.batch_processor:

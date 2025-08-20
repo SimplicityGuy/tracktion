@@ -228,11 +228,12 @@ class BatchProcessor:
         """
         return self._process_current_batch()
 
-    def adjust_worker_count(self, new_count: int) -> None:
+    def adjust_worker_count(self, new_count: int, metrics_collector: Optional[Any] = None) -> None:
         """Adjust the number of worker threads.
 
         Args:
             new_count: New number of worker threads
+            metrics_collector: Optional metrics collector to update worker count
         """
         # Clamp to configured limits
         new_count = max(self.config.min_workers, min(new_count, self.config.max_workers))
@@ -246,6 +247,10 @@ class BatchProcessor:
         old_executor = self.executor
         self.executor = ThreadPoolExecutor(max_workers=new_count)
         self.worker_count = new_count
+
+        # Update metrics if collector provided
+        if metrics_collector:
+            metrics_collector.update_worker_pool_size(new_count)
 
         # Shutdown old executor gracefully
         old_executor.shutdown(wait=False)
