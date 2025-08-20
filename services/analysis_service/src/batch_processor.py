@@ -47,13 +47,13 @@ class BatchProcessor:
 
     def __init__(
         self,
-        process_func: Callable[[str, str], Dict[str, Any]],
+        process_func: Callable[[str, str, Optional[str]], Dict[str, Any]],
         config: Optional[BatchConfig] = None,
     ) -> None:
         """Initialize the batch processor.
 
         Args:
-            process_func: Function to process individual files (file_path, recording_id) -> results
+            process_func: Function to process individual files (file_path, recording_id, correlation_id) -> results
             config: Batch processing configuration
         """
         self.process_func = process_func
@@ -151,7 +151,7 @@ class BatchProcessor:
             logger.debug(f"Processing file: {file_path}", extra={"correlation_id": correlation_id})
 
             # Call the actual processing function
-            results = self.process_func(file_path, recording_id)
+            results = self.process_func(file_path, recording_id, correlation_id)
 
             # Update statistics
             with self.stats_lock:

@@ -18,6 +18,7 @@ from .key_detector import KeyDetector
 from .model_manager import ModelManager
 from .mood_analyzer import MoodAnalyzer
 from .priority_queue import PriorityCalculator, PriorityConfig, setup_priority_queue
+from .progress_tracker import ProgressTracker
 from .temporal_analyzer import TemporalAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,19 @@ class MessageConsumer:
         # Initialize storage handler (will be set by tests or main application)
         self.storage: Optional[Any] = None
 
+        # Initialize progress tracker
+        self.progress_tracker: Optional[ProgressTracker] = None
+        try:
+            self.progress_tracker = ProgressTracker(
+                redis_host=redis_host,
+                redis_port=redis_port,
+                key_prefix="analysis:progress",
+            )
+            logger.info("Initialized progress tracker")
+        except Exception as e:
+            logger.warning(f"Failed to initialize progress tracker: {e}. Processing without progress tracking.")
+            self.progress_tracker = None
+
     def connect(self) -> None:
         """Establish connection to RabbitMQ with retry logic."""
         while self._retry_count < self._max_retries:
@@ -162,23 +176,35 @@ class MessageConsumer:
 
         raise ConnectionError(f"Failed to connect to RabbitMQ after {self._max_retries} attempts")
 
-    def process_audio_file(self, file_path: str, recording_id: str) -> Dict[str, Any]:
+    def process_audio_file(
+        self, file_path: str, recording_id: str, correlation_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Process audio file for all analysis features.
 
         Args:
             file_path: Path to the audio file
             recording_id: Recording ID for database storage
+            correlation_id: Optional correlation ID for tracking
 
         Returns:
             Processing results including BPM, key, and mood data
         """
         results: Dict[str, Any] = {"recording_id": recording_id, "file_path": file_path}
 
+        # Track processing start
+        if self.progress_tracker and correlation_id:
+            self.progress_tracker.track_file_started(correlation_id, "Starting analysis")
+
         # Check if file exists
         if not os.path.exists(file_path):
             logger.error(f"Audio file not found: {file_path}")
             results["error"] = f"Audio file not found: {file_path}"
             results["bpm_data"] = None
+            # Track failure
+            if self.progress_tracker and correlation_id:
+                self.progress_tracker.track_file_completed(
+                    correlation_id, success=False, error_message=f"Audio file not found: {file_path}"
+                )
             return results
 
         # Check cache first for all results
@@ -212,6 +238,10 @@ class MessageConsumer:
         if not cache_hit:
             try:
                 logger.info(f"Detecting BPM for {file_path}")
+                # Update progress
+                if self.progress_tracker and correlation_id:
+                    self.progress_tracker.update_progress(correlation_id, 20.0, "Detecting BPM")
+
                 bpm_results = self.bpm_detector.detect_bpm(file_path)
                 results["bpm_data"] = bpm_results
                 results["from_cache"] = False
@@ -229,6 +259,10 @@ class MessageConsumer:
                 if self.enable_temporal_analysis and self.temporal_analyzer and not bpm_results.get("error"):
                     try:
                         logger.info(f"Performing temporal analysis for {file_path}")
+                        # Update progress
+                        if self.progress_tracker and correlation_id:
+                            self.progress_tracker.update_progress(correlation_id, 40.0, "Analyzing temporal BPM")
+
                         temporal_results = self.temporal_analyzer.analyze_temporal_bpm(file_path)
                         results["temporal_data"] = temporal_results
 
@@ -257,6 +291,9 @@ class MessageConsumer:
         if self.enable_key_detection and self.key_detector and "key_data" not in results:
             try:
                 logger.info(f"Detecting musical key for {file_path}")
+                # Update progress
+                if self.progress_tracker and correlation_id:
+                    self.progress_tracker.update_progress(correlation_id, 60.0, "Detecting musical key")
                 key_result = self.key_detector.detect_key(file_path)
                 if key_result:
                     results["key_data"] = {
@@ -285,6 +322,9 @@ class MessageConsumer:
         if self.enable_mood_analysis and self.mood_analyzer and "mood_data" not in results:
             try:
                 logger.info(f"Analyzing mood and genre for {file_path}")
+                # Update progress
+                if self.progress_tracker and correlation_id:
+                    self.progress_tracker.update_progress(correlation_id, 80.0, "Analyzing mood and genre")
                 mood_result = self.mood_analyzer.analyze_mood(file_path)
                 if mood_result:
                     results["mood_data"] = {
@@ -341,6 +381,20 @@ class MessageConsumer:
                 logger.error(f"Failed to store analysis data: {e}")
                 results["storage_error"] = str(e)
 
+        # Track completion
+        if self.progress_tracker and correlation_id:
+            # Check if any critical errors occurred
+            has_error = (
+                results.get("error")
+                or (results.get("bpm_data") and results["bpm_data"].get("error"))
+                or results.get("storage_error")
+            )
+            if has_error:
+                error_msg = results.get("error") or results.get("storage_error") or "Processing failed"
+                self.progress_tracker.track_file_completed(correlation_id, success=False, error_message=error_msg)
+            else:
+                self.progress_tracker.track_file_completed(correlation_id, success=True)
+
         return results
 
     def consume(self, callback: Optional[Callable[[Dict[str, Any], str], None]] = None) -> None:
@@ -381,6 +435,10 @@ class MessageConsumer:
                 if not file_path or not recording_id:
                     raise ValueError("Message must contain 'file_path' and 'recording_id'")
 
+                # Track file as queued
+                if self.progress_tracker:
+                    self.progress_tracker.track_file_queued(file_path, recording_id, correlation_id)
+
                 # Process in batch mode or immediately
                 if self.enable_batch_processing and self.batch_processor:
                     # Add to batch for processing
@@ -388,7 +446,7 @@ class MessageConsumer:
                     results = {"status": "queued_for_batch", "file_path": file_path}
                 else:
                     # Process immediately
-                    results = self.process_audio_file(file_path, recording_id)
+                    results = self.process_audio_file(file_path, recording_id, correlation_id)
 
                 # Call user callback if provided
                 if callback:
