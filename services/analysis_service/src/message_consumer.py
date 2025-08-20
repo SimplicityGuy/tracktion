@@ -12,6 +12,7 @@ from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 
 from .audio_cache import AudioCache
+from .batch_processor import BatchConfig, BatchProcessor
 from .bpm_detector import BPMDetector
 from .key_detector import KeyDetector
 from .model_manager import ModelManager
@@ -40,6 +41,8 @@ class MessageConsumer:
         models_dir: Optional[str] = None,
         auto_download_models: bool = True,
         priority_config: Optional[PriorityConfig] = None,
+        batch_config: Optional[BatchConfig] = None,
+        enable_batch_processing: bool = False,
     ) -> None:
         """Initialize the message consumer.
 
@@ -57,6 +60,8 @@ class MessageConsumer:
             models_dir: Directory for TensorFlow models
             auto_download_models: Whether to auto-download missing models
             priority_config: Configuration for priority queue behavior
+            batch_config: Configuration for batch processing
+            enable_batch_processing: Whether to enable batch processing mode
         """
         self.rabbitmq_url = rabbitmq_url
         self.queue_name = queue_name
@@ -74,6 +79,17 @@ class MessageConsumer:
         # Initialize priority calculator
         self.priority_config = priority_config or PriorityConfig()
         self.priority_calculator = PriorityCalculator(self.priority_config)
+
+        # Initialize batch processor if enabled
+        self.enable_batch_processing = enable_batch_processing
+        self.batch_processor: Optional[BatchProcessor] = None
+        if enable_batch_processing:
+            batch_config = batch_config or BatchConfig.from_env()
+            self.batch_processor = BatchProcessor(
+                process_func=self.process_audio_file,
+                config=batch_config,
+            )
+            logger.info(f"Batch processing enabled with {batch_config.default_workers} workers")
 
         # Initialize BPM detection components
         self.bpm_detector = BPMDetector()
@@ -130,8 +146,9 @@ class MessageConsumer:
                     exchange=self.exchange_name, queue=self.queue_name, routing_key=self.routing_key
                 )
 
-                # Set QoS
-                self.channel.basic_qos(prefetch_count=1)
+                # Set QoS - higher prefetch for batch processing
+                prefetch = 10 if self.enable_batch_processing else 1
+                self.channel.basic_qos(prefetch_count=prefetch)
 
                 logger.info(f"Connected to RabbitMQ queue: {self.queue_name}")
                 self._retry_count = 0
@@ -364,8 +381,14 @@ class MessageConsumer:
                 if not file_path or not recording_id:
                     raise ValueError("Message must contain 'file_path' and 'recording_id'")
 
-                # Process audio file for BPM
-                results = self.process_audio_file(file_path, recording_id)
+                # Process in batch mode or immediately
+                if self.enable_batch_processing and self.batch_processor:
+                    # Add to batch for processing
+                    self.batch_processor.add_to_batch(file_path, recording_id, correlation_id)
+                    results = {"status": "queued_for_batch", "file_path": file_path}
+                else:
+                    # Process immediately
+                    results = self.process_audio_file(file_path, recording_id)
 
                 # Call user callback if provided
                 if callback:
@@ -429,6 +452,12 @@ class MessageConsumer:
 
     def stop(self) -> None:
         """Stop consuming and close connections."""
+        # Flush batch processor if enabled
+        if self.batch_processor:
+            logger.info("Flushing batch processor before stopping")
+            self.batch_processor.flush_batch()
+            self.batch_processor.shutdown(wait=True)
+
         if self.channel:
             self.channel.stop_consuming()
             self.channel.close()
