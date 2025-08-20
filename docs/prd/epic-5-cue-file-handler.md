@@ -19,22 +19,39 @@ CUE files are essential for DJ workflows, providing track markers and metadata f
 
 ### Core Requirements
 1. **CUE File Parser**
-   - Complete CUE sheet specification support per Wikipedia standard
+   - Complete CUE sheet specification support per Wikipedia, Hydrogenaudio, and GNU standards
    - Parse all essential commands: FILE, TRACK, INDEX
    - Parse metadata commands: REM, TITLE, PERFORMER, SONGWRITER
    - Parse disc commands: CATALOG (UPC/EAN), CDTEXTFILE
    - Parse track commands: FLAGS, ISRC, PREGAP, POSTGAP
+   - Parse extended REM metadata fields:
+     * REM GENRE - Music genre classification
+     * REM DATE - Release date information
+     * REM DISCID - Disc identification number
+     * REM COMMENT - General comments and tool signatures
+     * REM DISCNUMBER - Multi-disc set numbering (1-15)
+     * REM COMPOSER - Composer information
+     * REM REPLAYGAIN_ALBUM_GAIN/PEAK - Album-level replay gain
+     * REM REPLAYGAIN_TRACK_GAIN/PEAK - Track-level replay gain
    - Support multiple FILE entries (multi-file CUE sheets)
-   - Encoding detection and handling (UTF-8, Latin-1, etc.)
+   - Encoding detection and handling (UTF-8, extended ASCII, Latin-1)
+   - Support alternative comment syntax (";" and "//" prefixes)
+   - Command ordering validation (CATALOG first, FILE before TRACK, etc.)
    - Graceful error handling for malformed files
 
 2. **CUE File Generator**
-   - Standards-compliant CUE generation following Wikipedia spec
+   - Standards-compliant CUE generation following Wikipedia, Hydrogenaudio, and GNU specs
    - Essential command generation (FILE, TRACK, INDEX)
-   - Metadata command support (TITLE, PERFORMER, REM)
+   - Metadata command support (TITLE, PERFORMER, REM, SONGWRITER)
+   - Extended REM metadata generation:
+     * Genre, date, disc ID, composer
+     * ReplayGain values for normalization
+     * Multi-disc numbering
+     * Custom application signatures
    - Track flag and gap support (FLAGS, PREGAP, POSTGAP)
-   - Multiple output formats (standard, DJ software variants)
-   - Frame-accurate timestamp generation (mm:ss:ff format)
+   - Multiple output formats (standard, DJ software variants, Kodi-compatible)
+   - Frame-accurate timestamp generation (MM:SS:FF format, 75 fps)
+   - Command ordering compliance (proper hierarchy and sequence)
    - Custom field support via REM commands
 
 3. **CUE File Editor/Updater**
@@ -56,7 +73,22 @@ CUE files are essential for DJ workflows, providing track markers and metadata f
 
 ### Technical Considerations
 
-#### CUE Command Specifications (Wikipedia Standard)
+#### Specification Sources & Discrepancies
+**Reference Standards:**
+- Wikipedia CUE sheet specification (primary)
+- Hydrogenaudio Knowledgebase specification
+- GNU ccd2cue specification
+- Kodi implementation notes
+
+**Key Discrepancies to Handle:**
+1. **Frame Range**: Wikipedia states 75 frames/second; some specs show 0-74 range (75 total frames)
+2. **File Type Mapping**: FLAC files commonly use WAVE type (not in Wikipedia spec)
+3. **Comment Syntax**: Alternative comment prefixes (";" and "//") in addition to REM
+4. **Command Repetition**: FILE, TRACK, INDEX, and REM can appear multiple times
+5. **Character Encoding**: Extended ASCII support in addition to UTF-8
+6. **Application-Specific Extensions**: Different software adds proprietary REM fields
+
+#### CUE Command Specifications (Combined Standards)
 **Essential Commands:**
 - **FILE**: Specifies data file name and format (WAVE, MP3, BINARY, MOTOROLA, AIFF)
 - **TRACK**: Defines track number (01-99) and data type (AUDIO, CDG, MODE1/2048, MODE1/2352, MODE2/2336, MODE2/2352, CDI/2336, CDI/2352)
@@ -78,6 +110,18 @@ CUE files are essential for DJ workflows, providing track markers and metadata f
 - **PREGAP**: Length of track pregap
 - **POSTGAP**: Length of track postgap
 
+**Extended REM Commands (Non-Standard but Widely Supported):**
+- **REM GENRE "<value>"**: Music genre classification
+- **REM DATE "<value>"**: Release date (year or full date)
+- **REM DISCID "<value>"**: Disc identification (e.g., FreeDB/CDDB ID)
+- **REM COMMENT "<value>"**: General comments or tool signatures
+- **REM DISCNUMBER <n>**: Disc number in multi-disc sets (1-15 for Kodi)
+- **REM COMPOSER "<value>"**: Composer information
+- **REM REPLAYGAIN_ALBUM_GAIN <value>**: Album-level replay gain in dB
+- **REM REPLAYGAIN_ALBUM_PEAK <value>**: Album peak level (0.0-1.0)
+- **REM REPLAYGAIN_TRACK_GAIN <value>**: Track-level replay gain in dB
+- **REM REPLAYGAIN_TRACK_PEAK <value>**: Track peak level (0.0-1.0)
+
 #### Time Format Handling (Wikipedia Specification)
 - **Format**: MM:SS:FF (minute:second:frame)
 - **Frame Rate**: 75 frames per second of audio
@@ -91,15 +135,21 @@ CUE files are essential for DJ workflows, providing track markers and metadata f
 
 #### File Format Support
 - **Audio Formats**: WAVE, MP3, AIFF
-- **Binary Formats**: BINARY, MOTOROLA (big-endian)
+- **Lossless Formats**: FLAC (typically uses WAVE type designation)
+- **Binary Formats**: BINARY (little-endian), MOTOROLA (big-endian)
+- **Data Track Modes**: MODE1/2048, MODE1/2352, MODE2/2336, MODE2/2352, MODE2/2324 (XA form-2), CDI/2336, CDI/2352
 - **Multiple Files**: Support for CUE sheets referencing multiple data files
-- **File Path Handling**: Relative and absolute paths, quoted filenames
+- **Mixed-Mode Support**: Audio and data tracks in same CUE sheet
+- **File Path Handling**: Relative and absolute paths, quoted filenames (optional but recommended)
 
 #### Character Encoding
 - Plain text format with .cue extension
 - UTF-8 as default encoding
-- Auto-detection for legacy encodings
+- Extended ASCII support for legacy files
+- Auto-detection for various encodings (UTF-8, Latin-1, Windows-1252)
+- Alternative comment syntax support: REM, ";" prefix, "//" prefix
 - Proper handling of quoted strings and special characters
+- Whitespace flexibility (spaces and tabs for readability)
 
 ### User Stories
 
@@ -192,8 +242,8 @@ CUE files are essential for DJ workflows, providing track markers and metadata f
 ```python
 class CueSheet:
     def __init__(self, file_path=None)
-    def parse(self, content: str)
-    def add_file(self, filename: str, file_type: str)  # WAVE, MP3, BINARY, etc.
+    def parse(self, content: str, encoding: str = 'auto')  # Auto-detect encoding
+    def add_file(self, filename: str, file_type: str)  # WAVE, MP3, FLAC->WAVE, BINARY, etc.
     def add_track(self, track: Track)
     def remove_track(self, index: int)
     def update_track(self, index: int, track: Track)
@@ -201,13 +251,21 @@ class CueSheet:
     def set_cdtextfile(self, filename: str)
     def set_title(self, title: str)  # Disc-level title
     def set_performer(self, performer: str)  # Disc-level performer
-    def add_rem(self, comment: str)  # REM comments
+    def add_rem(self, key: str, value: str)  # Extended REM metadata
+    def set_genre(self, genre: str)  # REM GENRE
+    def set_date(self, date: str)  # REM DATE
+    def set_discid(self, discid: str)  # REM DISCID
+    def set_comment(self, comment: str)  # REM COMMENT
+    def set_discnumber(self, number: int)  # REM DISCNUMBER (1-15)
+    def set_composer(self, composer: str)  # REM COMPOSER
+    def set_replaygain(self, gain_type: str, value: float)  # ReplayGain values
     def generate(self, format: CueFormat) -> str
     def validate(self) -> List[ValidationError]
+    def validate_command_order(self) -> List[ValidationError]  # Check proper command sequence
     def convert_to(self, format: CueFormat) -> CueSheet
 
 class Track:
-    def __init__(self, number: int, data_type: str = "AUDIO")  # AUDIO, CDG, MODE1/2048, etc.
+    def __init__(self, number: int, data_type: str = "AUDIO")  # AUDIO, CDG, MODE1/2048, MODE2/2324, CDI/2336, etc.
     def add_index(self, number: int, time: CueTime)  # INDEX 00, 01, 02...
     def set_title(self, title: str)  # Max 80 chars for CD-Text
     def set_performer(self, performer: str)  # Max 80 chars
@@ -216,7 +274,8 @@ class Track:
     def set_flags(self, flags: List[str])  # DCP, 4CH, PRE, SCMS
     def set_pregap(self, time: CueTime)
     def set_postgap(self, time: CueTime)
-    def add_rem(self, comment: str)
+    def add_rem(self, key: str, value: str)  # Track-specific REM metadata
+    def set_replaygain(self, gain: float, peak: float)  # Track ReplayGain values
 
 class CueTime:
     def __init__(self, minutes: int, seconds: int, frames: int)
@@ -263,16 +322,28 @@ POST /api/v1/cue/convert
 ## Risks & Mitigations
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Format specification ambiguity | High | Research multiple implementations, extensive testing |
-| Character encoding issues | Medium | Robust detection, UTF-8 default, extensive testing |
-| DJ software compatibility | High | Test with all major platforms, maintain test suite |
+| Format specification ambiguity | High | Research multiple implementations (Wikipedia, Hydrogenaudio, GNU), extensive testing |
+| Character encoding issues | Medium | Robust detection, support UTF-8/ASCII/Latin-1, extensive testing |
+| DJ software compatibility | High | Test with all major platforms (CDJ, Traktor, Serato, Rekordbox), maintain test suite |
+| Application-specific REM fields | Medium | Support common extensions, provide flexible REM handling API |
+| Frame calculation discrepancies | Medium | Consistent 75 fps standard, handle 0-74 range notation correctly |
+| FLAC file type mapping | Low | Auto-detect FLAC and map to WAVE type for compatibility |
+| Alternative comment syntax | Low | Support REM, ";", and "//" prefixes for maximum compatibility |
+| Command ordering violations | Medium | Implement validation and auto-correction where possible |
 | Performance with large CUEs | Low | Optimize parsing, implement streaming if needed |
 | Timestamp precision loss | Medium | Use high-precision internal representation |
 
 ## Testing Strategy
-- Unit tests for all parser components
-- Integration tests with real CUE files
-- Compatibility testing with DJ software
+- Unit tests for all parser components including REM extensions
+- Integration tests with real CUE files from various sources
+- Compatibility testing with DJ software (CDJ, Traktor, Serato, Rekordbox)
+- Media player testing (Kodi, foobar2000, VLC)
+- Character encoding tests (UTF-8, ASCII, Latin-1, Windows-1252)
+- Command ordering validation tests
+- FLAC file type mapping tests
+- Alternative comment syntax tests (REM, ";", "//")
+- ReplayGain metadata handling tests
+- Multi-disc numbering tests
 - Fuzz testing for parser robustness
 - Performance benchmarks
 - Round-trip testing (parse → generate → parse)
