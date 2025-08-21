@@ -324,6 +324,11 @@ class AnalysisService:
         ext = Path(file_path).suffix.lower()
 
         # Check against BPM detector's supported formats
+        # Note: We should reuse the existing config from the detector rather than creating a new one
+        if hasattr(self.bpm_detector, "config") and hasattr(self.bpm_detector.config, "supported_formats"):
+            return ext in self.bpm_detector.config.supported_formats
+
+        # Fallback to creating new config if detector doesn't expose its config
         bpm_config = BPMConfig()
         return ext in bpm_config.supported_formats
 

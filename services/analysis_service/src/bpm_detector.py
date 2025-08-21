@@ -40,6 +40,8 @@ class BPMDetector:
             sample_rate: Sample rate for audio loading (used if config is None)
         """
         if config is not None:
+            # Store config object for later reference
+            self.config = config
             # Use config object
             self.confidence_threshold = config.confidence_threshold
             self.agreement_tolerance = config.agreement_tolerance
@@ -47,6 +49,7 @@ class BPMDetector:
             self.sample_rate = sample_rate
         else:
             # Use individual parameters
+            self.config = None
             self.confidence_threshold = confidence_threshold
             self.agreement_tolerance = agreement_tolerance
             self.sample_rate = sample_rate

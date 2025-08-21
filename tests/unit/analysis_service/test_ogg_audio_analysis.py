@@ -92,6 +92,18 @@ class TestOggPerformance(unittest.TestCase):
             self.assertIsNotNone(result)
             self.assertIn("bpm", result)
 
+    def test_config_reuse_efficiency(self):
+        """Test that config object is properly stored and reused."""
+        config = BPMConfig()
+        detector = BPMDetector(config=config)
+
+        # Verify config is stored
+        self.assertIsNotNone(detector.config)
+        self.assertEqual(detector.config, config)
+
+        # Verify supported formats are accessible
+        self.assertIn(".ogg", detector.config.supported_formats)
+
 
 if __name__ == "__main__":
     unittest.main()
