@@ -19,6 +19,9 @@ from storage_handler import StorageHandler
 from exceptions import InvalidAudioFileError, MetadataExtractionError, StorageError, RetryableError
 from file_rename_proposal.integration import FileRenameProposalIntegration
 from file_rename_proposal.config import FileRenameProposalConfig
+from bpm_detector import BPMDetector
+from key_detector import KeyDetector
+from config import BPMConfig
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
 from shared.core_types.src.repositories import RecordingRepository
 from shared.core_types.src.database import DatabaseManager
@@ -59,6 +62,8 @@ class AnalysisService:
         self.extractor: Optional[MetadataExtractor] = None
         self.storage: Optional[StorageHandler] = None
         self.rename_integration: Optional[FileRenameProposalIntegration] = None
+        self.bpm_detector: Optional[BPMDetector] = None
+        self.key_detector: Optional[KeyDetector] = None
         self._shutdown_requested = False
 
         # Configuration
@@ -70,6 +75,9 @@ class AnalysisService:
         # Retry configuration
         self.max_retries = int(os.getenv("MAX_RETRIES", "3"))
         self.retry_delay = float(os.getenv("RETRY_DELAY", "5.0"))
+
+        # Audio analysis configuration
+        self.enable_audio_analysis = os.getenv("ENABLE_AUDIO_ANALYSIS", "true").lower() == "true"
 
     def initialize(self) -> None:
         """Initialize service components."""
@@ -83,6 +91,19 @@ class AnalysisService:
             # Initialize storage handler
             self.storage = StorageHandler()
             logger.info("Storage handler initialized")
+
+            # Initialize audio analysis components
+            if self.enable_audio_analysis:
+                try:
+                    bpm_config = BPMConfig()
+                    self.bpm_detector = BPMDetector(config=bpm_config)
+                    logger.info("BPM detector initialized")
+
+                    self.key_detector = KeyDetector()
+                    logger.info("Key detector initialized")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize audio analysis components: {e}")
+                    self.enable_audio_analysis = False
 
             # Initialize message consumer
             self.consumer = MessageConsumer(
@@ -204,6 +225,10 @@ class AnalysisService:
                     fields=list(metadata.keys()),
                 )
 
+                # Perform audio analysis if enabled and file is supported
+                if self.enable_audio_analysis and self._is_audio_format_supported(file_path):
+                    self._perform_audio_analysis(file_path, metadata, correlation_id, recording_id)
+
                 # Store metadata
                 if not self.storage:
                     raise RuntimeError("Storage not initialized")
@@ -282,6 +307,101 @@ class AnalysisService:
                 if self.storage:
                     self.storage.update_recording_status(recording_id, "error", str(e), correlation_id)
                 raise
+
+    def _is_audio_format_supported(self, file_path: str) -> bool:
+        """Check if the audio format is supported for analysis.
+
+        Args:
+            file_path: Path to the audio file
+
+        Returns:
+            True if format is supported
+        """
+        if not self.bpm_detector:
+            return False
+
+        # Get file extension
+        ext = Path(file_path).suffix.lower()
+
+        # Check against BPM detector's supported formats
+        bpm_config = BPMConfig()
+        return ext in bpm_config.supported_formats
+
+    def _perform_audio_analysis(
+        self, file_path: str, metadata: Dict[str, Any], correlation_id: str, recording_id: UUID
+    ) -> None:
+        """Perform BPM and key detection on the audio file.
+
+        Args:
+            file_path: Path to the audio file
+            metadata: Metadata dictionary to update
+            correlation_id: Correlation ID for tracing
+            recording_id: UUID of the recording
+        """
+        # BPM Detection
+        if self.bpm_detector:
+            try:
+                bpm_result = self.bpm_detector.detect_bpm(file_path)
+
+                # Add BPM results to metadata
+                metadata["bpm"] = str(round(bpm_result["bpm"], 1))
+                metadata["bpm_confidence"] = str(round(bpm_result["confidence"], 2))
+                metadata["bpm_algorithm"] = bpm_result["algorithm"]
+
+                if bpm_result.get("needs_review"):
+                    metadata["bpm_needs_review"] = "true"
+
+                logger.info(
+                    f"BPM detected: {metadata['bpm']} (confidence: {metadata['bpm_confidence']})",
+                    correlation_id=correlation_id,
+                    recording_id=str(recording_id),
+                    algorithm=bpm_result["algorithm"],
+                )
+            except Exception as e:
+                logger.warning(
+                    f"BPM detection failed: {e}",
+                    correlation_id=correlation_id,
+                    recording_id=str(recording_id),
+                    file_path=file_path,
+                )
+
+        # Key Detection
+        if self.key_detector:
+            try:
+                key_result = self.key_detector.detect_key(file_path)
+
+                if key_result:
+                    # Add key results to metadata
+                    metadata["key"] = f"{key_result.key} {key_result.scale}"
+                    metadata["key_confidence"] = str(round(key_result.confidence, 2))
+
+                    if key_result.alternative_key:
+                        metadata["key_alternative"] = f"{key_result.alternative_key} {key_result.alternative_scale}"
+
+                    if key_result.needs_review:
+                        metadata["key_needs_review"] = "true"
+
+                    logger.info(
+                        f"Key detected: {metadata['key']} (confidence: {metadata['key_confidence']})",
+                        correlation_id=correlation_id,
+                        recording_id=str(recording_id),
+                    )
+                else:
+                    logger.warning(
+                        "Key detection returned no result",
+                        correlation_id=correlation_id,
+                        recording_id=str(recording_id),
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Key detection failed: {e}",
+                    correlation_id=correlation_id,
+                    recording_id=str(recording_id),
+                    file_path=file_path,
+                )
+
+        # Add analysis version for future compatibility
+        metadata["audio_analysis_version"] = "1.0"
 
     def _send_notification(
         self, recording_id: UUID, status: str, correlation_id: str, metadata: Optional[Dict[str, Any]] = None
