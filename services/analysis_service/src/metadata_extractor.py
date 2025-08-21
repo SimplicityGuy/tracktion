@@ -48,6 +48,48 @@ class MetadataExtractor:
         ".oga",
     }
 
+    # Standard and extended Vorbis comment fields mapping
+    VORBIS_STANDARD_FIELDS = {
+        # Standard fields
+        "title": "title",
+        "version": "version",
+        "album": "album",
+        "tracknumber": "track",
+        "artist": "artist",
+        "performer": "performer",
+        "copyright": "copyright",
+        "license": "license",
+        "organization": "organization",
+        "description": "description",
+        "genre": "genre",
+        "date": "date",
+        "location": "location",
+        "contact": "contact",
+        "isrc": "isrc",
+        # Extended fields
+        "albumartist": "albumartist",
+        "composer": "composer",
+        "conductor": "conductor",
+        "discnumber": "discnumber",
+        "disctotal": "disctotal",
+        "totaltracks": "totaltracks",
+        "publisher": "publisher",
+        "label": "label",
+        "compilation": "compilation",
+        "lyrics": "lyrics",
+        "language": "language",
+        "mood": "mood",
+        "bpm": "bpm",
+        "key": "key",
+        "comment": "comment",
+        "encoder": "encoder",
+        # ReplayGain tags
+        "replaygain_track_gain": "replaygain_track_gain",
+        "replaygain_track_peak": "replaygain_track_peak",
+        "replaygain_album_gain": "replaygain_album_gain",
+        "replaygain_album_peak": "replaygain_album_peak",
+    }
+
     def __init__(self) -> None:
         """Initialize the metadata extractor."""
         self._format_handlers = {
@@ -339,10 +381,25 @@ class MetadataExtractor:
         if not date_str:
             return None
 
-        # Common date formats in Vorbis comments
-        # Just ensure it's a valid string for now
-        # Could add more sophisticated date parsing if needed
-        return self._sanitize_tag_value(date_str, max_length=100)
+        # First sanitize the value
+        sanitized = self._sanitize_tag_value(date_str, max_length=100)
+        if not sanitized:
+            return None
+
+        # Common date formats in Vorbis comments:
+        # YYYY, YYYY-MM, YYYY-MM-DD
+        # For now, we'll accept any of these formats without strict parsing
+        # This maintains flexibility while ensuring the value is safe
+
+        # Basic validation - check if it starts with a 4-digit year
+        import re
+
+        if re.match(r"^\d{4}", sanitized):
+            return sanitized
+
+        # If it doesn't match expected format, still return it but log
+        logger.debug(f"Unusual date format in Vorbis comment: {sanitized}")
+        return sanitized
 
     def _handle_multiple_values(self, values: Union[List, Any]) -> Optional[str]:
         """Handle fields with multiple values.
@@ -389,48 +446,6 @@ class MetadataExtractor:
         metadata = {}
         custom_tags = {}
 
-        # Define standard and extended Vorbis comment fields
-        standard_fields = {
-            # Standard fields
-            "title": "title",
-            "version": "version",
-            "album": "album",
-            "tracknumber": "track",
-            "artist": "artist",
-            "performer": "performer",
-            "copyright": "copyright",
-            "license": "license",
-            "organization": "organization",
-            "description": "description",
-            "genre": "genre",
-            "date": "date",
-            "location": "location",
-            "contact": "contact",
-            "isrc": "isrc",
-            # Extended fields
-            "albumartist": "albumartist",
-            "composer": "composer",
-            "conductor": "conductor",
-            "discnumber": "discnumber",
-            "disctotal": "disctotal",
-            "totaltracks": "totaltracks",
-            "publisher": "publisher",
-            "label": "label",
-            "compilation": "compilation",
-            "lyrics": "lyrics",
-            "language": "language",
-            "mood": "mood",
-            "bpm": "bpm",
-            "key": "key",
-            "comment": "comment",
-            "encoder": "encoder",
-            # ReplayGain tags
-            "replaygain_track_gain": "replaygain_track_gain",
-            "replaygain_track_peak": "replaygain_track_peak",
-            "replaygain_album_gain": "replaygain_album_gain",
-            "replaygain_album_peak": "replaygain_album_peak",
-        }
-
         # Extract all tags from the file
         if audio.tags:
             # Limit total number of custom tags for safety
@@ -452,8 +467,8 @@ class MetadataExtractor:
                     value = self._validate_date_format(value)
 
                 # Check if it's a standard field
-                if key_lower in standard_fields:
-                    metadata[standard_fields[key_lower]] = value
+                if key_lower in self.VORBIS_STANDARD_FIELDS:
+                    metadata[self.VORBIS_STANDARD_FIELDS[key_lower]] = value
                 else:
                     # Store as custom tag with original case (up to limit)
                     if custom_tag_count < max_custom_tags:
