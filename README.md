@@ -11,7 +11,7 @@ Automated music library management system with intelligent cataloging and analys
 ### Completed Features ✅
 - **Infrastructure**: Docker containerization, multi-database setup, message queue
 - **Audio Analysis**: BPM detection, key detection, mood analysis, genre classification
-- **Metadata Extraction**: Complete support for MP3, FLAC, WAV, M4A formats
+- **Metadata Extraction**: Complete support for MP3, FLAC, WAV, M4A, OGG Vorbis formats
 - **Caching & Performance**: Redis integration, parallel processing, optimized pipelines
 
 ### In Progress 🚧

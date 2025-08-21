@@ -10,6 +10,7 @@ from mutagen.mp3 import MP3
 from mutagen.flac import FLAC
 from mutagen.mp4 import MP4
 from mutagen.wave import WAVE
+from mutagen.oggvorbis import OggVorbis
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,20 @@ class MetadataExtractor:
     """Extracts metadata from audio files."""
 
     # Supported audio formats
-    SUPPORTED_FORMATS = {".mp3", ".flac", ".wav", ".wave", ".m4a", ".mp4", ".m4b", ".m4p", ".m4v", ".m4r"}
+    SUPPORTED_FORMATS = {
+        ".mp3",
+        ".flac",
+        ".wav",
+        ".wave",
+        ".m4a",
+        ".mp4",
+        ".m4b",
+        ".m4p",
+        ".m4v",
+        ".m4r",
+        ".ogg",
+        ".oga",
+    }
 
     def __init__(self) -> None:
         """Initialize the metadata extractor."""
@@ -45,6 +59,8 @@ class MetadataExtractor:
             ".m4p": self._extract_mp4,
             ".m4v": self._extract_mp4,
             ".m4r": self._extract_mp4,
+            ".ogg": self._extract_ogg,
+            ".oga": self._extract_ogg,
         }
 
     def extract(self, file_path: str) -> Dict[str, Optional[str]]:
@@ -280,6 +296,44 @@ class MetadataExtractor:
             metadata["channels"] = audio.info.channels
             metadata["codec"] = audio.info.codec
             metadata["codec_description"] = audio.info.codec_description
+
+        return metadata
+
+    def _extract_ogg(self, file_path: str) -> Dict[str, Any]:
+        """Extract metadata from OGG Vorbis file.
+
+        Args:
+            file_path: Path to the OGG file
+
+        Returns:
+            Dictionary of metadata
+        """
+        audio = OggVorbis(file_path)
+        metadata = {}
+
+        # OGG uses Vorbis comments (similar to FLAC)
+        if audio.tags:
+            metadata["title"] = audio.get("title", [None])[0]
+            metadata["artist"] = audio.get("artist", [None])[0]
+            metadata["album"] = audio.get("album", [None])[0]
+            metadata["date"] = audio.get("date", [None])[0]
+            metadata["genre"] = audio.get("genre", [None])[0]
+            metadata["track"] = audio.get("tracknumber", [None])[0]
+            metadata["albumartist"] = audio.get("albumartist", [None])[0]
+            metadata["comment"] = audio.get("comment", [None])[0]
+            # Additional OGG-specific tags
+            metadata["encoder"] = audio.get("encoder", [None])[0]
+            metadata["organization"] = audio.get("organization", [None])[0]
+
+        # Technical metadata
+        if audio.info:
+            metadata["duration"] = self._format_duration(audio.info.length)
+            metadata["bitrate"] = audio.info.bitrate
+            metadata["sample_rate"] = audio.info.sample_rate
+            metadata["channels"] = audio.info.channels
+            # OGG-specific info
+            metadata["bitrate_nominal"] = getattr(audio.info, "bitrate_nominal", None)
+            metadata["encoder_version"] = getattr(audio.info, "encoder_version", None)
 
         return metadata
 

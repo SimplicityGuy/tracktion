@@ -12,7 +12,7 @@ Comprehensive audio analysis service for the Tracktion project, providing BPM de
 - **Metadata Extraction**: Title, artist, album, duration, bitrate, sample rate, format
 
 ### Infrastructure Features
-- **Audio Format Support**: MP3, FLAC, WAV, M4A
+- **Audio Format Support**: MP3, FLAC, WAV, M4A, OGG Vorbis
 - **Dual Storage**: PostgreSQL for relational data, Neo4j for graph relationships
 - **Message Queue Integration**: RabbitMQ for asynchronous processing
 - **Redis Caching**: Intelligent caching with confidence-based TTL
@@ -154,6 +154,7 @@ The service extracts the following metadata fields:
 - MP3: `version`, `layer`
 - FLAC: `bits_per_sample`, `albumartist`
 - MP4/M4A: `codec`, `codec_description`
+- OGG Vorbis: `encoder`, `organization`, `bitrate_nominal`, `encoder_version`
 
 ## Database Schema
 
@@ -252,7 +253,7 @@ compatible = query.get_compatible_recordings(
 
 ## Future Enhancements
 
-- Support for additional audio formats (OGG, AAC, OPUS)
+- Support for additional audio formats (AAC, OPUS, WebM)
 - Real-time analysis streaming
 - Batch processing optimization
 - Advanced ML models for genre classification
