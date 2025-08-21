@@ -154,7 +154,13 @@ The service extracts the following metadata fields:
 - MP3: `version`, `layer`
 - FLAC: `bits_per_sample`, `albumartist`
 - MP4/M4A: `codec`, `codec_description`
-- OGG Vorbis: `encoder`, `organization`, `bitrate_nominal`, `encoder_version`
+- OGG Vorbis: Comprehensive Vorbis comment extraction including:
+  - **Standard fields**: `title`, `version`, `album`, `artist`, `performer`, `copyright`, `license`, `organization`, `description`, `genre`, `date`, `location`, `contact`, `isrc`
+  - **Extended fields**: `albumartist`, `composer`, `conductor`, `discnumber`, `disctotal`, `totaltracks`, `publisher`, `label`, `compilation`, `lyrics`, `language`, `mood`, `bpm`, `key`
+  - **ReplayGain tags**: `replaygain_track_gain`, `replaygain_track_peak`, `replaygain_album_gain`, `replaygain_album_peak`
+  - **Technical info**: `bitrate_nominal`, `bitrate_lower`, `bitrate_upper`, `bitrate_mode` (VBR/CBR detection), `file_size`
+  - **Custom tags**: All non-standard tags preserved with original case in `custom_tags` field (JSON format)
+  - **Multiple values**: Multiple values per tag are joined with semicolons
 
 ## Database Schema
 
