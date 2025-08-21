@@ -1,8 +1,10 @@
 """Audio metadata extraction module."""
 
+import json
 import logging
+import os
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List, Union
 
 from mutagen import File
 from mutagen.easyid3 import EasyID3
@@ -299,6 +301,76 @@ class MetadataExtractor:
 
         return metadata
 
+    def _sanitize_tag_value(self, value: Any, max_length: int = 5000) -> Optional[str]:
+        """Sanitize a tag value for safe storage.
+
+        Args:
+            value: The tag value to sanitize
+            max_length: Maximum allowed length for the value
+
+        Returns:
+            Sanitized string value or None
+        """
+        if value is None:
+            return None
+
+        # Convert to string
+        str_value = str(value)
+
+        # Truncate if too long
+        if len(str_value) > max_length:
+            logger.warning(f"Tag value truncated from {len(str_value)} to {max_length} characters")
+            str_value = str_value[:max_length]
+
+        # Remove any null bytes or control characters
+        str_value = "".join(char for char in str_value if ord(char) >= 32 or char in "\n\r\t")
+
+        return str_value if str_value else None
+
+    def _validate_date_format(self, date_str: Optional[str]) -> Optional[str]:
+        """Validate and normalize date format.
+
+        Args:
+            date_str: Date string to validate
+
+        Returns:
+            Normalized date string or original if valid
+        """
+        if not date_str:
+            return None
+
+        # Common date formats in Vorbis comments
+        # Just ensure it's a valid string for now
+        # Could add more sophisticated date parsing if needed
+        return self._sanitize_tag_value(date_str, max_length=100)
+
+    def _handle_multiple_values(self, values: Union[List, Any]) -> Optional[str]:
+        """Handle fields with multiple values.
+
+        Args:
+            values: Single value or list of values
+
+        Returns:
+            Combined string value or None
+        """
+        if values is None:
+            return None
+
+        if isinstance(values, list):
+            if len(values) == 0:
+                return None
+            elif len(values) == 1:
+                return self._sanitize_tag_value(values[0])
+            else:
+                # Join multiple values with semicolon
+                non_null_values = [str(v) for v in values if v is not None]
+                if non_null_values:
+                    combined = "; ".join(non_null_values)
+                    return self._sanitize_tag_value(combined)
+                return None
+        else:
+            return self._sanitize_tag_value(values)
+
     def _extract_ogg(self, file_path: str) -> Dict[str, Any]:
         """Extract metadata from OGG Vorbis file.
 
@@ -306,24 +378,94 @@ class MetadataExtractor:
             file_path: Path to the OGG file
 
         Returns:
-            Dictionary of metadata
+            Dictionary of metadata including standard fields and custom tags
         """
-        audio = OggVorbis(file_path)
-        metadata = {}
+        try:
+            audio = OggVorbis(file_path)
+        except Exception as e:
+            logger.warning(f"Failed to parse OGG file {file_path}: {e}")
+            raise MetadataExtractionError(f"Invalid OGG file: {e}")
 
-        # OGG uses Vorbis comments (similar to FLAC)
+        metadata = {}
+        custom_tags = {}
+
+        # Define standard and extended Vorbis comment fields
+        standard_fields = {
+            # Standard fields
+            "title": "title",
+            "version": "version",
+            "album": "album",
+            "tracknumber": "track",
+            "artist": "artist",
+            "performer": "performer",
+            "copyright": "copyright",
+            "license": "license",
+            "organization": "organization",
+            "description": "description",
+            "genre": "genre",
+            "date": "date",
+            "location": "location",
+            "contact": "contact",
+            "isrc": "isrc",
+            # Extended fields
+            "albumartist": "albumartist",
+            "composer": "composer",
+            "conductor": "conductor",
+            "discnumber": "discnumber",
+            "disctotal": "disctotal",
+            "totaltracks": "totaltracks",
+            "publisher": "publisher",
+            "label": "label",
+            "compilation": "compilation",
+            "lyrics": "lyrics",
+            "language": "language",
+            "mood": "mood",
+            "bpm": "bpm",
+            "key": "key",
+            "comment": "comment",
+            "encoder": "encoder",
+            # ReplayGain tags
+            "replaygain_track_gain": "replaygain_track_gain",
+            "replaygain_track_peak": "replaygain_track_peak",
+            "replaygain_album_gain": "replaygain_album_gain",
+            "replaygain_album_peak": "replaygain_album_peak",
+        }
+
+        # Extract all tags from the file
         if audio.tags:
-            metadata["title"] = audio.get("title", [None])[0]
-            metadata["artist"] = audio.get("artist", [None])[0]
-            metadata["album"] = audio.get("album", [None])[0]
-            metadata["date"] = audio.get("date", [None])[0]
-            metadata["genre"] = audio.get("genre", [None])[0]
-            metadata["track"] = audio.get("tracknumber", [None])[0]
-            metadata["albumartist"] = audio.get("albumartist", [None])[0]
-            metadata["comment"] = audio.get("comment", [None])[0]
-            # Additional OGG-specific tags
-            metadata["encoder"] = audio.get("encoder", [None])[0]
-            metadata["organization"] = audio.get("organization", [None])[0]
+            # Limit total number of custom tags for safety
+            max_custom_tags = 100
+            custom_tag_count = 0
+
+            # Process all tags in the file
+            for key, values in audio.tags.items():
+                key_lower = key.lower()
+
+                # Handle multiple values per key
+                value = self._handle_multiple_values(values)
+
+                if value is None:
+                    continue
+
+                # Special handling for date field
+                if key_lower == "date":
+                    value = self._validate_date_format(value)
+
+                # Check if it's a standard field
+                if key_lower in standard_fields:
+                    metadata[standard_fields[key_lower]] = value
+                else:
+                    # Store as custom tag with original case (up to limit)
+                    if custom_tag_count < max_custom_tags:
+                        custom_tags[key] = value
+                        custom_tag_count += 1
+                    else:
+                        logger.warning(f"Maximum custom tags ({max_custom_tags}) reached, skipping: {key}")
+
+            # Add custom tags to metadata if any exist
+            if custom_tags:
+                # Store custom tags as JSON string for type consistency
+                metadata["custom_tags"] = json.dumps(custom_tags)
 
         # Technical metadata
         if audio.info:
@@ -331,9 +473,31 @@ class MetadataExtractor:
             metadata["bitrate"] = audio.info.bitrate
             metadata["sample_rate"] = audio.info.sample_rate
             metadata["channels"] = audio.info.channels
-            # OGG-specific info
+
+            # OGG-specific technical info
             metadata["bitrate_nominal"] = getattr(audio.info, "bitrate_nominal", None)
-            metadata["encoder_version"] = getattr(audio.info, "encoder_version", None)
+            metadata["bitrate_lower"] = getattr(audio.info, "bitrate_lower", None)
+            metadata["bitrate_upper"] = getattr(audio.info, "bitrate_upper", None)
+
+            # Try to determine if VBR or CBR
+            if hasattr(audio.info, "bitrate_nominal") and audio.info.bitrate_nominal:
+                if (
+                    hasattr(audio.info, "bitrate_lower")
+                    and audio.info.bitrate_lower
+                    and hasattr(audio.info, "bitrate_upper")
+                    and audio.info.bitrate_upper
+                ):
+                    # If lower and upper bounds differ, it's VBR
+                    if audio.info.bitrate_lower != audio.info.bitrate_upper:
+                        metadata["bitrate_mode"] = "VBR"
+                    else:
+                        metadata["bitrate_mode"] = "CBR"
+
+            # Get file size
+            try:
+                metadata["file_size"] = str(os.path.getsize(file_path))
+            except Exception as e:
+                logger.debug(f"Could not get file size for {file_path}: {e}")
 
         return metadata
 
