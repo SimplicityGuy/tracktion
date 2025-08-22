@@ -298,3 +298,166 @@ class TestFileRenameProposalIntegration:
 
             # Should still succeed despite directory listing error
             assert result == str(mock_proposal.id)
+
+
+class TestRenameExecutorIntegration:
+    """Test suite for rename proposal and executor integration."""
+
+    @pytest.fixture
+    def mock_components(self):
+        """Create mock components for the message interface."""
+
+        proposal_generator = Mock()
+        conflict_detector = Mock()
+        confidence_scorer = Mock()
+        proposal_repo = Mock()
+        recording_repo = Mock()
+        batch_processor = Mock()
+        rename_executor = Mock()
+
+        return {
+            "proposal_generator": proposal_generator,
+            "conflict_detector": conflict_detector,
+            "confidence_scorer": confidence_scorer,
+            "proposal_repo": proposal_repo,
+            "recording_repo": recording_repo,
+            "batch_processor": batch_processor,
+            "rename_executor": rename_executor,
+        }
+
+    @pytest.fixture
+    def message_interface(self, mock_components):
+        """Create a message interface with mocked components."""
+        from services.analysis_service.src.file_rename_proposal.message_interface import (
+            RenameProposalMessageInterface,
+        )
+
+        return RenameProposalMessageInterface(**mock_components)
+
+    def test_execute_rename_message_success(self, message_interface, mock_components):
+        """Test successful rename execution through message interface."""
+        from services.analysis_service.src.file_rename_proposal.message_interface import MessageTypes
+
+        proposal_id = str(uuid4())
+
+        # Setup mock
+        mock_components["rename_executor"].execute_rename.return_value = (True, None)
+
+        # Create message
+        message = {
+            "type": MessageTypes.EXECUTE_RENAME,
+            "proposal_id": proposal_id,
+            "request_id": "test-request",
+        }
+
+        # Process message
+        response = message_interface.process_message(message)
+
+        # Verify response
+        assert response["type"] == MessageTypes.RENAME_EXECUTED
+        assert response["proposal_id"] == proposal_id
+        assert response["success"] is True
+        assert "request_id" in response
+        assert "timestamp" in response
+
+        # Verify executor was called
+        mock_components["rename_executor"].execute_rename.assert_called_once()
+
+    def test_execute_rename_message_failure(self, message_interface, mock_components):
+        """Test failed rename execution through message interface."""
+        from services.analysis_service.src.file_rename_proposal.message_interface import MessageTypes
+
+        proposal_id = str(uuid4())
+
+        # Setup mock
+        mock_components["rename_executor"].execute_rename.return_value = (
+            False,
+            "File does not exist",
+        )
+
+        # Create message
+        message = {
+            "type": MessageTypes.EXECUTE_RENAME,
+            "proposal_id": proposal_id,
+            "request_id": "test-request",
+        }
+
+        # Process message
+        response = message_interface.process_message(message)
+
+        # Verify error response
+        assert response["type"] == MessageTypes.ERROR
+        assert response["error"]["code"] == "RENAME_FAILED"
+        assert "File does not exist" in response["error"]["message"]
+
+    def test_rollback_rename_message_success(self, message_interface, mock_components):
+        """Test successful rollback through message interface."""
+        from services.analysis_service.src.file_rename_proposal.message_interface import MessageTypes
+
+        proposal_id = str(uuid4())
+
+        # Setup mock
+        mock_components["rename_executor"].rollback_rename.return_value = (True, None)
+
+        # Create message
+        message = {
+            "type": MessageTypes.ROLLBACK_RENAME,
+            "proposal_id": proposal_id,
+            "request_id": "test-request",
+        }
+
+        # Process message
+        response = message_interface.process_message(message)
+
+        # Verify response
+        assert response["type"] == MessageTypes.RENAME_ROLLED_BACK
+        assert response["proposal_id"] == proposal_id
+        assert response["success"] is True
+
+        # Verify executor was called
+        mock_components["rename_executor"].rollback_rename.assert_called_once()
+
+    def test_execute_rename_missing_proposal_id(self, message_interface):
+        """Test execute rename with missing proposal_id."""
+        from services.analysis_service.src.file_rename_proposal.message_interface import MessageTypes
+
+        message = {
+            "type": MessageTypes.EXECUTE_RENAME,
+            "request_id": "test-request",
+        }
+
+        response = message_interface.process_message(message)
+
+        assert response["type"] == MessageTypes.ERROR
+        assert response["error"]["code"] == "MISSING_PARAMETER"
+        assert "Missing proposal_id" in response["error"]["message"]
+
+    def test_execute_rename_no_executor_configured(self, mock_components):
+        """Test execute rename when executor is not configured."""
+        from services.analysis_service.src.file_rename_proposal.message_interface import (
+            MessageTypes,
+            RenameProposalMessageInterface,
+        )
+
+        # Create interface without executor
+        interface = RenameProposalMessageInterface(
+            proposal_generator=mock_components["proposal_generator"],
+            conflict_detector=mock_components["conflict_detector"],
+            confidence_scorer=mock_components["confidence_scorer"],
+            proposal_repo=mock_components["proposal_repo"],
+            recording_repo=mock_components["recording_repo"],
+            batch_processor=mock_components["batch_processor"],
+            rename_executor=None,  # No executor
+        )
+
+        message = {
+            "type": MessageTypes.EXECUTE_RENAME,
+            "proposal_id": str(uuid4()),
+            "request_id": "test-request",
+        }
+
+        response = interface.process_message(message)
+
+        assert response["type"] == MessageTypes.ERROR
+        assert response["error"]["code"] == "EXECUTOR_NOT_CONFIGURED"
+        assert "Rename executor not configured" in response["error"]["message"]

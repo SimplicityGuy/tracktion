@@ -12,6 +12,7 @@ from .conflict_detector import ConflictDetector
 from .confidence_scorer import ConfidenceScorer
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
 from shared.core_types.src.repositories import RecordingRepository
+from ..file_rename_executor.executor import FileRenameExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,8 @@ class MessageTypes:
     CANCEL_BATCH = "cancel_batch"
     GET_STATISTICS = "get_statistics"
     CLEANUP_OLD_PROPOSALS = "cleanup_old_proposals"
+    EXECUTE_RENAME = "execute_rename"
+    ROLLBACK_RENAME = "rollback_rename"
 
     # Response types
     PROPOSAL_GENERATED = "proposal_generated"
@@ -38,6 +41,8 @@ class MessageTypes:
     BATCH_CANCELLED = "batch_cancelled"
     STATISTICS = "statistics"
     CLEANUP_COMPLETED = "cleanup_completed"
+    RENAME_EXECUTED = "rename_executed"
+    RENAME_ROLLED_BACK = "rename_rolled_back"
     ERROR = "error"
 
 
@@ -52,6 +57,7 @@ class RenameProposalMessageInterface:
         proposal_repo: RenameProposalRepository,
         recording_repo: RecordingRepository,
         batch_processor: Optional[BatchProcessor] = None,
+        rename_executor: Optional[FileRenameExecutor] = None,
     ) -> None:
         """Initialize message interface.
 
@@ -62,12 +68,14 @@ class RenameProposalMessageInterface:
             proposal_repo: Proposal repository
             recording_repo: Recording repository
             batch_processor: Optional batch processor (will create if not provided)
+            rename_executor: Optional file rename executor for executing renames
         """
         self.proposal_generator = proposal_generator
         self.conflict_detector = conflict_detector
         self.confidence_scorer = confidence_scorer
         self.proposal_repo = proposal_repo
         self.recording_repo = recording_repo
+        self.rename_executor = rename_executor
 
         if batch_processor:
             self.batch_processor = batch_processor
@@ -130,6 +138,8 @@ class RenameProposalMessageInterface:
             MessageTypes.CANCEL_BATCH: self._handle_cancel_batch,
             MessageTypes.GET_STATISTICS: self._handle_get_statistics,
             MessageTypes.CLEANUP_OLD_PROPOSALS: self._handle_cleanup_old_proposals,
+            MessageTypes.EXECUTE_RENAME: self._handle_execute_rename,
+            MessageTypes.ROLLBACK_RENAME: self._handle_rollback_rename,
         }
 
         return handlers.get(message_type)
@@ -494,6 +504,84 @@ class RenameProposalMessageInterface:
         except Exception as e:
             logger.error(f"Cleanup error: {e}")
             return self._error_response(request_id, str(e), "CLEANUP_ERROR")
+
+    def _handle_execute_rename(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+        """Handle execute rename request.
+
+        Args:
+            message: Request message with proposal_id
+            request_id: Request identifier
+
+        Returns:
+            Response message
+        """
+        try:
+            if not self.rename_executor:
+                return self._error_response(request_id, "Rename executor not configured", "EXECUTOR_NOT_CONFIGURED")
+
+            proposal_id = message.get("proposal_id")
+            if not proposal_id:
+                return self._error_response(request_id, "Missing proposal_id", "MISSING_PARAMETER")
+
+            try:
+                proposal_uuid = UUID(proposal_id)
+            except ValueError:
+                return self._error_response(request_id, "Invalid proposal_id format", "INVALID_PARAMETER")
+
+            # Execute the rename
+            success, error_message = self.rename_executor.execute_rename(proposal_uuid)
+
+            if success:
+                return {
+                    "type": MessageTypes.RENAME_EXECUTED,
+                    "proposal_id": str(proposal_uuid),
+                    "success": True,
+                }
+            else:
+                return self._error_response(request_id, error_message or "Rename failed", "RENAME_FAILED")
+
+        except Exception as e:
+            logger.error(f"Execute rename error: {e}")
+            return self._error_response(request_id, str(e), "EXECUTION_ERROR")
+
+    def _handle_rollback_rename(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+        """Handle rollback rename request.
+
+        Args:
+            message: Request message with proposal_id
+            request_id: Request identifier
+
+        Returns:
+            Response message
+        """
+        try:
+            if not self.rename_executor:
+                return self._error_response(request_id, "Rename executor not configured", "EXECUTOR_NOT_CONFIGURED")
+
+            proposal_id = message.get("proposal_id")
+            if not proposal_id:
+                return self._error_response(request_id, "Missing proposal_id", "MISSING_PARAMETER")
+
+            try:
+                proposal_uuid = UUID(proposal_id)
+            except ValueError:
+                return self._error_response(request_id, "Invalid proposal_id format", "INVALID_PARAMETER")
+
+            # Execute the rollback
+            success, error_message = self.rename_executor.rollback_rename(proposal_uuid)
+
+            if success:
+                return {
+                    "type": MessageTypes.RENAME_ROLLED_BACK,
+                    "proposal_id": str(proposal_uuid),
+                    "success": True,
+                }
+            else:
+                return self._error_response(request_id, error_message or "Rollback failed", "ROLLBACK_FAILED")
+
+        except Exception as e:
+            logger.error(f"Rollback rename error: {e}")
+            return self._error_response(request_id, str(e), "ROLLBACK_ERROR")
 
     def _error_response(self, request_id: str, message: str, error_code: str) -> Dict[str, Any]:
         """Create error response message.

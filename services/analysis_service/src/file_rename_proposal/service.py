@@ -15,6 +15,7 @@ from .validator import FilesystemValidator
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
 from shared.core_types.src.repositories import RecordingRepository
 from shared.core_types.src.database import DatabaseManager
+from ..file_rename_executor.executor import FileRenameExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class FileRenameProposalServiceFactory:
         self._db_manager: Optional[DatabaseManager] = None
         self._proposal_repo: Optional[RenameProposalRepository] = None
         self._recording_repo: Optional[RecordingRepository] = None
+        self._rename_executor: Optional[FileRenameExecutor] = None
 
     @property
     def db_manager(self) -> DatabaseManager:
@@ -53,6 +55,13 @@ class FileRenameProposalServiceFactory:
         if self._recording_repo is None:
             self._recording_repo = RecordingRepository(self.db_manager)
         return self._recording_repo
+
+    @property
+    def rename_executor(self) -> FileRenameExecutor:
+        """Get or create file rename executor instance."""
+        if self._rename_executor is None:
+            self._rename_executor = FileRenameExecutor(self.db_manager)
+        return self._rename_executor
 
     def create_pattern_manager(self) -> PatternManager:
         """Create a pattern manager instance."""
@@ -104,6 +113,7 @@ class FileRenameProposalServiceFactory:
             proposal_repo=self.proposal_repo,
             recording_repo=self.recording_repo,
             batch_processor=batch_processor,
+            rename_executor=self.rename_executor,
         )
 
     def create_integration(self) -> FileRenameProposalIntegration:
@@ -133,6 +143,7 @@ class FileRenameProposalServiceFactory:
             "batch_processor": self.create_batch_processor(),
             "message_interface": self.create_message_interface(),
             "integration": self.create_integration(),
+            "rename_executor": self.rename_executor,
         }
 
     def health_check(self) -> Dict[str, Any]:

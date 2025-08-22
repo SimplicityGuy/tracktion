@@ -131,6 +131,8 @@ class PatternManager:
             "genre": "Unknown",
             "bpm": "000",
             "key": "Unknown",
+            "organization": "Unknown",
+            "encoder": "Unknown",
         }
         return defaults.get(field, "Unknown")
 
@@ -183,6 +185,9 @@ class PatternManager:
             "albumartist",
             "disc",
             "comment",
+            "organization",  # OGG-specific
+            "encoder",  # OGG-specific
+            "custom_tags",  # OGG custom tags
         ]
 
     def get_pattern_for_type(self, file_type: str) -> str:

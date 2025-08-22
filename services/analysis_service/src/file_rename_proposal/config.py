@@ -16,6 +16,8 @@ class FileRenameProposalConfig:
             "flac": "{artist} - {album} - {track:02d} - {title}",
             "wav": "{artist} - {title} - {bpm}BPM",
             "m4a": "{artist} - {title}",
+            "ogg": "{artist} - {title}",
+            "oga": "{artist} - {title}",
             "default": "{artist} - {title}",
         }
     )
