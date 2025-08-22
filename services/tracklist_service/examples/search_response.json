@@ -1,0 +1,47 @@
+{
+  "success": true,
+  "results": [
+    {
+      "result_type": "dj",
+      "name": "Amelie Lens",
+      "url": "https://www.1001tracklists.com/dj/amelie-lens/index.html",
+      "metadata": {
+        "image_url": "https://cdn.1001tracklists.com/images/dj/amelie-lens.jpg",
+        "country": "Belgium",
+        "genres": ["Techno", "Acid"],
+        "popularity_score": 95
+      }
+    },
+    {
+      "result_type": "tracklist",
+      "name": "Amelie Lens @ Awakenings Festival 2024",
+      "url": "https://www.1001tracklists.com/tracklist/...",
+      "metadata": {
+        "dj_name": "Amelie Lens",
+        "event_name": "Awakenings Festival",
+        "date": "2024-06-29",
+        "venue": "Spaarnwoude",
+        "track_count": 42,
+        "duration_minutes": 90,
+        "play_count": 15230
+      }
+    },
+    {
+      "result_type": "event",
+      "name": "Awakenings Festival 2024",
+      "url": "https://www.1001tracklists.com/event/awakenings-2024/index.html",
+      "metadata": {
+        "location": "Spaarnwoude, Netherlands",
+        "dates": ["2024-06-29", "2024-06-30"],
+        "lineup_count": 120,
+        "tracklist_count": 85
+      }
+    }
+  ],
+  "total_results": 156,
+  "page": 1,
+  "limit": 20,
+  "cache_hit": false,
+  "response_time_ms": 450,
+  "correlation_id": "789a1234-56bc-def0-1234-567890abcdef"
+}

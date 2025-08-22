@@ -1,0 +1,117 @@
+{
+  "success": true,
+  "tracklist": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "url": "https://www.1001tracklists.com/tracklist/2npkg8l1/carl-cox-the-revolution-at-space-ibiza-2024-07-16.html",
+    "dj_name": "Carl Cox",
+    "event_name": "The Revolution",
+    "venue": "Space Ibiza",
+    "date": "2024-07-16",
+    "tracks": [
+      {
+        "number": 1,
+        "timestamp": {
+          "track_number": 1,
+          "timestamp_ms": 0,
+          "formatted_time": "00:00"
+        },
+        "artist": "Carl Cox",
+        "title": "The Revolution Continues",
+        "remix": "Original Mix",
+        "label": "Intec",
+        "is_id": false,
+        "bpm": 128.0,
+        "key": "Am",
+        "genre": "Techno"
+      },
+      {
+        "number": 2,
+        "timestamp": {
+          "track_number": 2,
+          "timestamp_ms": 210000,
+          "formatted_time": "03:30"
+        },
+        "artist": "Adam Beyer",
+        "title": "Your Mind",
+        "remix": "Original Mix",
+        "label": "Drumcode",
+        "is_id": false,
+        "bpm": 130.0,
+        "key": "Bm",
+        "genre": "Techno"
+      },
+      {
+        "number": 3,
+        "timestamp": {
+          "track_number": 3,
+          "timestamp_ms": 450000,
+          "formatted_time": "07:30"
+        },
+        "artist": "ID",
+        "title": "ID",
+        "remix": null,
+        "label": null,
+        "is_id": true,
+        "bpm": null,
+        "key": null,
+        "genre": null,
+        "notes": "Unreleased track"
+      },
+      {
+        "number": 4,
+        "timestamp": {
+          "track_number": 4,
+          "timestamp_ms": 660000,
+          "formatted_time": "11:00"
+        },
+        "artist": "Charlotte de Witte",
+        "title": "Liquid Slow",
+        "remix": "Amelie Lens Remix",
+        "label": "KNTXT",
+        "is_id": false,
+        "bpm": 132.0,
+        "key": "Am",
+        "genre": "Techno"
+      }
+    ],
+    "transitions": [
+      {
+        "from_track": 1,
+        "to_track": 2,
+        "transition_type": "blend",
+        "timestamp_ms": 210000,
+        "duration_ms": 8000,
+        "notes": "Long blend with EQ swap"
+      },
+      {
+        "from_track": 2,
+        "to_track": 3,
+        "transition_type": "cut",
+        "timestamp_ms": 450000,
+        "duration_ms": 500,
+        "notes": "Quick cut on the drop"
+      },
+      {
+        "from_track": 3,
+        "to_track": 4,
+        "transition_type": "fade",
+        "timestamp_ms": 660000,
+        "duration_ms": 5000
+      }
+    ],
+    "metadata": {
+      "recording_type": "DJ Set",
+      "duration_minutes": 120,
+      "play_count": 45230,
+      "favorite_count": 1250,
+      "comment_count": 89,
+      "soundcloud_url": "https://soundcloud.com/carlcox/revolution-space-2024",
+      "tags": ["Techno", "Peak Time", "Driving", "Festival"]
+    },
+    "scraped_at": "2024-08-21T10:30:00Z",
+    "source_html_hash": "a1b2c3d4e5f6..."
+  },
+  "cached": false,
+  "processing_time_ms": 1250,
+  "correlation_id": "456e7890-12d3-a456-426614174000"
+}
