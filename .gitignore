@@ -239,3 +239,8 @@ uv.lock
 *.ogg
 *.flac
 *.wav
+
+# Test fixtures
+# Ignore JSON test configuration files created by tests
+test_config.json
+nonexistent.json
