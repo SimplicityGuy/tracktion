@@ -79,3 +79,8 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "-v --cov=services --cov=shared --cov-report=term-missing"
 asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "types-requests>=2.32.4.20250809",
+]
