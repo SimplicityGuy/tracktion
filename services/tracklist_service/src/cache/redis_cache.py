@@ -310,6 +310,80 @@ class RedisCache:
             logger.error(f"Error getting cache stats: {e}")
             return {"enabled": True, "connected": False, "error": str(e)}
 
+    async def get(self, key: str) -> Optional[str]:
+        """Get a value from cache by key.
+
+        Args:
+            key: Cache key
+
+        Returns:
+            Cached value or None if not found
+        """
+        if not self.enabled or not self.client:
+            return None
+
+        try:
+            value = self.client.get(key)
+            return value  # type: ignore[no-any-return]
+        except Exception as e:
+            logger.error(f"Error getting value from cache: {e}")
+            return None
+
+    async def set(self, key: str, value: str, ttl: int = 3600) -> bool:
+        """Set a value in cache with TTL.
+
+        Args:
+            key: Cache key
+            value: Value to cache
+            ttl: Time to live in seconds
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.enabled or not self.client:
+            return False
+
+        try:
+            self.client.setex(key, ttl, value)
+            return True
+        except Exception as e:
+            logger.error(f"Error setting value in cache: {e}")
+            return False
+
+    async def delete(self, key: str) -> int:
+        """Delete a key from cache.
+
+        Args:
+            key: Cache key to delete
+
+        Returns:
+            Number of keys deleted
+        """
+        if not self.enabled or not self.client:
+            return 0
+
+        try:
+            return int(self.client.delete(key))
+        except Exception as e:
+            logger.error(f"Error deleting from cache: {e}")
+            return 0
+
+    async def ping(self) -> bool:
+        """Check if Redis is accessible.
+
+        Returns:
+            True if Redis is accessible, False otherwise
+        """
+        if not self.enabled or not self.client:
+            return False
+
+        try:
+            self.client.ping()
+            return True
+        except Exception as e:
+            logger.error(f"Redis ping failed: {e}")
+            return False
+
     def close(self) -> None:
         """Close Redis connection."""
         if self.client:
