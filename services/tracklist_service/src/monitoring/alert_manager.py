@@ -250,7 +250,7 @@ class AlertManager:
             severity = AlertSeverity.CRITICAL
         elif health_status.success_rate < 0.8:
             severity = AlertSeverity.ERROR
-        elif health_status.success_rate < 0.95:
+        elif health_status.success_rate < 0.95 or health_status.anomalies:
             severity = AlertSeverity.WARNING
         else:
             severity = AlertSeverity.INFO
@@ -387,14 +387,13 @@ class AlertManager:
         """Get appropriate channels based on severity."""
         channels = [AlertChannel.LOG]
 
-        if severity in [AlertSeverity.ERROR, AlertSeverity.CRITICAL]:
-            if self.slack_webhook_url:
-                channels.append(AlertChannel.SLACK)
-            if self.email_config:
-                channels.append(AlertChannel.EMAIL)
+        # Always add dashboard for visibility
+        channels.append(AlertChannel.DASHBOARD)
 
-        if self.dashboard_url:
-            channels.append(AlertChannel.DASHBOARD)
+        if severity in [AlertSeverity.ERROR, AlertSeverity.CRITICAL]:
+            channels.append(AlertChannel.SLACK)
+            if severity == AlertSeverity.CRITICAL:
+                channels.append(AlertChannel.EMAIL)
 
         return channels
 
@@ -422,9 +421,12 @@ class AlertManager:
             failure_pattern_key = f"failures:pattern:{page_type or '*'}"
             failure_pattern = await self.redis_client.get(failure_pattern_key)
             if failure_pattern:
-                pattern_data = json.loads(failure_pattern)
-                if pattern_data.get("consecutive_failures", 0) > 5:
-                    anomalies.append(f"Consecutive failures: {pattern_data['consecutive_failures']}")
+                try:
+                    pattern_data = json.loads(failure_pattern)
+                    if isinstance(pattern_data, dict) and pattern_data.get("consecutive_failures", 0) > 5:
+                        anomalies.append(f"Consecutive failures: {pattern_data['consecutive_failures']}")
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning(f"Invalid failure pattern data: {failure_pattern}")
 
         # Run custom anomaly detectors
         for name, detector in self._anomaly_detectors.items():
