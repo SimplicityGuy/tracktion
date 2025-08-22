@@ -5,15 +5,16 @@ Provides REST endpoints for retrieving tracklist data from 1001tracklists.com
 with caching and async processing support.
 """
 
+import hashlib
+import json
+import logging
 import time
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
 from fastapi.responses import JSONResponse
-import json
-import hashlib
-from datetime import datetime, timezone
 
 from ..models.tracklist_models import (
     Tracklist,
@@ -24,6 +25,7 @@ from ..scraper.tracklist_scraper import TracklistScraper
 from ..cache.redis_cache import RedisCache
 from ..messaging.simple_handler import MessageHandler
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["tracklist"])
 
@@ -34,8 +36,11 @@ message_handler = MessageHandler()
 
 
 def generate_cache_key(url: str) -> str:
-    """Generate a cache key from tracklist URL."""
-    return f"tracklist:{hashlib.md5(url.encode()).hexdigest()}"
+    """Generate a cache key from tracklist URL.
+
+    Uses SHA256 for better security and collision resistance.
+    """
+    return f"tracklist:{hashlib.sha256(url.encode()).hexdigest()}"
 
 
 async def process_tracklist_async(request: TracklistRequest) -> None:
@@ -82,11 +87,17 @@ async def get_tracklist_by_id(
             detail="Tracklist ID resolution not yet implemented. Please use POST /api/v1/tracklist with URL.",
         )
 
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
+        # Log unexpected errors for debugging
+        logger.error(f"Unexpected error in get_tracklist_by_id: {e}", exc_info=True)
+
         processing_time = int((time.time() - start_time) * 1000)
         return TracklistResponse(
             success=False,
-            error=str(e),
+            error=f"Internal server error: {str(e)}",
             processing_time_ms=processing_time,
             correlation_id=correlation_id,
         )

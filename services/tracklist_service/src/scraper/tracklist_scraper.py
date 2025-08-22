@@ -6,6 +6,7 @@ tracks, timestamps, transitions, and metadata.
 """
 
 import hashlib
+import logging
 import re
 from datetime import date, datetime, timezone
 from typing import Dict, List, Optional, Tuple
@@ -22,6 +23,8 @@ from ..models.tracklist_models import (
     TransitionType,
 )
 from .base_scraper import ScraperBase
+
+logger = logging.getLogger(__name__)
 
 
 class TracklistScraper(ScraperBase):
@@ -203,8 +206,11 @@ class TracklistScraper(ScraperBase):
                 key=key,
                 genre=genre,
             )
-        except Exception:
-            # Return None if track cannot be parsed
+        except (ValueError, AttributeError, KeyError) as e:
+            # Log parsing error for debugging but continue processing
+            # Specific exceptions: ValueError for invalid data, AttributeError for missing methods,
+            # KeyError for missing dictionary keys
+            logger.debug(f"Failed to parse track {track_number}: {e}")
             return None
 
     def _extract_timestamp(self, element: Tag, track_number: int) -> Optional[CuePoint]:

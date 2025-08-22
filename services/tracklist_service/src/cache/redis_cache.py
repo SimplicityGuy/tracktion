@@ -6,7 +6,7 @@ Provides caching for search results to reduce scraping load.
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 import redis
@@ -86,7 +86,7 @@ class RedisCache:
                 cached_response = CachedSearchResponse.model_validate_json(cached_data)
 
                 # Check if still valid
-                if cached_response.expires_at > datetime.utcnow():
+                if cached_response.expires_at > datetime.now(timezone.utc).replace(tzinfo=None):
                     # Update response to indicate cache hit
                     response = cached_response.response
                     response.cache_hit = True
@@ -136,7 +136,7 @@ class RedisCache:
                 ttl_hours = self.config.search_ttl_hours
 
             # Create cached response
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
             expires_at = now + timedelta(hours=ttl_hours)
 
             cached_response = CachedSearchResponse(
@@ -190,7 +190,7 @@ class RedisCache:
             # Store error with shorter TTL
             failed_data = {
                 "error": error_message,
-                "failed_at": datetime.utcnow().isoformat(),
+                "failed_at": datetime.now(timezone.utc).isoformat(),
                 "correlation_id": str(request.correlation_id) if request.correlation_id else None,
             }
 
