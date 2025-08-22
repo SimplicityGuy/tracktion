@@ -108,13 +108,15 @@ class TestSearchAPI:
             response = client.get(
                 "/api/v1/search/?"
                 "query=deadmau5&"
-                "search_type=EVENT&"
+                "search_type=event&"
                 "page=2&"
                 "limit=50&"
                 "start_date=2023-01-01&"
                 "end_date=2023-12-31"
             )
 
+            if response.status_code != 200:
+                print(f"Response: {response.json()}")
             assert response.status_code == 200
 
             # Verify the scraper was called with correct parameters

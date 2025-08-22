@@ -137,12 +137,17 @@ async def search_tracklists(
         logger.error(f"Validation error: correlation_id={correlation_id}, error={e}")
         raise HTTPException(status_code=400, detail=str(e))
 
+    except HTTPException:
+        # Re-raise HTTP exceptions (like date validation errors)
+        raise
+
     except Exception as e:
         logger.error(f"Search failed: correlation_id={correlation_id}, error={e}")
 
-        # Cache the failed search to prevent hammering
-        cache = get_cache()
-        cache.cache_failed_search(request, str(e))
+        # Cache the failed search to prevent hammering (only if request was created)
+        if "request" in locals():
+            cache = get_cache()
+            cache.cache_failed_search(request, str(e))
 
         # Return error response
         error = SearchError(
@@ -152,7 +157,7 @@ async def search_tracklists(
             details={"query": query, "type": search_type.value},
         )
 
-        raise HTTPException(status_code=500, detail=error.model_dump())
+        raise HTTPException(status_code=500, detail=error.model_dump(mode="json"))
 
 
 @router.get("/dj/{dj_slug}", response_model=SearchResponse)

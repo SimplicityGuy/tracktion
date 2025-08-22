@@ -1,0 +1,244 @@
+"""
+Custom exceptions for the tracklist service.
+
+Provides specific exception types for different error scenarios.
+"""
+
+from typing import Any, Dict, Optional
+
+
+class TracklistServiceError(Exception):
+    """Base exception for all tracklist service errors."""
+
+    def __init__(
+        self,
+        message: str,
+        error_code: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize the exception.
+
+        Args:
+            message: Error message
+            error_code: Optional error code for categorization
+            details: Optional additional error details
+        """
+        super().__init__(message)
+        self.message = message
+        self.error_code = error_code or self.__class__.__name__
+        self.details = details or {}
+
+
+class ScrapingError(TracklistServiceError):
+    """Raised when web scraping fails."""
+
+    def __init__(
+        self,
+        message: str,
+        url: Optional[str] = None,
+        status_code: Optional[int] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize scraping error.
+
+        Args:
+            message: Error message
+            url: URL that failed to scrape
+            status_code: HTTP status code if applicable
+            details: Additional error details
+        """
+        error_details = details or {}
+        if url:
+            error_details["url"] = url
+        if status_code:
+            error_details["status_code"] = status_code
+
+        super().__init__(message, "SCRAPING_ERROR", error_details)
+        self.url = url
+        self.status_code = status_code
+
+
+class RateLimitError(ScrapingError):
+    """Raised when rate limiting is detected."""
+
+    def __init__(
+        self,
+        message: str = "Rate limit exceeded",
+        retry_after: Optional[int] = None,
+        url: Optional[str] = None,
+    ) -> None:
+        """Initialize rate limit error.
+
+        Args:
+            message: Error message
+            retry_after: Seconds to wait before retrying
+            url: URL that triggered rate limiting
+        """
+        details = {}
+        if retry_after:
+            details["retry_after"] = str(retry_after)
+
+        super().__init__(message, url=url, status_code=429, details=details)
+        self.retry_after = retry_after
+
+
+class ParsingError(TracklistServiceError):
+    """Raised when HTML parsing fails."""
+
+    def __init__(
+        self,
+        message: str,
+        element: Optional[str] = None,
+        html_snippet: Optional[str] = None,
+    ) -> None:
+        """Initialize parsing error.
+
+        Args:
+            message: Error message
+            element: Element that failed to parse
+            html_snippet: Snippet of HTML that caused the error
+        """
+        details = {}
+        if element:
+            details["element"] = element
+        if html_snippet:
+            details["html_snippet"] = html_snippet[:500]  # Limit snippet size
+
+        super().__init__(message, "PARSING_ERROR", details)
+        self.element = element
+        self.html_snippet = html_snippet
+
+
+class CacheError(TracklistServiceError):
+    """Raised when cache operations fail."""
+
+    def __init__(
+        self,
+        message: str,
+        operation: Optional[str] = None,
+        key: Optional[str] = None,
+    ) -> None:
+        """Initialize cache error.
+
+        Args:
+            message: Error message
+            operation: Cache operation that failed
+            key: Cache key involved in the error
+        """
+        details = {}
+        if operation:
+            details["operation"] = operation
+        if key:
+            details["key"] = key
+
+        super().__init__(message, "CACHE_ERROR", details)
+        self.operation = operation
+        self.key = key
+
+
+class MessageQueueError(TracklistServiceError):
+    """Raised when message queue operations fail."""
+
+    def __init__(
+        self,
+        message: str,
+        queue_name: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> None:
+        """Initialize message queue error.
+
+        Args:
+            message: Error message
+            queue_name: Queue name involved in the error
+            correlation_id: Message correlation ID
+        """
+        details = {}
+        if queue_name:
+            details["queue_name"] = queue_name
+        if correlation_id:
+            details["correlation_id"] = correlation_id
+
+        super().__init__(message, "MESSAGE_QUEUE_ERROR", details)
+        self.queue_name = queue_name
+        self.correlation_id = correlation_id
+
+
+class ValidationError(TracklistServiceError):
+    """Raised when data validation fails."""
+
+    def __init__(
+        self,
+        message: str,
+        field: Optional[str] = None,
+        value: Optional[Any] = None,
+    ) -> None:
+        """Initialize validation error.
+
+        Args:
+            message: Error message
+            field: Field that failed validation
+            value: Value that failed validation
+        """
+        details = {}
+        if field:
+            details["field"] = field
+        if value is not None:
+            details["value"] = str(value)
+
+        super().__init__(message, "VALIDATION_ERROR", details)
+        self.field = field
+        self.value = value
+
+
+class ConfigurationError(TracklistServiceError):
+    """Raised when configuration is invalid."""
+
+    def __init__(
+        self,
+        message: str,
+        config_key: Optional[str] = None,
+        config_value: Optional[Any] = None,
+    ) -> None:
+        """Initialize configuration error.
+
+        Args:
+            message: Error message
+            config_key: Configuration key that is invalid
+            config_value: Invalid configuration value
+        """
+        details = {}
+        if config_key:
+            details["config_key"] = config_key
+        if config_value is not None:
+            details["config_value"] = str(config_value)
+
+        super().__init__(message, "CONFIGURATION_ERROR", details)
+        self.config_key = config_key
+        self.config_value = config_value
+
+
+class ServiceUnavailableError(TracklistServiceError):
+    """Raised when a required service is unavailable."""
+
+    def __init__(
+        self,
+        message: str,
+        service_name: Optional[str] = None,
+        retry_after: Optional[int] = None,
+    ) -> None:
+        """Initialize service unavailable error.
+
+        Args:
+            message: Error message
+            service_name: Name of the unavailable service
+            retry_after: Seconds to wait before retrying
+        """
+        details = {}
+        if service_name:
+            details["service_name"] = service_name
+        if retry_after:
+            details["retry_after"] = str(retry_after)
+
+        super().__init__(message, "SERVICE_UNAVAILABLE", details)
+        self.service_name = service_name
+        self.retry_after = retry_after
