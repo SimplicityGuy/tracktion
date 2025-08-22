@@ -3,6 +3,7 @@
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import mock_open, patch
 
 import pytest
@@ -198,7 +199,7 @@ class TestAdaptiveParser:
         """Create AdaptiveParser instance."""
         with patch("builtins.open", mock_open(read_data=json.dumps(config_data))):
             with patch("pathlib.Path.exists", return_value=True):
-                return AdaptiveParser(config_path="test_config.json")
+                return AdaptiveParser(config_path=Path("test_config.json"))
 
     def test_adaptive_parser_init(self, adaptive_parser):
         """Test AdaptiveParser initialization."""
@@ -209,7 +210,7 @@ class TestAdaptiveParser:
     def test_adaptive_parser_init_no_config(self):
         """Test AdaptiveParser initialization without config file."""
         with patch("pathlib.Path.exists", return_value=False):
-            parser = AdaptiveParser(config_path="nonexistent.json")
+            parser = AdaptiveParser(config_path=Path("nonexistent.json"))
 
             # Should use default config
             assert parser._config["strategies"] == {}

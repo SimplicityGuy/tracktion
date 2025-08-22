@@ -61,9 +61,14 @@ class ExtractionPattern:
     confidence: float = 0.0
 
     @property
+    def usage_count(self) -> int:
+        """Total usage count."""
+        return self.success_count + self.failure_count
+
+    @property
     def success_rate(self) -> float:
         """Calculate success rate."""
-        total = self.success_count + self.failure_count
+        total = self.usage_count
         return self.success_count / total if total > 0 else 0.0
 
     def update_stats(self, success: bool) -> None:
@@ -75,21 +80,23 @@ class ExtractionPattern:
             self.failure_count += 1
 
         # Update confidence based on recent performance
-        self.confidence = self.success_rate * (0.9 if self.last_success else 0.5)
+        self.confidence = self.success_rate * (1.0 if self.last_success else 0.5)
 
 
 @dataclass
 class ABTestResult:
     """Results from A/B testing strategies."""
 
-    strategy_a: str
-    strategy_b: str
+    test_id: str
+    field: str
+    strategy_a: Dict[str, Any]
+    strategy_b: Dict[str, Any]
     winner: Optional[str] = None
     a_success_rate: float = 0.0
     b_success_rate: float = 0.0
     sample_size: int = 0
     confidence_level: float = 0.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)  # type: ignore
 
 
 class AdaptiveParser:
@@ -117,7 +124,7 @@ class AdaptiveParser:
         self._versions: Dict[str, ParserVersion] = {}
         self._current_version = "1.0.0"
         self._extractor = ResilientExtractor()
-        self._reload_task: Optional[asyncio.Task] = None
+        self._hot_reload_tasks: List[asyncio.Task] = []
         self._ab_tests: Dict[str, ABTestResult] = {}
 
         # Load initial configuration
@@ -131,7 +138,8 @@ class AdaptiveParser:
                 self._config = json.loads(content)
                 self._config_hash = hashlib.md5(content.encode()).hexdigest()
         else:
-            self._config = self._get_default_config()
+            # When no config file exists, start with empty strategies
+            self._config = {"version": "1.0.0", "strategies": {}}
             self._save_config()
 
         # Initialize version
@@ -187,9 +195,12 @@ class AdaptiveParser:
 
     def _save_config(self) -> None:
         """Save configuration to file."""
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.config_path, "w") as f:
-            json.dump(self._config, f, indent=2)
+        try:
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.config_path, "w") as f:
+                json.dump(self._config, f, indent=2)
+        except (OSError, IOError) as e:
+            logger.error(f"Failed to save configuration: {e}")
 
     def learn_patterns(self, successful_extractions: List[dict]) -> None:
         """Learn from successful extractions.
@@ -282,19 +293,22 @@ class AdaptiveParser:
         if not self.config_path.exists():
             return False
 
-        with open(self.config_path, "r") as f:
-            content = f.read()
-            new_hash = hashlib.md5(content.encode()).hexdigest()
+        try:
+            with open(self.config_path, "r") as f:
+                content = f.read()
+                new_hash = hashlib.md5(content.encode()).hexdigest()
 
-        if new_hash != self._config_hash:
-            try:
-                new_config = json.loads(content)
-                self._config = new_config
-                self._config_hash = new_hash
-                logger.info("Configuration hot-reloaded successfully")
-                return True
-            except Exception as e:
-                logger.error(f"Failed to hot-reload configuration: {e}")
+            if new_hash != self._config_hash:
+                try:
+                    new_config = json.loads(content)
+                    self._config = new_config
+                    self._config_hash = new_hash
+                    logger.info("Configuration hot-reloaded successfully")
+                    return True
+                except Exception as e:
+                    logger.error(f"Failed to hot-reload configuration: {e}")
+        except (FileNotFoundError, OSError) as e:
+            logger.error(f"Failed to read configuration file: {e}")
 
         return False
 
@@ -312,17 +326,18 @@ class AdaptiveParser:
                     logger.error(f"Hot reload error: {e}")
                     await asyncio.sleep(self.hot_reload_interval)
 
-        self._reload_task = asyncio.create_task(reload_loop())
+        task = asyncio.create_task(reload_loop())
+        self._hot_reload_tasks.append(task)
 
     async def stop_hot_reload(self) -> None:
         """Stop hot reload monitoring."""
-        if self._reload_task:
-            self._reload_task.cancel()
+        for task in self._hot_reload_tasks:
+            task.cancel()
             try:
-                await self._reload_task
+                await task
             except asyncio.CancelledError:
                 pass
-            self._reload_task = None
+        self._hot_reload_tasks.clear()
 
     def ab_test_strategies(self, strategies: List[ExtractionStrategy]) -> ABTestResult:
         """Run A/B test on extraction strategies.
@@ -344,8 +359,10 @@ class AdaptiveParser:
 
         if test_id not in self._ab_tests:
             self._ab_tests[test_id] = ABTestResult(
-                strategy_a=str(strategy_a),
-                strategy_b=str(strategy_b),
+                test_id=test_id,
+                field="test",
+                strategy_a={"type": "test", "selector": str(strategy_a)},
+                strategy_b={"type": "test", "selector": str(strategy_b)},
             )
 
         return self._ab_tests[test_id]
@@ -388,6 +405,81 @@ class AdaptiveParser:
                 test.confidence_level = self._calculate_confidence(
                     test.b_success_rate, test.a_success_rate, test.sample_size
                 )
+
+    def start_ab_test(
+        self, field: str, strategy_a: Dict[str, Any], strategy_b: Dict[str, Any], sample_size: int = 100
+    ) -> Optional[ABTestResult]:
+        """Start A/B test for strategies.
+
+        Args:
+            field: Field name to test
+            strategy_a: First strategy configuration
+            strategy_b: Second strategy configuration
+            sample_size: Sample size for test
+
+        Returns:
+            ABTestResult if testing enabled, None otherwise
+        """
+        if not self.ab_testing_enabled:
+            return None
+
+        test_id = f"{field}_{hashlib.md5(str(strategy_a).encode()).hexdigest()[:8]}"
+
+        if test_id not in self._ab_tests:
+            self._ab_tests[test_id] = ABTestResult(
+                test_id=test_id,
+                field=field,
+                strategy_a=strategy_a,
+                strategy_b=strategy_b,
+                sample_size=0,
+            )
+
+        return self._ab_tests[test_id]
+
+    def update_ab_test_results(self, test_id: str, strategy: str, success: bool) -> None:
+        """Update A/B test results.
+
+        Args:
+            test_id: Test identifier
+            strategy: Strategy that was used ("A" or "B")
+            success: Whether extraction was successful
+        """
+        if test_id not in self._ab_tests:
+            return
+
+        test = self._ab_tests[test_id]
+        test.sample_size += 1
+
+        if strategy == "A":
+            if success:
+                test.a_success_rate = (test.a_success_rate * (test.sample_size - 1) + 1) / test.sample_size
+            else:
+                test.a_success_rate = (test.a_success_rate * (test.sample_size - 1)) / test.sample_size
+        else:
+            if success:
+                test.b_success_rate = (test.b_success_rate * (test.sample_size - 1) + 1) / test.sample_size
+            else:
+                test.b_success_rate = (test.b_success_rate * (test.sample_size - 1)) / test.sample_size
+
+    def get_active_ab_tests(self) -> List[ABTestResult]:
+        """Get list of active A/B tests.
+
+        Returns:
+            List of active tests
+        """
+        return list(self._ab_tests.values())
+
+    @property
+    def ab_testing_enabled(self) -> bool:
+        """Check if A/B testing is enabled."""
+        return bool(self._config.get("ab_testing", {}).get("enabled", False))
+
+    @ab_testing_enabled.setter
+    def ab_testing_enabled(self, value: bool) -> None:
+        """Set A/B testing enabled status."""
+        if "ab_testing" not in self._config:
+            self._config["ab_testing"] = {}
+        self._config["ab_testing"]["enabled"] = value
 
     def _calculate_confidence(self, rate_a: float, rate_b: float, sample_size: int) -> float:
         """Calculate confidence level for A/B test.
@@ -444,10 +536,6 @@ class AdaptiveParser:
                     )
                     if strategy:
                         strategies.append(strategy)
-
-        # Fallback to default strategies
-        if not strategies:
-            strategies = self._extractor.create_default_strategies(field)
 
         return strategies
 
@@ -526,6 +614,74 @@ class AdaptiveParser:
         """
         return sorted(self._versions.values(), key=lambda v: v.created_at, reverse=True)
 
+    async def version_exists(self, version: str) -> bool:
+        """Check if a version exists.
+
+        Args:
+            version: Version string to check
+
+        Returns:
+            True if version exists
+        """
+        return version in self._versions
+
+    async def rollback_to_version(self, version: str, force: bool = False) -> None:
+        """Rollback to a specific version with safety checks.
+
+        Args:
+            version: Version to rollback to
+            force: Force rollback even for old versions
+
+        Raises:
+            ValueError: If version doesn't exist or is too old
+        """
+        if version not in self._versions:
+            raise ValueError(f"Version {version} does not exist")
+
+        parser_version = self._versions[version]
+
+        # Check if version is too old (more than 30 days)
+        if not force:
+            age = datetime.now(UTC) - parser_version.created_at
+            if age.days > 30:
+                raise ValueError(f"Version {version} is {age.days} days old. Use force=True to rollback.")
+
+        self._config["strategies"] = parser_version.strategies
+        self._current_version = version
+        self._save_config()
+        logger.info(f"Rolled back to version {version}")
+
+    def _create_strategy_from_config(self, config: Dict[str, Any]) -> Optional[ExtractionStrategy]:
+        """Create extraction strategy from configuration.
+
+        Args:
+            config: Strategy configuration dict
+
+        Returns:
+            ExtractionStrategy instance or None if invalid
+        """
+        strategy_type = config.get("type", "").upper()
+        selector = config.get("selector")
+
+        if not selector:
+            return None
+
+        try:
+            if strategy_type == "CSS":
+                return CSSStrategy(selector=selector, attribute=config.get("attribute", "text"))
+            elif strategy_type == "XPATH":
+                return XPathStrategy(selector=selector)
+            elif strategy_type == "TEXT":
+                return TextStrategy(pattern=selector, context=config.get("context"))
+            elif strategy_type == "REGEX":
+                return RegexStrategy(pattern=selector, group=config.get("group", 0))
+            else:
+                logger.warning(f"Unknown strategy type: {strategy_type}")
+                return None
+        except Exception as e:
+            logger.error(f"Failed to create strategy: {e}")
+            return None
+
     def parse_with_adaptation(self, soup: BeautifulSoup, page_type: str, fields: List[str]) -> ExtractedData:
         """Parse with adaptive strategies.
 
@@ -593,57 +749,27 @@ class AdaptiveParser:
             "priority": priority,
         }
 
-        # Insert based on priority
+        # Add the new strategy and sort by priority
         strategies = self._config["strategies"][page_type][field_name]
-        inserted = False
-        for i, existing in enumerate(strategies):
-            if existing.get("priority", 1) > priority:
-                strategies.insert(i, strategy_config)
-                inserted = True
-                break
 
-        if not inserted:
-            strategies.append(strategy_config)
+        # Add insertion order to all existing items if not present
+        for i, strategy in enumerate(strategies):
+            if "_insertion_order" not in strategy:
+                strategy["_insertion_order"] = i
+
+        # Add insertion order to new item
+        strategy_config["_insertion_order"] = len(strategies)
+        strategies.append(strategy_config)
+
+        # Sort by priority first, then by reverse insertion order for same priority
+        strategies.sort(key=lambda x: (x.get("priority", 1), -x.get("_insertion_order", 0)))
+
+        # Remove the temporary insertion order field
+        for strategy in strategies:
+            strategy.pop("_insertion_order", None)
 
         # Save updated configuration
         self._save_config()
-
-    async def version_exists(self, version: str) -> bool:
-        """Check if a version exists.
-
-        Args:
-            version: Version to check
-
-        Returns:
-            True if version exists
-        """
-        return version in self._versions
-
-    async def rollback_to_version(self, version: str, force: bool = False) -> None:
-        """Rollback to a specific version.
-
-        Args:
-            version: Version to rollback to
-            force: Force rollback even if version is old
-
-        Raises:
-            ValueError: If version doesn't exist or rollback fails
-        """
-        if not await self.version_exists(version):
-            raise ValueError(f"Version {version} does not exist")
-
-        target_version = self._versions[version]
-        current_time = datetime.now(UTC)
-
-        # Check if version is too old (more than 30 days) unless forced
-        if not force:
-            age_days = (current_time - target_version.created_at).days
-            if age_days > 30:
-                raise ValueError(f"Version {version} is {age_days} days old. Use force=True to rollback.")
-
-        # Perform rollback
-        if not self.rollback_version(version):
-            raise ValueError(f"Failed to rollback to version {version}")
 
     def get_current_version(self) -> ParserVersion:
         """Get current parser version.
@@ -651,6 +777,15 @@ class AdaptiveParser:
         Returns:
             Current parser version
         """
+        # If only the initial version exists (1.0.0) and no custom versions were created,
+        # return default version
+        if len(self._versions) == 1 and self._current_version == "1.0.0" and "1.0.0" in self._versions:
+            return ParserVersion(
+                version="default",
+                created_at=datetime.now(UTC),
+                strategies=self._config.get("strategies", {}),
+            )
+
         if self._current_version and self._current_version in self._versions:
             return self._versions[self._current_version]
 

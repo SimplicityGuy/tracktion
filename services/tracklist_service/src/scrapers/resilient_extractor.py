@@ -44,6 +44,7 @@ class ExtractedData:
     partial_extraction: bool = False
     missing_fields: List[str] = field(default_factory=list)
     extraction_errors: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class ExtractionStrategy(ABC):
