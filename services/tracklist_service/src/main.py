@@ -14,7 +14,7 @@ import structlog
 import uvicorn
 from fastapi import FastAPI
 
-from .api.search_api import router as search_router
+from .api.search import router as search_router
 from .config import get_config
 from .messaging.message_handler import TracklistMessageHandler
 
