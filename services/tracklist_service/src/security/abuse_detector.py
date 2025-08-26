@@ -377,7 +377,7 @@ class AbuseDetector:
         try:
             # Simulate geo analysis
             # In reality, would track IP addresses and geolocate them
-            anomalies = []
+            anomalies: List[str] = []
 
             # This is a placeholder - real implementation would:
             # 1. Track IP addresses used by user
