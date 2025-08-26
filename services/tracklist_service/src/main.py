@@ -16,6 +16,7 @@ import redis.asyncio as redis
 from fastapi import FastAPI, Request, Response
 
 from .api.search import router as search_router
+from .api.developer_endpoints import router as developer_router
 from .config import get_config
 from .messaging.message_handler import TracklistMessageHandler
 from .auth.authentication import AuthenticationManager
@@ -146,6 +147,7 @@ def create_app() -> FastAPI:
 
     # Include API routes
     app.include_router(search_router, prefix=config.api.api_prefix)
+    app.include_router(developer_router, prefix=config.api.api_prefix)
 
     # Health check endpoint
     @app.get("/health")

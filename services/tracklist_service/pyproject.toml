@@ -21,6 +21,7 @@ dependencies = [
     "passlib>=1.7.4",
     "python-multipart>=0.0.6",
     "redis[hiredis]>=5.0.0",
+    "apscheduler>=3.10.0",
 ]
 
 [project.optional-dependencies]
