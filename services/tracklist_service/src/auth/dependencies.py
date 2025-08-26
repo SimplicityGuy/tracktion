@@ -2,7 +2,7 @@
 
 import logging
 from typing import Optional, Callable
-from fastapi import Header, HTTPException, status, Depends
+from fastapi import Header, HTTPException, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from .authentication import AuthenticationManager
@@ -146,3 +146,42 @@ async def require_permission(permission: str) -> Callable[[User], User]:
         return user
 
     return check_permission
+
+
+async def authenticate_from_request(request: Request) -> User:
+    """Authenticate user from raw request object (for middleware).
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        Authenticated user
+
+    Raises:
+        HTTPException: If authentication fails
+    """
+    auth_mgr = get_auth_manager()
+
+    # Try API key authentication first
+    x_api_key = request.headers.get("X-API-Key")
+    if x_api_key:
+        user = auth_mgr.validate_api_key(x_api_key)
+        if user:
+            return user
+        logger.warning("Invalid API key provided")
+
+    # Try JWT authentication
+    authorization_header = request.headers.get("Authorization")
+    if authorization_header and authorization_header.lower().startswith("bearer "):
+        token = authorization_header[7:]  # Remove "Bearer " prefix
+        user = auth_mgr.validate_jwt_token(token)
+        if user:
+            return user
+        logger.warning("Invalid JWT token provided")
+
+    # No valid authentication found
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or missing authentication credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )

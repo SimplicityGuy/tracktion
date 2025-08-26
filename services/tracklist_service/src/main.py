@@ -8,15 +8,20 @@ import asyncio
 import logging
 import signal
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Callable
 
 import structlog
 import uvicorn
-from fastapi import FastAPI
+import redis.asyncio as redis
+from fastapi import FastAPI, Request, Response
 
 from .api.search import router as search_router
 from .config import get_config
 from .messaging.message_handler import TracklistMessageHandler
+from .auth.authentication import AuthenticationManager
+from .auth.dependencies import set_auth_manager
+from .rate_limiting.limiter import RateLimiter
+from .middleware.rate_limit_middleware import RateLimitMiddleware
 
 
 # Configure structured logging
@@ -48,20 +53,40 @@ def setup_logging() -> None:
     )
 
 
-# Global message handler for cleanup
+# Global handlers for cleanup
 message_handler: TracklistMessageHandler | None = None
+redis_client: redis.Redis | None = None
+rate_limiter: RateLimiter | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application lifespan events."""
-    global message_handler
+    global message_handler, redis_client, rate_limiter
 
     logger = structlog.get_logger(__name__)
     config = get_config()
 
     # Startup
     logger.info("Starting tracklist service", version="0.1.0", debug_mode=config.debug_mode)
+
+    # Initialize Redis client for rate limiting
+    redis_client = redis.Redis(
+        host=config.cache.redis_host,
+        port=config.cache.redis_port,
+        db=config.cache.redis_db,
+        password=config.cache.redis_password,
+        decode_responses=True,
+    )
+
+    # Initialize rate limiter
+    rate_limiter = RateLimiter(redis_client)
+    logger.info("Rate limiter initialized")
+
+    # Initialize authentication manager
+    auth_manager = AuthenticationManager(jwt_secret="temp-secret-key")
+    set_auth_manager(auth_manager)
+    logger.info("Authentication manager initialized")
 
     # Initialize message handler
     message_handler = TracklistMessageHandler()
@@ -88,6 +113,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             except asyncio.CancelledError:
                 pass
 
+        # Close Redis connection
+        if redis_client:
+            await redis_client.close()
+
         logger.info("Tracklist service shutdown complete")
 
 
@@ -103,6 +132,17 @@ def create_app() -> FastAPI:
         docs_url="/docs" if config.api.docs_enabled else None,
         redoc_url="/redoc" if config.api.docs_enabled else None,
     )
+
+    # Add rate limiting middleware
+    # Note: This will be initialized during lifespan startup
+    @app.middleware("http")
+    async def add_rate_limiting(request: Request, call_next: Callable) -> Response:
+        """Add rate limiting to all requests."""
+        if rate_limiter is not None:
+            middleware = RateLimitMiddleware(app, rate_limiter)
+            return await middleware.dispatch(request, call_next)
+        # If rate limiter not initialized yet, pass through
+        return await call_next(request)
 
     # Include API routes
     app.include_router(search_router, prefix=config.api.api_prefix)
