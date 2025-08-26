@@ -329,7 +329,7 @@ class TestAbuseDetector:
     @pytest.mark.asyncio
     async def test_store_behavior_point(self, abuse_detector, test_user, mock_redis):
         """Test storing behavior data point."""
-        data = {"timestamp": datetime.now(UTC).isoformat(), "requests_per_minute": 10, "error_rate": 0.01}
+        data = {"timestamp": datetime.now(UTC).isoformat(), "requests_per_minute": 10, "error_rate": 0.0}
 
         await abuse_detector._store_behavior_point(test_user, data)
 
