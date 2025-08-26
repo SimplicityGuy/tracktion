@@ -132,7 +132,8 @@ class SecurityManager:
                 return False
 
             # Get IP access rules from Redis
-            rules_data = await self.redis.hgetall(f"{self.ip_rules_key}:{normalized_ip}")
+            hgetall_result = await self.redis.hgetall(f"{self.ip_rules_key}:{normalized_ip}")  # type: ignore
+            rules_data = dict(hgetall_result) if hgetall_result else {}
 
             if rules_data:
                 rule = IPAccessRule.from_dict(rules_data)
@@ -140,7 +141,7 @@ class SecurityManager:
                 # Check if rule is active and not expired
                 if not rule.is_active or rule.is_expired():
                     # Clean up expired/inactive rule
-                    await self.redis.hdel(self.ip_rules_key, normalized_ip)
+                    await self.redis.hdel(self.ip_rules_key, normalized_ip)  # type: ignore
                 else:
                     # Apply rule
                     if rule.rule_type == AccessRuleType.BLACKLIST:
@@ -206,7 +207,7 @@ class SecurityManager:
             )
 
             # Store in Redis
-            await self.redis.hset(f"{self.ip_rules_key}:{normalized_ip}", mapping=rule.to_dict())
+            await self.redis.hset(f"{self.ip_rules_key}:{normalized_ip}", mapping=rule.to_dict())  # type: ignore
 
             # Set expiration if specified
             if expires_at:
@@ -297,7 +298,7 @@ class SecurityManager:
             await self.redis.hset(
                 f"{self.blocked_users_key}:{user.id}",
                 mapping={k: json.dumps(v) if isinstance(v, dict) else str(v) for k, v in block_data.items()},
-            )
+            )  # type: ignore
 
             # Set expiration
             ttl = int((block_until - datetime.now(timezone.utc)).total_seconds())
@@ -318,7 +319,8 @@ class SecurityManager:
             Tuple of (is_blocked, reason)
         """
         try:
-            block_data = await self.redis.hgetall(f"{self.blocked_users_key}:{user.id}")
+            hgetall_result = await self.redis.hgetall(f"{self.blocked_users_key}:{user.id}")  # type: ignore
+            block_data = dict(hgetall_result) if hgetall_result else {}
 
             if not block_data:
                 return False, None
@@ -383,7 +385,7 @@ class SecurityManager:
             date_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             log_key = f"{self.audit_logs_key}:{date_key}:{audit_log.event_id}"
 
-            await self.redis.hset(log_key, mapping=audit_log.to_dict())
+            await self.redis.hset(log_key, mapping=audit_log.to_dict())  # type: ignore
 
             # Set expiration (90 days)
             await self.redis.expire(log_key, 90 * 24 * 3600)
@@ -429,7 +431,7 @@ class SecurityManager:
             date_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             log_key = f"{self.audit_logs_key}:violations:{date_key}:{audit_log.event_id}"
 
-            await self.redis.hset(log_key, mapping=audit_log.to_dict())
+            await self.redis.hset(log_key, mapping=audit_log.to_dict())  # type: ignore
             await self.redis.expire(log_key, 90 * 24 * 3600)
 
             # Add to violations timeline
@@ -484,7 +486,8 @@ class SecurityManager:
 
                 for log_id in log_ids:
                     log_key = f"{self.audit_logs_key}:{date_key}:{log_id}"
-                    log_data = await self.redis.hgetall(log_key)
+                    hgetall_result = await self.redis.hgetall(log_key)  # type: ignore
+                    log_data = dict(hgetall_result) if hgetall_result else {}
 
                     if log_data:
                         try:
@@ -514,15 +517,15 @@ class SecurityManager:
         # Check for forwarded headers
         forwarded_for = request.headers.get("x-forwarded-for")
         if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
+            return str(forwarded_for.split(",")[0].strip())
 
         real_ip = request.headers.get("x-real-ip")
         if real_ip:
-            return real_ip
+            return str(real_ip)
 
         # Fallback to direct connection
         if hasattr(request, "client") and request.client:
-            return request.client.host
+            return str(request.client.host)
 
         return "unknown"
 
@@ -535,7 +538,8 @@ class SecurityManager:
             pattern = f"{self.ip_rules_key}:*"
 
             async for key in self.redis.scan_iter(match=pattern):
-                rule_data = await self.redis.hgetall(key)
+                hgetall_result = await self.redis.hgetall(key)  # type: ignore
+                rule_data = dict(hgetall_result) if hgetall_result else {}
                 if rule_data:
                     rule = IPAccessRule.from_dict(rule_data)
                     if rule.rule_type == rule_type and rule.is_active and not rule.is_expired():

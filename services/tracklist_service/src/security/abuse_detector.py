@@ -141,7 +141,7 @@ class AbuseDetector:
         hour_start = now.replace(minute=0, second=0, microsecond=0)
         minute_start = now.replace(second=0, microsecond=0)
 
-        behavior_data = {
+        behavior_data: Dict[str, Any] = {
             "timestamp": now.isoformat(),
             "ip_address": self._get_client_ip(request),
             "user_agent": request.headers.get("user-agent", ""),
@@ -313,7 +313,7 @@ class AbuseDetector:
 
             # Count behavior points in window
             count = await self.redis.zcount(user_key, start_ts, end_ts)
-            return count
+            return int(count)
 
         except Exception as e:
             logger.warning(f"Error counting requests for user {user.id}: {e}")
@@ -329,7 +329,7 @@ class AbuseDetector:
             end_ts = int(end.timestamp())
 
             count = await self.redis.zcount(error_key, start_ts, end_ts)
-            return count
+            return int(count)
 
         except Exception as e:
             logger.warning(f"Error counting errors for user {user.id}: {e}")
@@ -466,15 +466,15 @@ class AbuseDetector:
         # Check for forwarded headers
         forwarded_for = request.headers.get("x-forwarded-for")
         if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
+            return str(forwarded_for.split(",")[0].strip())
 
         real_ip = request.headers.get("x-real-ip")
         if real_ip:
-            return real_ip
+            return str(real_ip)
 
         # Fallback to direct connection
         if hasattr(request, "client") and request.client:
-            return request.client.host
+            return str(request.client.host)
 
         return "unknown"
 
