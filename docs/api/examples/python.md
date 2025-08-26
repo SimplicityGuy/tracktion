@@ -23,29 +23,29 @@ class TracktionClient:
         self.api_key = api_key
         self.base_url = base_url
         self.session = requests.Session()
-        
+
         if api_key:
             self.session.headers.update({
                 'Authorization': f'Bearer {api_key}',
                 'Content-Type': 'application/json'
             })
-    
+
     def _make_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
         url = f"{self.base_url}{endpoint}"
         response = self.session.request(method, url, **kwargs)
-        
+
         # Handle rate limiting
         if response.status_code == 429:
             retry_after = int(response.headers.get('X-RateLimit-Retry-After', 60))
             raise RateLimitError(f"Rate limit exceeded. Retry after {retry_after} seconds.")
-        
+
         response.raise_for_status()
         return response
-    
+
     def get(self, endpoint: str, **kwargs) -> Dict[Any, Any]:
         response = self._make_request('GET', endpoint, **kwargs)
         return response.json()
-    
+
     def post(self, endpoint: str, data: Dict[Any, Any], **kwargs) -> Dict[Any, Any]:
         response = self._make_request('POST', endpoint, json=data, **kwargs)
         return response.json()
@@ -94,7 +94,7 @@ class JWTAuthClient:
         self.session = requests.Session()
         self.access_token = None
         self.refresh_token = None
-    
+
     def login(self, username: str, password: str) -> bool:
         """Authenticate with username/password and get JWT tokens."""
         try:
@@ -103,49 +103,49 @@ class JWTAuthClient:
                 'password': password
             })
             response.raise_for_status()
-            
+
             data = response.json()
             self.access_token = data['access_token']
             self.refresh_token = data['refresh_token']
-            
+
             # Update session headers
             self.session.headers.update({
                 'Authorization': f'Bearer {self.access_token}',
                 'Content-Type': 'application/json'
             })
-            
+
             return True
         except requests.exceptions.HTTPError:
             return False
-    
+
     def refresh_access_token(self) -> bool:
         """Refresh the access token using refresh token."""
         if not self.refresh_token:
             return False
-        
+
         try:
             response = self.session.post(f"{self.base_url}/api/v1/auth/refresh", json={
                 'refresh_token': self.refresh_token
             })
             response.raise_for_status()
-            
+
             data = response.json()
             self.access_token = data['access_token']
-            
+
             # Update session headers
             self.session.headers.update({
                 'Authorization': f'Bearer {self.access_token}'
             })
-            
+
             return True
         except requests.exceptions.HTTPError:
             return False
-    
+
     def is_token_expired(self) -> bool:
         """Check if the current access token is expired."""
         if not self.access_token:
             return True
-        
+
         try:
             # Decode without verification to check expiry
             decoded = jwt.decode(self.access_token, options={"verify_signature": False})
@@ -155,21 +155,21 @@ class JWTAuthClient:
             return False
         except jwt.InvalidTokenError:
             return True
-    
+
     def make_authenticated_request(self, method: str, endpoint: str, **kwargs):
         """Make an authenticated request, handling token refresh if needed."""
         if self.is_token_expired():
             if not self.refresh_access_token():
                 raise Exception("Unable to refresh access token")
-        
+
         url = f"{self.base_url}{endpoint}"
         response = self.session.request(method, url, **kwargs)
-        
+
         # If token expired during request, try to refresh once
         if response.status_code == 401:
             if self.refresh_access_token():
                 response = self.session.request(method, url, **kwargs)
-        
+
         response.raise_for_status()
         return response
 
@@ -198,26 +198,26 @@ class SecureTracktionClient(TracktionClient):
     def __init__(self, api_key: str, hmac_secret: str, **kwargs):
         super().__init__(api_key, **kwargs)
         self.hmac_secret = hmac_secret
-    
+
     def make_secure_request(self, method: str, endpoint: str, data: Optional[Dict] = None):
         """Make a request with HMAC signature for sensitive operations."""
         timestamp = int(time.time())
         body = json.dumps(data) if data else ""
-        
+
         signature = generate_hmac_signature(
             self.hmac_secret, timestamp, method, endpoint, body
         )
-        
+
         headers = {
             'X-Timestamp': str(timestamp),
             'X-Signature': signature
         }
-        
+
         if method.upper() == 'GET':
             response = self._make_request(method, endpoint, headers=headers)
         else:
             response = self._make_request(method, endpoint, json=data, headers=headers)
-        
+
         return response.json()
 
 # Example usage
@@ -251,7 +251,7 @@ def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0):
                 except RateLimitError as e:
                     if attempt == max_retries:
                         raise
-                    
+
                     # Extract retry_after from error message or use exponential backoff
                     delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
                     print(f"Rate limited, retrying in {delay:.2f} seconds...")
@@ -272,24 +272,24 @@ class RobustTracktionClient(TracktionClient):
         """Search tracks with automatic retry on rate limiting."""
         response = self.get("/api/v1/search/tracks", params={'q': query, **params})
         return response['tracks']
-    
+
     def batch_search_tracks(self, queries: list[str], delay: float = 0.1):
         """Perform multiple searches with rate limiting consideration."""
         results = []
-        
+
         for i, query in enumerate(queries):
             try:
                 tracks = self.search_tracks_with_retry(query)
                 results.append({'query': query, 'tracks': tracks})
-                
+
                 # Add delay between requests to avoid rate limiting
                 if i < len(queries) - 1:
                     time.sleep(delay)
-                    
+
             except Exception as e:
                 print(f"Error searching for '{query}': {e}")
                 results.append({'query': query, 'error': str(e)})
-        
+
         return results
 
 # Example usage
@@ -317,8 +317,8 @@ class APIKeyManager:
             'Authorization': f'Bearer {jwt_token}',
             'Content-Type': 'application/json'
         })
-    
-    def create_api_key(self, name: str, permissions: list[str], 
+
+    def create_api_key(self, name: str, permissions: list[str],
                       scopes: list[str], expires_at: Optional[str] = None):
         """Create a new API key."""
         data = {
@@ -328,23 +328,23 @@ class APIKeyManager:
         }
         if expires_at:
             data['expires_at'] = expires_at
-        
+
         response = self.session.post(f"{self.base_url}/api/v1/developer/keys", json=data)
         response.raise_for_status()
         return response.json()
-    
+
     def list_api_keys(self):
         """List all API keys."""
         response = self.session.get(f"{self.base_url}/api/v1/developer/keys")
         response.raise_for_status()
         return response.json()
-    
+
     def rotate_api_key(self, key_id: str):
         """Rotate an existing API key."""
         response = self.session.post(f"{self.base_url}/api/v1/developer/keys/{key_id}/rotate")
         response.raise_for_status()
         return response.json()
-    
+
     def revoke_api_key(self, key_id: str):
         """Revoke an API key."""
         response = self.session.delete(f"{self.base_url}/api/v1/developer/keys/{key_id}")
@@ -388,54 +388,54 @@ class TracktionAPIError(Exception):
 class RobustAPIHandler:
     def __init__(self, client: TracktionClient):
         self.client = client
-    
+
     def handle_api_call(self, func, *args, **kwargs):
         """Handle API calls with comprehensive error handling."""
         try:
             return func(*args, **kwargs)
-        
+
         except requests.exceptions.HTTPError as e:
             response = e.response
-            
+
             if response.status_code == 401:
                 error_data = response.json() if response.content else {}
                 error_code = error_data.get('error', 'authentication_failed')
-                
+
                 if error_code == 'token_expired':
                     raise TracktionAPIError("JWT token expired", 401, error_code)
                 elif error_code == 'invalid_api_key':
                     raise TracktionAPIError("Invalid API key", 401, error_code)
                 else:
                     raise TracktionAPIError("Authentication failed", 401, error_code)
-            
+
             elif response.status_code == 403:
                 error_data = response.json() if response.content else {}
                 error_code = error_data.get('error', 'access_denied')
-                
+
                 if error_code == 'insufficient_permissions':
                     required_scopes = error_data.get('required_scopes', [])
                     raise TracktionAPIError(
-                        f"Insufficient permissions. Required scopes: {', '.join(required_scopes)}", 
+                        f"Insufficient permissions. Required scopes: {', '.join(required_scopes)}",
                         403, error_code
                     )
                 elif error_code == 'ip_blocked':
                     raise TracktionAPIError("IP address blocked", 403, error_code)
                 else:
                     raise TracktionAPIError("Access denied", 403, error_code)
-            
+
             elif response.status_code == 429:
                 retry_after = response.headers.get('X-RateLimit-Retry-After', '60')
                 raise RateLimitError(f"Rate limit exceeded. Retry after {retry_after} seconds.")
-            
+
             else:
                 raise TracktionAPIError(f"HTTP {response.status_code}: {response.text}", response.status_code)
-        
+
         except requests.exceptions.ConnectionError:
             raise TracktionAPIError("Connection error. Please check your internet connection.")
-        
+
         except requests.exceptions.Timeout:
             raise TracktionAPIError("Request timeout. Please try again.")
-        
+
         except Exception as e:
             logger.exception("Unexpected error during API call")
             raise TracktionAPIError(f"Unexpected error: {str(e)}")
@@ -479,17 +479,17 @@ def main():
     if not api_key:
         print("Please set TRACKTION_API_KEY environment variable")
         sys.exit(1)
-    
+
     # Initialize client
     client = RobustTracktionClient(api_key=api_key)
-    
+
     print("Tracktion API Example")
     print("====================")
-    
+
     # Search for tracks
     print("\\nSearching for electronic music tracks...")
     tracks = client.search_tracks_with_retry("electronic music", limit=5)
-    
+
     if tracks:
         print(f"Found {len(tracks)} tracks:")
         for i, track in enumerate(tracks, 1):
@@ -498,18 +498,18 @@ def main():
             print(f"   Duration: {track.get('duration', 'Unknown')}")
     else:
         print("No tracks found or error occurred")
-    
+
     # Demonstrate batch searching
     print("\\nBatch searching multiple genres...")
     genres = ["house", "techno", "ambient", "drum and bass"]
     batch_results = client.batch_search_tracks(genres)
-    
+
     for result in batch_results:
         if 'tracks' in result:
             print(f"{result['query']}: {len(result['tracks'])} tracks found")
         else:
             print(f"{result['query']}: Error - {result['error']}")
-    
+
     print("\\nAPI example completed successfully!")
 
 if __name__ == "__main__":
@@ -535,7 +535,7 @@ def install_requirements():
         'PyJWT>=2.6.0',
         'cryptography>=3.4.8'
     ]
-    
+
     for req in requirements:
         try:
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', req])
@@ -543,7 +543,7 @@ def install_requirements():
         except subprocess.CalledProcessError:
             print(f"✗ Failed to install {req}")
             return False
-    
+
     return True
 
 def create_config_file():
@@ -555,27 +555,27 @@ def create_config_file():
         "max_retries": 3,
         "timeout": 30
     }
-    
+
     with open('tracktion_config.json', 'w') as f:
         json.dump(config, f, indent=2)
-    
+
     print("✓ Created tracktion_config.json")
     print("  Please update the api_key field with your actual API key")
 
 if __name__ == "__main__":
     print("Tracktion API Python Setup")
     print("===========================")
-    
+
     print("\\n1. Installing Python packages...")
     if install_requirements():
         print("✓ All packages installed successfully")
     else:
         print("✗ Package installation failed")
         sys.exit(1)
-    
+
     print("\\n2. Creating configuration file...")
     create_config_file()
-    
+
     print("\\n3. Setup completed!")
     print("\\nNext steps:")
     print("1. Update tracktion_config.json with your API key")

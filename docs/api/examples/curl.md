@@ -139,7 +139,7 @@ generate_hmac_signature() {
     local method="$3"
     local path="$4"
     local body="$5"
-    
+
     local message="${timestamp}.${method}.${path}.${body}"
     local signature=$(echo -n "$message" | openssl dgst -sha256 -hmac "$secret_key" -binary | base64)
     echo "sha256=${signature}"
@@ -178,7 +178,7 @@ curl -X POST \
 generate_hmac_alt() {
     local secret="$1"
     local message="$2"
-    
+
     echo -n "$message" | openssl dgst -sha256 -hmac "$secret" | sed 's/^.* //'
 }
 
@@ -332,20 +332,20 @@ make_request_with_retry() {
     local url="$1"
     local max_retries=3
     local retry_count=0
-    
+
     while [ $retry_count -lt $max_retries ]; do
         response=$(curl -w "HTTPSTATUS:%{http_code}" -s \
           "$url" \
           -H "Authorization: Bearer ${TRACKTION_API_KEY}" \
           -H "Content-Type: application/json")
-        
+
         http_status=$(echo $response | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
         body=$(echo $response | sed -E 's/HTTPSTATUS:[0-9]*$//')
-        
+
         if [ "$http_status" -eq 429 ]; then
             retry_after=$(curl -I "$url" -H "Authorization: Bearer ${TRACKTION_API_KEY}" 2>/dev/null | grep -i "x-ratelimit-retry-after" | cut -d: -f2 | tr -d ' \r')
             retry_after=${retry_after:-60}
-            
+
             echo "Rate limited. Waiting ${retry_after} seconds..."
             sleep $retry_after
             retry_count=$((retry_count + 1))
@@ -354,7 +354,7 @@ make_request_with_retry() {
             return
         fi
     done
-    
+
     echo "Max retries exceeded"
 }
 
@@ -370,7 +370,7 @@ check_auth_error() {
     local response="$1"
     local http_status=$(echo $response | jq -r '.status // empty')
     local error_code=$(echo $response | jq -r '.error // empty')
-    
+
     if [ "$http_status" = "401" ]; then
         case "$error_code" in
             "token_expired")
@@ -464,7 +464,7 @@ api_request() {
     local method="$1"
     local endpoint="$2"
     local data="$3"
-    
+
     local url="${TRACKTION_BASE_URL}${endpoint}"
     local curl_opts=(
         -X "$method"
@@ -473,11 +473,11 @@ api_request() {
         --silent
         --show-error
     )
-    
+
     if [ -n "$data" ]; then
         curl_opts+=(-d "$data")
     fi
-    
+
     curl "${curl_opts[@]}" "$url"
 }
 
@@ -485,15 +485,15 @@ api_request() {
 search_tracks() {
     local query="$1"
     local limit="${2:-10}"
-    
+
     echo "Searching for: $query"
-    
+
     local encoded_query=$(printf '%s' "$query" | jq -sRr @uri)
     local response=$(api_request "GET" "/api/v1/search/tracks?q=${encoded_query}&limit=${limit}")
-    
+
     if [ $? -eq 0 ]; then
         local track_count=$(echo "$response" | jq '.tracks | length')
-        
+
         if [ "$track_count" -gt 0 ]; then
             echo "Found $track_count tracks:"
             echo "$response" | jq -r '.tracks[] | "  \\(.title) by \\(.artist)"'
@@ -509,15 +509,15 @@ search_tracks() {
 # Function to perform batch search
 batch_search() {
     local queries=("$@")
-    
+
     echo "Performing batch search for ${#queries[@]} queries..."
-    
+
     for i in "${!queries[@]}"; do
         local query="${queries[$i]}"
         echo ""
         echo "[$((i+1))/${#queries[@]}] $query"
         search_tracks "$query" 3
-        
+
         # Add delay to avoid rate limiting
         if [ $i -lt $((${#queries[@]} - 1)) ]; then
             sleep 1
@@ -544,7 +544,7 @@ show_usage() {
 show_profile() {
     echo "Fetching user profile..."
     local response=$(api_request "GET" "/api/v1/user/profile")
-    
+
     if [ $? -eq 0 ]; then
         echo "User Profile:"
         echo "$response" | jq -r '"  Email: \\(.email)"'
@@ -559,10 +559,10 @@ show_profile() {
 list_keys() {
     echo "Listing API keys..."
     local response=$(api_request "GET" "/api/v1/developer/keys")
-    
+
     if [ $? -eq 0 ]; then
         local key_count=$(echo "$response" | jq '.keys | length')
-        
+
         if [ "$key_count" -gt 0 ]; then
             echo "Found $key_count API keys:"
             echo "$response" | jq -r '.keys[] | "  \\(.name) (\\(.id)) - Active: \\(.is_active)"'
@@ -655,9 +655,9 @@ test_api_key() {
     local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
       "${TRACKTION_BASE_URL}/api/v1/user/profile" \
       -H "Authorization: Bearer ${TRACKTION_API_KEY}")
-    
+
     local http_status=$(echo $response | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
-    
+
     if [ "$http_status" -eq 200 ]; then
         echo "✓ API key is valid"
     elif [ "$http_status" -eq 401 ]; then

@@ -19,7 +19,7 @@ class TracktionClient {
   constructor(apiKey = null, baseURL = 'https://api.tracktion.com') {
     this.apiKey = apiKey;
     this.baseURL = baseURL;
-    
+
     // Create axios instance with default config
     this.client = axios.create({
       baseURL: this.baseURL,
@@ -28,11 +28,11 @@ class TracktionClient {
         'Content-Type': 'application/json'
       }
     });
-    
+
     if (apiKey) {
       this.client.defaults.headers.common['Authorization'] = `Bearer ${apiKey}`;
     }
-    
+
     // Add response interceptor for error handling
     this.client.interceptors.response.use(
       response => response,
@@ -45,22 +45,22 @@ class TracktionClient {
       }
     );
   }
-  
+
   async get(endpoint, params = {}) {
     const response = await this.client.get(endpoint, { params });
     return response.data;
   }
-  
+
   async post(endpoint, data = {}) {
     const response = await this.client.post(endpoint, data);
     return response.data;
   }
-  
+
   async put(endpoint, data = {}) {
     const response = await this.client.put(endpoint, data);
     return response.data;
   }
-  
+
   async delete(endpoint) {
     const response = await this.client.delete(endpoint);
     return response.data;
@@ -126,7 +126,7 @@ class JWTAuthClient {
     this.baseURL = baseURL;
     this.accessToken = null;
     this.refreshToken = null;
-    
+
     this.client = axios.create({
       baseURL: this.baseURL,
       timeout: 30000,
@@ -134,20 +134,20 @@ class JWTAuthClient {
         'Content-Type': 'application/json'
       }
     });
-    
+
     // Add request interceptor to handle token refresh
     this.client.interceptors.request.use(async (config) => {
       if (this.isTokenExpired() && this.refreshToken) {
         await this.refreshAccessToken();
       }
-      
+
       if (this.accessToken) {
         config.headers['Authorization'] = `Bearer ${this.accessToken}`;
       }
-      
+
       return config;
     });
-    
+
     // Add response interceptor for 401 errors
     this.client.interceptors.response.use(
       response => response,
@@ -167,17 +167,17 @@ class JWTAuthClient {
       }
     );
   }
-  
+
   async login(username, password) {
     try {
       const response = await this.client.post('/api/v1/auth/token', {
         username,
         password
       });
-      
+
       this.accessToken = response.data.access_token;
       this.refreshToken = response.data.refresh_token;
-      
+
       return {
         success: true,
         user: response.data.user
@@ -189,29 +189,29 @@ class JWTAuthClient {
       };
     }
   }
-  
+
   async refreshAccessToken() {
     if (!this.refreshToken) {
       throw new Error('No refresh token available');
     }
-    
+
     const response = await this.client.post('/api/v1/auth/refresh', {
       refresh_token: this.refreshToken
     });
-    
+
     this.accessToken = response.data.access_token;
-    
+
     // Update refresh token if provided
     if (response.data.refresh_token) {
       this.refreshToken = response.data.refresh_token;
     }
   }
-  
+
   isTokenExpired() {
     if (!this.accessToken) {
       return true;
     }
-    
+
     try {
       const decoded = jwt.decode(this.accessToken);
       const currentTime = Math.floor(Date.now() / 1000);
@@ -220,22 +220,22 @@ class JWTAuthClient {
       return true;
     }
   }
-  
+
   clearTokens() {
     this.accessToken = null;
     this.refreshToken = null;
   }
-  
+
   async makeAuthenticatedRequest(method, endpoint, data = null) {
     const config = {
       method,
       url: endpoint
     };
-    
+
     if (data) {
       config.data = data;
     }
-    
+
     const response = await this.client.request(config);
     return response.data;
   }
@@ -244,11 +244,11 @@ class JWTAuthClient {
 // Example usage
 async function jwtExample() {
   const jwtClient = new JWTAuthClient();
-  
+
   const loginResult = await jwtClient.login('user@example.com', 'password');
   if (loginResult.success) {
     console.log(`Welcome, ${loginResult.user.email}!`);
-    
+
     // Make authenticated requests
     try {
       const profile = await jwtClient.makeAuthenticatedRequest('GET', '/api/v1/user/profile');
@@ -281,11 +281,11 @@ class SecureTracktionClient extends TracktionClient {
     super(apiKey, baseURL);
     this.hmacSecret = hmacSecret;
   }
-  
+
   async makeSecureRequest(method, endpoint, data = null) {
     const timestamp = Math.floor(Date.now() / 1000);
     const body = data ? JSON.stringify(data) : '';
-    
+
     const signature = generateHMACSignature(
       this.hmacSecret,
       timestamp,
@@ -293,7 +293,7 @@ class SecureTracktionClient extends TracktionClient {
       endpoint,
       body
     );
-    
+
     const config = {
       method,
       url: endpoint,
@@ -302,11 +302,11 @@ class SecureTracktionClient extends TracktionClient {
         'X-Signature': signature
       }
     };
-    
+
     if (data) {
       config.data = data;
     }
-    
+
     const response = await this.client.request(config);
     return response.data;
   }
@@ -318,7 +318,7 @@ async function secureExample() {
     'tk_live_1234567890abcdef...',
     'your_hmac_secret'
   );
-  
+
   try {
     const result = await secureClient.makeSecureRequest('POST', '/api/v1/sensitive-operation', {
       action: 'delete_user_data',
@@ -340,24 +340,24 @@ class RobustTracktionClient extends TracktionClient {
     this.maxRetries = options.maxRetries || 3;
     this.baseDelay = options.baseDelay || 1000; // milliseconds
   }
-  
+
   async sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
-  
+
   async retryWithBackoff(fn, maxRetries = this.maxRetries) {
     let lastError;
-    
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         return await fn();
       } catch (error) {
         lastError = error;
-        
+
         if (attempt === maxRetries) {
           throw error;
         }
-        
+
         let delay;
         if (error instanceof RateLimitError) {
           // Extract retry-after from error message or use exponential backoff
@@ -372,15 +372,15 @@ class RobustTracktionClient extends TracktionClient {
           // Don't retry for other errors
           throw error;
         }
-        
+
         console.log(`Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
         await this.sleep(delay);
       }
     }
-    
+
     throw lastError;
   }
-  
+
   async searchTracksWithRetry(query, options = {}) {
     return this.retryWithBackoff(async () => {
       const response = await this.get('/api/v1/search/tracks', {
@@ -390,16 +390,16 @@ class RobustTracktionClient extends TracktionClient {
       return response.tracks;
     });
   }
-  
+
   async batchSearchTracks(queries, delay = 100) {
     const results = [];
-    
+
     for (let i = 0; i < queries.length; i++) {
       const query = queries[i];
       try {
         const tracks = await this.searchTracksWithRetry(query);
         results.push({ query, tracks });
-        
+
         // Add delay between requests to avoid rate limiting
         if (i < queries.length - 1) {
           await this.sleep(delay);
@@ -409,7 +409,7 @@ class RobustTracktionClient extends TracktionClient {
         results.push({ query, error: error.message });
       }
     }
-    
+
     return results;
   }
 }
@@ -417,11 +417,11 @@ class RobustTracktionClient extends TracktionClient {
 // Example usage
 async function robustExample() {
   const robustClient = new RobustTracktionClient('tk_live_1234567890abcdef...');
-  
+
   // Batch search multiple queries
   const queries = ['electronic', 'house music', 'techno', 'ambient'];
   const results = await robustClient.batchSearchTracks(queries);
-  
+
   results.forEach(result => {
     if (result.tracks) {
       console.log(`Found ${result.tracks.length} tracks for '${result.query}'`);
@@ -446,37 +446,37 @@ class APIKeyManager {
       }
     });
   }
-  
+
   async createAPIKey(name, permissions, scopes, expiresAt = null) {
     const data = {
       name,
       permissions,
       scopes
     };
-    
+
     if (expiresAt) {
       data.expires_at = expiresAt;
     }
-    
+
     const response = await this.client.post('/api/v1/developer/keys', data);
     return response.data;
   }
-  
+
   async listAPIKeys() {
     const response = await this.client.get('/api/v1/developer/keys');
     return response.data;
   }
-  
+
   async rotateAPIKey(keyId) {
     const response = await this.client.post(`/api/v1/developer/keys/${keyId}/rotate`);
     return response.data;
   }
-  
+
   async revokeAPIKey(keyId) {
     const response = await this.client.delete(`/api/v1/developer/keys/${keyId}`);
     return response.data;
   }
-  
+
   async getKeyUsageStats(keyId) {
     const response = await this.client.get(`/api/v1/developer/keys/${keyId}/stats`);
     return response.data;
@@ -486,7 +486,7 @@ class APIKeyManager {
 // Example usage
 async function keyManagementExample() {
   const keyManager = new APIKeyManager('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
-  
+
   try {
     // Create a new API key
     const newKey = await keyManager.createAPIKey(
@@ -496,17 +496,17 @@ async function keyManagementExample() {
       '2024-12-31T23:59:59Z'
     );
     console.log('Created API key:', newKey.key);
-    
+
     // List all keys
     const keys = await keyManager.listAPIKeys();
     keys.keys.forEach(key => {
       console.log(`Key: ${key.name} - Active: ${key.is_active}`);
     });
-    
+
     // Get usage stats
     const stats = await keyManager.getKeyUsageStats(newKey.id);
     console.log('Usage stats:', stats);
-    
+
   } catch (error) {
     console.error('Key management error:', error.response?.data || error.message);
   }
@@ -534,15 +534,15 @@ async function keyManagementExample() {
         this.baseURL = baseURL;
         this.accessToken = localStorage.getItem('tracktion_access_token');
         this.refreshToken = localStorage.getItem('tracktion_refresh_token');
-        
+
         // Configure axios
         axios.defaults.baseURL = this.baseURL;
         axios.defaults.headers.common['Content-Type'] = 'application/json';
-        
+
         if (this.accessToken) {
           axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`;
         }
-        
+
         // Set up axios interceptors
         axios.interceptors.response.use(
           response => response,
@@ -561,40 +561,40 @@ async function keyManagementExample() {
           }
         );
       }
-      
+
       async login(username, password) {
         try {
           const response = await axios.post('/api/v1/auth/token', {
             username,
             password
           });
-          
+
           this.accessToken = response.data.access_token;
           this.refreshToken = response.data.refresh_token;
-          
+
           // Store tokens in localStorage
           localStorage.setItem('tracktion_access_token', this.accessToken);
           localStorage.setItem('tracktion_refresh_token', this.refreshToken);
-          
+
           // Set default header
           axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`;
-          
+
           return response.data;
         } catch (error) {
           throw error;
         }
       }
-      
+
       async refreshAccessToken() {
         const response = await axios.post('/api/v1/auth/refresh', {
           refresh_token: this.refreshToken
         });
-        
+
         this.accessToken = response.data.access_token;
         localStorage.setItem('tracktion_access_token', this.accessToken);
         axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`;
       }
-      
+
       logout() {
         this.accessToken = null;
         this.refreshToken = null;
@@ -602,7 +602,7 @@ async function keyManagementExample() {
         localStorage.removeItem('tracktion_refresh_token');
         delete axios.defaults.headers.common['Authorization'];
       }
-      
+
       async searchTracks(query, limit = 10) {
         const response = await axios.get('/api/v1/search/tracks', {
           params: { q: query, limit }
@@ -610,23 +610,23 @@ async function keyManagementExample() {
         return response.data.tracks;
       }
     }
-    
+
     const client = new BrowserTracktionClient();
-    
+
     async function searchTracks() {
       const query = document.getElementById('searchInput').value;
       const resultsDiv = document.getElementById('results');
-      
+
       if (!query.trim()) {
         resultsDiv.innerHTML = '<p>Please enter a search query</p>';
         return;
       }
-      
+
       try {
         resultsDiv.innerHTML = '<p>Searching...</p>';
-        
+
         const tracks = await client.searchTracks(query, 10);
-        
+
         if (tracks && tracks.length > 0) {
           let html = '<h2>Search Results:</h2><ul>';
           tracks.forEach(track => {
@@ -648,7 +648,7 @@ async function keyManagementExample() {
         }
       }
     }
-    
+
     // Example login function
     async function login() {
       try {
@@ -681,7 +681,7 @@ class ErrorHandler {
       const { status, data } = error.response;
       const errorCode = data?.error || 'unknown_error';
       const message = data?.message || error.message;
-      
+
       switch (status) {
         case 401:
           if (errorCode === 'token_expired') {
@@ -691,7 +691,7 @@ class ErrorHandler {
           } else {
             throw new TracktionAPIError('Authentication failed', 401, errorCode);
           }
-        
+
         case 403:
           if (errorCode === 'insufficient_permissions') {
             const requiredScopes = data?.required_scopes || [];
@@ -705,11 +705,11 @@ class ErrorHandler {
           } else {
             throw new TracktionAPIError('Access denied', 403, errorCode);
           }
-        
+
         case 429:
           const retryAfter = error.response.headers['x-ratelimit-retry-after'] || 60;
           throw new RateLimitError(`Rate limit exceeded. Retry after ${retryAfter} seconds.`);
-        
+
         default:
           throw new TracktionAPIError(`HTTP ${status}: ${message}`, status, errorCode);
       }
@@ -754,19 +754,19 @@ class TracktionCLI {
       console.error('Please set TRACKTION_API_KEY environment variable');
       process.exit(1);
     }
-    
+
     this.client = new TracktionClient(this.apiKey);
   }
-  
+
   async searchCommand(query, options = {}) {
     try {
       console.log(`Searching for: ${query}`);
-      
+
       const response = await this.client.get('/api/v1/search/tracks', {
         q: query,
         limit: options.limit || 10
       });
-      
+
       const tracks = response.tracks;
       if (tracks && tracks.length > 0) {
         console.log(`\\nFound ${tracks.length} tracks:`);
@@ -789,22 +789,22 @@ class TracktionCLI {
       }
     }
   }
-  
+
   async batchCommand(queries) {
     console.log('Performing batch search...');
-    
+
     for (let i = 0; i < queries.length; i++) {
       const query = queries[i];
       console.log(`\\n[${i + 1}/${queries.length}] Searching: ${query}`);
-      
+
       try {
         const response = await this.client.get('/api/v1/search/tracks', {
           q: query,
           limit: 3
         });
-        
+
         console.log(`Found ${response.tracks.length} tracks`);
-        
+
         // Add delay to avoid rate limiting
         if (i < queries.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -814,24 +814,24 @@ class TracktionCLI {
       }
     }
   }
-  
+
   printUsage() {
     console.log('Tracktion API CLI');
     console.log('Usage:');
     console.log('  node cli.js search "electronic music"');
     console.log('  node cli.js batch "house" "techno" "ambient"');
   }
-  
+
   async run() {
     const args = process.argv.slice(2);
-    
+
     if (args.length === 0) {
       this.printUsage();
       return;
     }
-    
+
     const command = args[0];
-    
+
     switch (command) {
       case 'search':
         if (args.length < 2) {
@@ -840,7 +840,7 @@ class TracktionCLI {
         }
         await this.searchCommand(args[1]);
         break;
-      
+
       case 'batch':
         if (args.length < 2) {
           console.error('Please provide search queries');
@@ -848,7 +848,7 @@ class TracktionCLI {
         }
         await this.batchCommand(args.slice(1));
         break;
-      
+
       default:
         console.error('Unknown command:', command);
         this.printUsage();

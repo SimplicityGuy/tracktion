@@ -26,31 +26,31 @@ class TracktionClient
     private $client;
     private $apiKey;
     private $baseURL;
-    
+
     public function __construct($apiKey = null, $baseURL = 'https://api.tracktion.com')
     {
         $this->apiKey = $apiKey;
         $this->baseURL = $baseURL;
-        
+
         $headers = ['Content-Type' => 'application/json'];
         if ($apiKey) {
             $headers['Authorization'] = 'Bearer ' . $apiKey;
         }
-        
+
         $this->client = new Client([
             'base_uri' => $this->baseURL,
             'timeout' => 30,
             'headers' => $headers
         ]);
     }
-    
+
     public function get($endpoint, $params = [])
     {
         try {
             $response = $this->client->get($endpoint, [
                 'query' => $params
             ]);
-            
+
             return json_decode($response->getBody()->getContents(), true);
         } catch (ClientException $e) {
             $this->handleClientException($e);
@@ -58,14 +58,14 @@ class TracktionClient
             throw new Exception('Server error: ' . $e->getMessage());
         }
     }
-    
+
     public function post($endpoint, $data = [])
     {
         try {
             $response = $this->client->post($endpoint, [
                 'json' => $data
             ]);
-            
+
             return json_decode($response->getBody()->getContents(), true);
         } catch (ClientException $e) {
             $this->handleClientException($e);
@@ -73,14 +73,14 @@ class TracktionClient
             throw new Exception('Server error: ' . $e->getMessage());
         }
     }
-    
+
     public function put($endpoint, $data = [])
     {
         try {
             $response = $this->client->put($endpoint, [
                 'json' => $data
             ]);
-            
+
             return json_decode($response->getBody()->getContents(), true);
         } catch (ClientException $e) {
             $this->handleClientException($e);
@@ -88,7 +88,7 @@ class TracktionClient
             throw new Exception('Server error: ' . $e->getMessage());
         }
     }
-    
+
     public function delete($endpoint)
     {
         try {
@@ -100,18 +100,18 @@ class TracktionClient
             throw new Exception('Server error: ' . $e->getMessage());
         }
     }
-    
+
     private function handleClientException(ClientException $e)
     {
         $response = $e->getResponse();
         $statusCode = $response->getStatusCode();
         $body = json_decode($response->getBody()->getContents(), true);
-        
+
         if ($statusCode === 429) {
             $retryAfter = $response->getHeader('X-RateLimit-Retry-After')[0] ?? 60;
             throw new RateLimitException("Rate limit exceeded. Retry after {$retryAfter} seconds.");
         }
-        
+
         $message = $body['message'] ?? $e->getMessage();
         throw new TracktionAPIException($message, $statusCode, $body['error'] ?? null);
     }
@@ -120,13 +120,13 @@ class TracktionClient
 class TracktionAPIException extends Exception
 {
     private $errorCode;
-    
+
     public function __construct($message, $statusCode, $errorCode = null)
     {
         parent::__construct($message, $statusCode);
         $this->errorCode = $errorCode;
     }
-    
+
     public function getErrorCode()
     {
         return $this->errorCode;
@@ -152,7 +152,7 @@ function searchTracks($client, $query, $limit = 10)
             'q' => $query,
             'limit' => $limit
         ]);
-        
+
         return $response['tracks'] ?? [];
     } catch (RateLimitException $e) {
         error_log('Rate limit error: ' . $e->getMessage());
@@ -186,18 +186,18 @@ class JWTAuthClient
     private $baseURL;
     private $accessToken;
     private $refreshToken;
-    
+
     public function __construct($baseURL = 'https://api.tracktion.com')
     {
         $this->baseURL = $baseURL;
-        
+
         $this->client = new Client([
             'base_uri' => $this->baseURL,
             'timeout' => 30,
             'headers' => ['Content-Type' => 'application/json']
         ]);
     }
-    
+
     public function login($username, $password)
     {
         try {
@@ -207,12 +207,12 @@ class JWTAuthClient
                     'password' => $password
                 ]
             ]);
-            
+
             $data = json_decode($response->getBody()->getContents(), true);
-            
+
             $this->accessToken = $data['access_token'];
             $this->refreshToken = $data['refresh_token'];
-            
+
             return [
                 'success' => true,
                 'user' => $data['user']
@@ -224,70 +224,70 @@ class JWTAuthClient
             ];
         }
     }
-    
+
     public function refreshAccessToken()
     {
         if (!$this->refreshToken) {
             throw new Exception('No refresh token available');
         }
-        
+
         try {
             $response = $this->client->post('/api/v1/auth/refresh', [
                 'json' => ['refresh_token' => $this->refreshToken]
             ]);
-            
+
             $data = json_decode($response->getBody()->getContents(), true);
             $this->accessToken = $data['access_token'];
-            
+
             // Update refresh token if provided
             if (isset($data['refresh_token'])) {
                 $this->refreshToken = $data['refresh_token'];
             }
-            
+
             return true;
         } catch (ClientException $e) {
             return false;
         }
     }
-    
+
     public function isTokenExpired()
     {
         if (!$this->accessToken) {
             return true;
         }
-        
+
         try {
             $parts = explode('.', $this->accessToken);
             $payload = json_decode(base64_decode($parts[1]), true);
-            
+
             return isset($payload['exp']) && $payload['exp'] <= time();
         } catch (Exception $e) {
             return true;
         }
     }
-    
+
     public function makeAuthenticatedRequest($method, $endpoint, $data = null)
     {
         // Refresh token if expired
         if ($this->isTokenExpired() && $this->refreshToken) {
             $this->refreshAccessToken();
         }
-        
+
         if (!$this->accessToken) {
             throw new Exception('No valid access token available');
         }
-        
+
         $options = [
             'headers' => [
                 'Authorization' => 'Bearer ' . $this->accessToken,
                 'Content-Type' => 'application/json'
             ]
         ];
-        
+
         if ($data) {
             $options['json'] = $data;
         }
-        
+
         try {
             $response = $this->client->request($method, $endpoint, $options);
             return json_decode($response->getBody()->getContents(), true);
@@ -303,7 +303,7 @@ class JWTAuthClient
             throw $e;
         }
     }
-    
+
     public function clearTokens()
     {
         $this->accessToken = null;
@@ -317,7 +317,7 @@ $jwtClient = new JWTAuthClient();
 $loginResult = $jwtClient->login('user@example.com', 'password');
 if ($loginResult['success']) {
     echo "Welcome, {$loginResult['user']['email']}!\n";
-    
+
     try {
         $profile = $jwtClient->makeAuthenticatedRequest('GET', '/api/v1/user/profile');
         echo "User profile: " . json_encode($profile, JSON_PRETTY_PRINT) . "\n";
@@ -337,27 +337,27 @@ if ($loginResult['success']) {
 class SecureTracktionClient extends TracktionClient
 {
     private $hmacSecret;
-    
+
     public function __construct($apiKey, $hmacSecret, $baseURL = 'https://api.tracktion.com')
     {
         parent::__construct($apiKey, $baseURL);
         $this->hmacSecret = $hmacSecret;
     }
-    
+
     public function generateHMACSignature($timestamp, $method, $path, $body = '')
     {
         $message = $timestamp . '.' . strtoupper($method) . '.' . $path . '.' . $body;
         $signature = hash_hmac('sha256', $message, $this->hmacSecret);
         return 'sha256=' . $signature;
     }
-    
+
     public function makeSecureRequest($method, $endpoint, $data = null)
     {
         $timestamp = time();
         $body = $data ? json_encode($data) : '';
-        
+
         $signature = $this->generateHMACSignature($timestamp, $method, $endpoint, $body);
-        
+
         $options = [
             'headers' => [
                 'X-Timestamp' => (string)$timestamp,
@@ -366,11 +366,11 @@ class SecureTracktionClient extends TracktionClient
                 'Content-Type' => 'application/json'
             ]
         ];
-        
+
         if ($data) {
             $options['json'] = $data;
         }
-        
+
         try {
             $response = $this->client->request($method, $endpoint, $options);
             return json_decode($response->getBody()->getContents(), true);
@@ -408,29 +408,29 @@ class RobustTracktionClient extends TracktionClient
 {
     private $maxRetries;
     private $baseDelay;
-    
+
     public function __construct($apiKey, $baseURL = 'https://api.tracktion.com', $options = [])
     {
         parent::__construct($apiKey, $baseURL);
         $this->maxRetries = $options['maxRetries'] ?? 3;
         $this->baseDelay = $options['baseDelay'] ?? 1; // seconds
     }
-    
+
     public function retryWithBackoff(callable $fn, $maxRetries = null)
     {
         $maxRetries = $maxRetries ?? $this->maxRetries;
         $lastException = null;
-        
+
         for ($attempt = 0; $attempt <= $maxRetries; $attempt++) {
             try {
                 return $fn();
             } catch (Exception $e) {
                 $lastException = $e;
-                
+
                 if ($attempt === $maxRetries) {
                     throw $e;
                 }
-                
+
                 $delay = $this->calculateDelay($e, $attempt);
                 if ($delay > 0) {
                     error_log("Attempt " . ($attempt + 1) . " failed, retrying in {$delay} seconds...");
@@ -441,10 +441,10 @@ class RobustTracktionClient extends TracktionClient
                 }
             }
         }
-        
+
         throw $lastException;
     }
-    
+
     private function calculateDelay(Exception $e, $attempt)
     {
         if ($e instanceof RateLimitException) {
@@ -461,11 +461,11 @@ class RobustTracktionClient extends TracktionClient
             // Network errors - retry with exponential backoff
             return $this->baseDelay * pow(2, $attempt);
         }
-        
+
         // Don't retry for other errors
         return 0;
     }
-    
+
     public function searchTracksWithRetry($query, $options = [])
     {
         return $this->retryWithBackoff(function () use ($query, $options) {
@@ -473,16 +473,16 @@ class RobustTracktionClient extends TracktionClient
             return $response['tracks'] ?? [];
         });
     }
-    
+
     public function batchSearchTracks(array $queries, $delay = 0.1)
     {
         $results = [];
-        
+
         foreach ($queries as $i => $query) {
             try {
                 $tracks = $this->searchTracksWithRetry($query);
                 $results[] = ['query' => $query, 'tracks' => $tracks];
-                
+
                 // Add delay between requests to avoid rate limiting
                 if ($i < count($queries) - 1) {
                     usleep($delay * 1000000); // Convert to microseconds
@@ -492,7 +492,7 @@ class RobustTracktionClient extends TracktionClient
                 $results[] = ['query' => $query, 'error' => $e->getMessage()];
             }
         }
-        
+
         return $results;
     }
 }
@@ -521,7 +521,7 @@ foreach ($results as $result) {
 class APIKeyManager
 {
     private $client;
-    
+
     public function __construct($jwtToken, $baseURL = 'https://api.tracktion.com')
     {
         $this->client = new Client([
@@ -533,7 +533,7 @@ class APIKeyManager
             ]
         ]);
     }
-    
+
     public function createAPIKey($name, array $permissions, array $scopes, $expiresAt = null)
     {
         $data = [
@@ -541,33 +541,33 @@ class APIKeyManager
             'permissions' => $permissions,
             'scopes' => $scopes
         ];
-        
+
         if ($expiresAt) {
             $data['expires_at'] = $expiresAt;
         }
-        
+
         $response = $this->client->post('/api/v1/developer/keys', ['json' => $data]);
         return json_decode($response->getBody()->getContents(), true);
     }
-    
+
     public function listAPIKeys()
     {
         $response = $this->client->get('/api/v1/developer/keys');
         return json_decode($response->getBody()->getContents(), true);
     }
-    
+
     public function rotateAPIKey($keyId)
     {
         $response = $this->client->post("/api/v1/developer/keys/{$keyId}/rotate");
         return json_decode($response->getBody()->getContents(), true);
     }
-    
+
     public function revokeAPIKey($keyId)
     {
         $response = $this->client->delete("/api/v1/developer/keys/{$keyId}");
         return json_decode($response->getBody()->getContents(), true);
     }
-    
+
     public function getKeyUsageStats($keyId)
     {
         $response = $this->client->get("/api/v1/developer/keys/{$keyId}/stats");
@@ -578,7 +578,7 @@ class APIKeyManager
 // Example usage
 try {
     $keyManager = new APIKeyManager('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
-    
+
     // Create a new API key
     $newKey = $keyManager->createAPIKey(
         'Production Server Key',
@@ -587,13 +587,13 @@ try {
         '2024-12-31T23:59:59Z'
     );
     echo "Created API key: " . $newKey['key'] . "\n";
-    
+
     // List all keys
     $keys = $keyManager->listAPIKeys();
     foreach ($keys['keys'] as $key) {
         echo "Key: {$key['name']} - Active: " . ($key['is_active'] ? 'Yes' : 'No') . "\n";
     }
-    
+
 } catch (Exception $e) {
     echo "Key management error: " . $e->getMessage() . "\n";
 }
@@ -624,12 +624,12 @@ class TracktionService
     private $client;
     private $apiKey;
     private $hmacSecret;
-    
+
     public function __construct()
     {
         $this->apiKey = config('tracktion.api_key');
         $this->hmacSecret = config('tracktion.hmac_secret');
-        
+
         $this->client = new Client([
             'base_uri' => config('tracktion.base_url'),
             'timeout' => 30,
@@ -639,11 +639,11 @@ class TracktionService
             ]
         ]);
     }
-    
+
     public function searchTracks($query, $limit = 10, $cacheTTL = 300)
     {
         $cacheKey = "tracktion_search_" . md5($query . $limit);
-        
+
         return Cache::remember($cacheKey, $cacheTTL, function () use ($query, $limit) {
             try {
                 $response = $this->client->get('/api/v1/search/tracks', [
@@ -652,7 +652,7 @@ class TracktionService
                         'limit' => $limit
                     ]
                 ]);
-                
+
                 $data = json_decode($response->getBody()->getContents(), true);
                 return $data['tracks'] ?? [];
             } catch (ClientException $e) {
@@ -661,19 +661,19 @@ class TracktionService
                     'error' => $e->getMessage(),
                     'status' => $e->getResponse()->getStatusCode()
                 ]);
-                
+
                 return [];
             } catch (Exception $e) {
                 Log::error('Tracktion service error', [
                     'query' => $query,
                     'error' => $e->getMessage()
                 ]);
-                
+
                 return [];
             }
         });
     }
-    
+
     public function getUserProfile($userId)
     {
         try {
@@ -686,26 +686,26 @@ class TracktionService
             throw $e;
         }
     }
-    
+
     public function makeSecureRequest($method, $endpoint, $data = null)
     {
         $timestamp = time();
         $body = $data ? json_encode($data) : '';
-        
+
         $message = $timestamp . '.' . strtoupper($method) . '.' . $endpoint . '.' . $body;
         $signature = 'sha256=' . hash_hmac('sha256', $message, $this->hmacSecret);
-        
+
         $options = [
             'headers' => [
                 'X-Timestamp' => (string)$timestamp,
                 'X-Signature' => $signature
             ]
         ];
-        
+
         if ($data) {
             $options['json'] = $data;
         }
-        
+
         $response = $this->client->request($method, $endpoint, $options);
         return json_decode($response->getBody()->getContents(), true);
     }
@@ -720,23 +720,23 @@ use Illuminate\Http\Request;
 class TrackController extends Controller
 {
     private $tracktionService;
-    
+
     public function __construct(TracktionService $tracktionService)
     {
         $this->tracktionService = $tracktionService;
     }
-    
+
     public function search(Request $request)
     {
         $query = $request->get('q');
         $limit = $request->get('limit', 10);
-        
+
         if (!$query) {
             return response()->json(['error' => 'Query parameter required'], 400);
         }
-        
+
         $tracks = $this->tracktionService->searchTracks($query, $limit);
-        
+
         return response()->json([
             'query' => $query,
             'tracks' => $tracks,
@@ -774,7 +774,7 @@ class TracktionClient
     private $cache;
     private $logger;
     private $hmacSecret;
-    
+
     public function __construct(
         string $apiKey,
         string $baseUrl,
@@ -785,7 +785,7 @@ class TracktionClient
         $this->cache = $cache;
         $this->logger = $logger;
         $this->hmacSecret = $hmacSecret;
-        
+
         $this->client = new Client([
             'base_uri' => $baseUrl,
             'timeout' => 30,
@@ -795,11 +795,11 @@ class TracktionClient
             ]
         ]);
     }
-    
+
     public function searchTracks(string $query, int $limit = 10): array
     {
         $cacheKey = 'tracktion_search_' . md5($query . $limit);
-        
+
         return $this->cache->get($cacheKey, function () use ($query, $limit) {
             try {
                 $response = $this->client->get('/api/v1/search/tracks', [
@@ -808,7 +808,7 @@ class TracktionClient
                         'limit' => $limit
                     ]
                 ]);
-                
+
                 $data = json_decode($response->getBody()->getContents(), true);
                 return $data['tracks'] ?? [];
             } catch (ClientException $e) {
@@ -817,7 +817,7 @@ class TracktionClient
                     'error' => $e->getMessage(),
                     'status' => $e->getResponse()->getStatusCode()
                 ]);
-                
+
                 return [];
             }
         });
@@ -836,12 +836,12 @@ use Symfony\Component\Routing\Annotation\Route;
 class TrackController extends AbstractController
 {
     private $tracktionClient;
-    
+
     public function __construct(TracktionClient $tracktionClient)
     {
         $this->tracktionClient = $tracktionClient;
     }
-    
+
     /**
      * @Route("/api/search/tracks", methods={"GET"})
      */
@@ -849,13 +849,13 @@ class TrackController extends AbstractController
     {
         $query = $request->query->get('q');
         $limit = $request->query->getInt('limit', 10);
-        
+
         if (!$query) {
             return new JsonResponse(['error' => 'Query parameter required'], 400);
         }
-        
+
         $tracks = $this->tracktionClient->searchTracks($query, $limit);
-        
+
         return new JsonResponse([
             'query' => $query,
             'tracks' => $tracks,
@@ -878,27 +878,27 @@ require_once 'vendor/autoload.php';
 class TracktionApp
 {
     private $client;
-    
+
     public function __construct()
     {
         $apiKey = $_ENV['TRACKTION_API_KEY'] ?? null;
-        
+
         if (!$apiKey) {
             die("Please set TRACKTION_API_KEY environment variable\n");
         }
-        
+
         $this->client = new RobustTracktionClient($apiKey);
     }
-    
+
     public function run()
     {
         echo "Tracktion API PHP Example\n";
         echo "========================\n\n";
-        
+
         // Search for tracks
         echo "Searching for electronic music tracks...\n";
         $tracks = $this->client->searchTracksWithRetry('electronic music', ['limit' => 5]);
-        
+
         if ($tracks) {
             echo "Found " . count($tracks) . " tracks:\n";
             foreach ($tracks as $i => $track) {
@@ -913,12 +913,12 @@ class TracktionApp
         } else {
             echo "No tracks found or error occurred\n";
         }
-        
+
         // Demonstrate batch searching
         echo "\nBatch searching multiple genres...\n";
         $genres = ['house', 'techno', 'ambient', 'drum and bass'];
         $batchResults = $this->client->batchSearchTracks($genres);
-        
+
         foreach ($batchResults as $result) {
             if (isset($result['tracks'])) {
                 echo "{$result['query']}: " . count($result['tracks']) . " tracks found\n";
@@ -926,7 +926,7 @@ class TracktionApp
                 echo "{$result['query']}: Error - {$result['error']}\n";
             }
         }
-        
+
         echo "\nAPI example completed successfully!\n";
     }
 }
