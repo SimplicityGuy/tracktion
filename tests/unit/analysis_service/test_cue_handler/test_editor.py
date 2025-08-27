@@ -366,6 +366,209 @@ class TestCueEditor:
             finally:
                 test_file.unlink()
 
+    def test_update_file_reference(self, editor, sample_cue_sheet):
+        """Test updating file reference."""
+        editor.cue_sheet = sample_cue_sheet
+
+        editor.update_file_reference(0, "new_file.wav", "WAVE")
+
+        assert editor.cue_sheet.files[0].filename == "new_file.wav"
+        assert editor.cue_sheet.files[0].file_type == "WAVE"
+        assert editor.dirty is True
+
+    def test_validate_file_transitions(self, editor):
+        """Test file transition validation."""
+        from services.analysis_service.src.cue_handler.models import FileReference, Track
+
+        editor.cue_sheet = MagicMock()
+
+        # Create two files with overlapping track numbers
+        file1 = FileReference("file1.wav", "WAVE")
+        file1.tracks = [Track(5, "AUDIO")]
+
+        file2 = FileReference("file2.wav", "WAVE")
+        file2.tracks = [Track(3, "AUDIO")]
+
+        editor.cue_sheet.files = [file1, file2]
+
+        errors = editor.validate_file_transitions()
+        assert len(errors) == 1
+        assert "Track numbering overlap" in errors[0]
+
+    def test_consolidate_to_single_file(self, editor):
+        """Test consolidating multi-file CUE to single file."""
+        from services.analysis_service.src.cue_handler.models import CueSheet, FileReference, Track
+
+        # Create multi-file CUE
+        cue_sheet = CueSheet()
+
+        file1 = FileReference("file1.wav", "WAVE")
+        track1 = Track(1, "AUDIO")
+        track1.title = "Track 1"
+        file1.tracks = [track1]
+
+        file2 = FileReference("file2.wav", "WAVE")
+        track2 = Track(2, "AUDIO")
+        track2.title = "Track 2"
+        file2.tracks = [track2]
+
+        cue_sheet.files = [file1, file2]
+        editor.cue_sheet = cue_sheet
+
+        editor.consolidate_to_single_file("consolidated.wav")
+
+        assert len(editor.cue_sheet.files) == 1
+        assert editor.cue_sheet.files[0].filename == "consolidated.wav"
+        assert len(editor.cue_sheet.files[0].tracks) == 2
+        assert editor.dirty is True
+
+    def test_edit_from_tracklist(self, editor, sample_cue_sheet):
+        """Test updating CUE from tracklist data."""
+        editor.cue_sheet = sample_cue_sheet
+
+        tracklist_data = {
+            "tracks": [
+                {"title": "New Track 1", "artist": "Artist A", "start_time": "00:00:00"},
+                {"title": "New Track 2", "artist": "Artist B", "start_time": "03:00:00"},
+            ]
+        }
+
+        editor.edit_from_tracklist(tracklist_data)
+
+        tracks = editor.cue_sheet.files[0].tracks
+        assert len(tracks) == 2
+        assert tracks[0].title == "New Track 1"
+        assert tracks[1].title == "New Track 2"
+        assert editor.dirty is True
+
+    def test_sync_to_tracklist(self, editor, sample_cue_sheet):
+        """Test converting CUE to tracklist format."""
+        editor.cue_sheet = sample_cue_sheet
+        editor.original_path = Path("/test/file.cue")
+
+        tracklist = editor.sync_to_tracklist()
+
+        assert "tracks" in tracklist
+        assert len(tracklist["tracks"]) == 2
+        assert tracklist["tracks"][0]["title"] == "Track 1"
+        assert tracklist["source"] == "cue_editor"
+        assert tracklist["cue_file_path"] == "/test/file.cue"
+
+    def test_batch_edit(self, editor, sample_cue_sheet):
+        """Test batch editing operations."""
+        editor.cue_sheet = sample_cue_sheet
+
+        operations = [
+            {"type": "add_track", "title": "New Track", "performer": "New Artist", "start_time": "05:00:00"},
+            {"type": "update_metadata", "track_number": 1, "metadata": {"title": "Updated Track 1"}},
+            {"type": "remove_track", "track_number": 2},
+        ]
+
+        results = editor.batch_edit(operations)
+
+        assert results["successful"] == 3
+        assert results["failed"] == 0
+        assert len(results["errors"]) == 0
+
+        tracks = editor.cue_sheet.files[0].tracks
+        assert len(tracks) == 2
+        assert tracks[0].title == "Updated Track 1"
+
+    def test_validate_before_save(self, editor, sample_cue_sheet):
+        """Test validation before saving."""
+        editor.cue_sheet = sample_cue_sheet
+
+        is_valid, errors = editor.validate_before_save()
+        assert is_valid is True
+        assert len(errors) == 0
+
+        # Remove INDEX 01 from a track
+        del editor.cue_sheet.files[0].tracks[0].indices[1]
+
+        is_valid, errors = editor.validate_before_save()
+        assert is_valid is False
+        assert "Track 1 missing INDEX 01" in errors
+
+    def test_transaction_rollback(self, editor, sample_cue_sheet):
+        """Test transaction rollback."""
+        editor.cue_sheet = sample_cue_sheet
+        original_title = sample_cue_sheet.title
+
+        editor.begin_transaction()
+
+        # Make changes
+        editor.update_disc_metadata(title="Changed Title")
+        editor.add_track("New Track")
+
+        assert editor.cue_sheet.title == "Changed Title"
+        assert len(editor.cue_sheet.files[0].tracks) == 3
+
+        # Rollback
+        editor.rollback_transaction()
+
+        assert editor.cue_sheet.title == original_title
+        assert len(editor.cue_sheet.files[0].tracks) == 2
+
+    def test_transaction_commit(self, editor, sample_cue_sheet):
+        """Test transaction commit."""
+        editor.cue_sheet = sample_cue_sheet
+
+        editor.begin_transaction()
+        editor.update_disc_metadata(title="Changed Title")
+        editor.commit_transaction()
+
+        assert editor.cue_sheet.title == "Changed Title"
+        assert not hasattr(editor, "_transaction_backup")
+
+    def test_edge_cases(self, editor):
+        """Test edge cases and error conditions."""
+        # Test operations without loaded CUE sheet
+        with pytest.raises(ValueError, match="No CUE sheet loaded"):
+            editor.add_track("Test")
+
+        with pytest.raises(ValueError, match="No CUE sheet loaded"):
+            editor.save_cue_file()
+
+        # validate_before_save returns (False, errors) instead of raising
+        is_valid, errors = editor.validate_before_save()
+        assert is_valid is False
+        assert "No CUE sheet loaded" in errors
+
+    def test_timestamp_validation(self, editor, sample_cue_sheet):
+        """Test timestamp adjustment validation."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Adjust track time
+        editor.adjust_track_time(1, "00:30:00", ripple=True)
+
+        # Verify ripple effect
+        assert editor.cue_sheet.files[0].tracks[0].indices[1] == CueTime(0, 30, 0)
+        assert editor.cue_sheet.files[0].tracks[1].indices[1] == CueTime(4, 0, 0)
+
+    def test_metadata_character_limits(self, editor, sample_cue_sheet):
+        """Test metadata character limit enforcement."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Try to set title longer than 80 chars
+        long_title = "A" * 100
+        editor.update_track_metadata(1, title=long_title)
+
+        # Should be truncated to 80 chars
+        assert len(editor.cue_sheet.files[0].tracks[0].title) == 80
+
+    def test_multi_file_split(self, editor, sample_cue_sheet):
+        """Test splitting into multiple FILE entries."""
+        editor.cue_sheet = sample_cue_sheet
+        editor.add_track("Track 3", start_time="06:00:00")
+        editor.add_track("Track 4", start_time="09:00:00")
+
+        # Split at track 3
+        editor.split_by_file_references([3])
+
+        assert len(editor.cue_sheet.files) == 2
+        assert len(editor.cue_sheet.files[0].tracks) == 2
+        assert len(editor.cue_sheet.files[1].tracks) == 2
+
 
 class TestBackupManager:
     """Test BackupManager class."""
