@@ -33,6 +33,10 @@ from .formats import (
     get_generator,
 )
 
+# Editor exports
+from .editor import CueEditor
+from .backup import BackupManager
+
 __all__ = [
     # Parser
     "CueParser",
@@ -59,4 +63,7 @@ __all__ = [
     "RekordboxGenerator",
     "KodiGenerator",
     "get_generator",
+    # Editor
+    "CueEditor",
+    "BackupManager",
 ]
