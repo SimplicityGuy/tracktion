@@ -28,7 +28,7 @@ cache = RedisCache()
 
 class SearchResult(BaseModel):
     """Individual search result from 1001tracklists."""
-    
+
     id: str = Field(description="Tracklist ID from 1001tracklists")
     url: str = Field(description="Full URL to the tracklist")
     title: str = Field(description="Tracklist title")
@@ -43,7 +43,7 @@ class SearchResult(BaseModel):
 
 class SearchResponse(BaseModel):
     """Response model for tracklist search."""
-    
+
     success: bool = Field(description="Whether search was successful")
     results: List[SearchResult] = Field(default_factory=list, description="Search results")
     total_count: int = Field(description="Total number of results found")
@@ -66,11 +66,11 @@ async def search_1001tracklists(
     date_to: Optional[str] = Query(None, description="End date filter (YYYY-MM-DD)"),
     page: int = Query(1, ge=1, description="Page number (starts from 1)"),
     page_size: int = Query(20, ge=1, le=100, description="Number of results per page"),
-    force_refresh: bool = Query(False, description="Force re-search even if cached")
+    force_refresh: bool = Query(False, description="Force re-search even if cached"),
 ) -> SearchResponse:
     """
     Search for tracklists on 1001tracklists.com.
-    
+
     Args:
         query: General search query (searches title, DJ, event)
         artist: Specific DJ/artist name to search for
@@ -81,21 +81,20 @@ async def search_1001tracklists(
         page: Page number for pagination
         page_size: Number of results per page
         force_refresh: Force re-search even if cached
-        
+
     Returns:
         SearchResponse with paginated search results
     """
     start_time = time.time()
     correlation_id = str(uuid4())
-    
+
     try:
         # Validate search parameters
         if not any([query, artist, title]):
             raise HTTPException(
-                status_code=400,
-                detail="At least one search parameter (query, artist, or title) must be provided"
+                status_code=400, detail="At least one search parameter (query, artist, or title) must be provided"
             )
-        
+
         # Build search parameters
         search_params = {
             "query": query,
@@ -105,21 +104,22 @@ async def search_1001tracklists(
             "date_from": date_from,
             "date_to": date_to,
             "page": page,
-            "page_size": page_size
+            "page_size": page_size,
         }
-        
+
         # Remove None values
         search_params = {k: v for k, v in search_params.items() if v is not None}
-        
+
         # Check cache first unless force refresh
         cache_key = f"search:1001:{hash(str(sorted(search_params.items())))}"
         cached_results = None
-        
+
         if not force_refresh:
             try:
                 cached_data = await cache.get(cache_key)
                 if cached_data:
                     import json
+
                     try:
                         cached_results = json.loads(cached_data)
                         logger.info(f"Using cached search results for query: {search_params}")
@@ -128,37 +128,35 @@ async def search_1001tracklists(
                         cached_results = None
             except Exception as e:
                 logger.warning(f"Cache lookup failed: {e}")
-        
+
         if cached_results:
             processing_time = int((time.time() - start_time) * 1000)
             # cached_results should already be a dict from cache
             if isinstance(cached_results, dict):
-                cached_results.update({
-                    "cached": True,
-                    "processing_time_ms": processing_time,
-                    "correlation_id": correlation_id
-                })
+                cached_results.update(
+                    {"cached": True, "processing_time_ms": processing_time, "correlation_id": correlation_id}
+                )
                 return SearchResponse(**cached_results)
             else:
                 # If it's not a dict, skip using cache
                 logger.warning(f"Cached data is not in expected format: {type(cached_results)}")
                 cached_results = None
-        
+
         # Perform search using scraper service
         logger.info(f"Performing 1001tracklists search with params: {search_params}")
-        
+
         # This would integrate with the actual scraper service
         # For now, we'll simulate the search results
         search_results = await _perform_search(search_params)
-        
+
         # Calculate pagination info
         total_results = len(search_results)
         start_index = (page - 1) * page_size
         end_index = start_index + page_size
         paginated_results = search_results[start_index:end_index]
-        
+
         has_more = end_index < total_results
-        
+
         response_data = {
             "success": True,
             "results": paginated_results,
@@ -168,25 +166,26 @@ async def search_1001tracklists(
             "has_more": has_more,
             "cached": False,
             "processing_time_ms": int((time.time() - start_time) * 1000),
-            "correlation_id": correlation_id
+            "correlation_id": correlation_id,
         }
-        
+
         # Cache the results for future requests
         try:
             import json
+
             cache_value = json.dumps(response_data)
             await cache.set(cache_key, cache_value, ttl=1800)  # Cache for 30 minutes
         except Exception as e:
             logger.warning(f"Failed to cache search results: {e}")
-        
+
         return SearchResponse(**response_data)
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Search error: {e}", exc_info=True)
         processing_time = int((time.time() - start_time) * 1000)
-        
+
         return SearchResponse(
             success=False,
             results=[],
@@ -196,26 +195,26 @@ async def search_1001tracklists(
             has_more=False,
             error=f"Search failed: {str(e)}",
             processing_time_ms=processing_time,
-            correlation_id=correlation_id
+            correlation_id=correlation_id,
         )
 
 
 async def _perform_search(search_params: Dict[str, Any]) -> List[SearchResult]:
     """
     Perform the actual search using the scraper service.
-    
+
     This is a placeholder implementation that would integrate with
     the actual 1001tracklists scraper when available.
-    
+
     Args:
         search_params: Search parameters
-        
+
     Returns:
         List of SearchResult objects
     """
     # This would use the scraper service to perform actual search
     # For now, return mock results to demonstrate the API structure
-    
+
     mock_results = [
         SearchResult(
             id="12345",
@@ -227,7 +226,7 @@ async def _perform_search(search_params: Dict[str, Any]) -> List[SearchResult]:
             track_count=25,
             duration="1:30:00",
             genre="Trance",
-            confidence=0.95
+            confidence=0.95,
         ),
         SearchResult(
             id="12346",
@@ -239,40 +238,42 @@ async def _perform_search(search_params: Dict[str, Any]) -> List[SearchResult]:
             track_count=20,
             duration="1:00:00",
             genre="Progressive House",
-            confidence=0.88
-        )
+            confidence=0.88,
+        ),
     ]
-    
+
     # Filter results based on search parameters
     filtered_results = []
     for result in mock_results:
         matches = True
-        
+
         # Simple text matching for demonstration
         if search_params.get("query"):
             query_lower = search_params["query"].lower()
-            if not any([
-                query_lower in result.title.lower(),
-                query_lower in result.dj_name.lower(),
-                query_lower in (result.event_name or "").lower()
-            ]):
+            if not any(
+                [
+                    query_lower in result.title.lower(),
+                    query_lower in result.dj_name.lower(),
+                    query_lower in (result.event_name or "").lower(),
+                ]
+            ):
                 matches = False
-        
+
         if search_params.get("artist"):
             if search_params["artist"].lower() not in result.dj_name.lower():
                 matches = False
-        
+
         if search_params.get("title"):
             if search_params["title"].lower() not in result.title.lower():
                 matches = False
-        
+
         if search_params.get("genre"):
             if search_params["genre"].lower() != (result.genre or "").lower():
                 matches = False
-        
+
         if matches:
             filtered_results.append(result)
-    
+
     return filtered_results
 
 
@@ -280,7 +281,7 @@ async def _perform_search(search_params: Dict[str, Any]) -> List[SearchResult]:
 async def search_health_check() -> JSONResponse:
     """
     Health check endpoint for the search API.
-    
+
     Returns:
         JSON response with search service health status
     """
@@ -288,9 +289,9 @@ async def search_health_check() -> JSONResponse:
         "service": "tracklist_search_api",
         "status": "healthy",
         "timestamp": time.time(),
-        "components": {}
+        "components": {},
     }
-    
+
     # Check import service (used for search functionality)
     try:
         ImportService()
@@ -298,7 +299,7 @@ async def search_health_check() -> JSONResponse:
     except Exception as e:
         health_status["components"]["import_service"] = f"unhealthy: {str(e)}"
         health_status["status"] = "degraded"
-    
+
     # Check cache connection
     try:
         await cache.ping()
@@ -306,6 +307,6 @@ async def search_health_check() -> JSONResponse:
     except Exception as e:
         health_status["components"]["cache"] = f"unhealthy: {str(e)}"
         health_status["status"] = "degraded"
-    
+
     status_code = 200 if health_status["status"] == "healthy" else 503
     return JSONResponse(content=health_status, status_code=status_code)

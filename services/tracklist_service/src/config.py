@@ -73,7 +73,7 @@ class MessageQueueConfig:
     prefetch_count: int = 1
 
 
-@dataclass  
+@dataclass
 class DatabaseConfig:
     """Configuration for PostgreSQL database."""
 

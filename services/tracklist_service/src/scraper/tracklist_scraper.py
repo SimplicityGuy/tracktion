@@ -211,7 +211,7 @@ class TracklistScraper(ScraperBase):
                 bpm=bpm,
                 key=key,
                 genre=genre,
-                notes=None  # Added missing field
+                notes=None,  # Added missing field
             )
         except (ValueError, AttributeError, KeyError) as e:
             # Log parsing error for debugging but continue processing
@@ -404,7 +404,7 @@ class TracklistScraper(ScraperBase):
                         transition_type=trans_type,
                         timestamp_ms=next_start,
                         duration_ms=None,  # Added missing field
-                        notes=None  # Added missing field
+                        notes=None,  # Added missing field
                     )
                 )
 
@@ -423,7 +423,7 @@ class TracklistScraper(ScraperBase):
             stream_url=None,
             soundcloud_url=None,
             mixcloud_url=None,
-            youtube_url=None
+            youtube_url=None,
         )
 
         # Recording type
