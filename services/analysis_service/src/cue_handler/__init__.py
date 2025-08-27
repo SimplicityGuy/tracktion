@@ -37,6 +37,14 @@ from .formats import (
 from .editor import CueEditor
 from .backup import BackupManager
 
+# Validator exports
+from .validator import (
+    CueValidator,
+    Severity,
+    ValidationIssue,
+    ValidationResult,
+)
+
 __all__ = [
     # Parser
     "CueParser",
@@ -66,4 +74,9 @@ __all__ = [
     # Editor
     "CueEditor",
     "BackupManager",
+    # Validator
+    "CueValidator",
+    "Severity",
+    "ValidationIssue",
+    "ValidationResult",
 ]
