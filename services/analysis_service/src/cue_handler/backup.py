@@ -12,13 +12,15 @@ logger = logging.getLogger(__name__)
 class BackupManager:
     """Manages backups of CUE files during editing operations."""
 
-    def __init__(self, retention_limit: int = 5):
+    def __init__(self, retention_limit: int = 5, enabled: bool = True):
         """Initialize backup manager.
 
         Args:
             retention_limit: Maximum number of backups to keep per file
+            enabled: Whether automatic backups are enabled
         """
         self.retention_limit = retention_limit
+        self.enabled = enabled
 
     def create_backup(self, filepath: Path) -> Optional[Path]:
         """Create a backup of the specified file.
@@ -27,8 +29,12 @@ class BackupManager:
             filepath: Path to file to backup
 
         Returns:
-            Path to created backup file, or None if source doesn't exist
+            Path to created backup file, or None if source doesn't exist or backups disabled
         """
+        if not self.enabled:
+            logger.debug("Backups disabled, skipping backup creation")
+            return None
+
         if not filepath.exists():
             logger.warning(f"Cannot backup non-existent file: {filepath}")
             return None

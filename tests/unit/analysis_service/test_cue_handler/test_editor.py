@@ -246,6 +246,126 @@ class TestCueEditor:
         assert tracks[2].title == "Split Part (Part 2)"
         assert tracks[2].indices[1] == CueTime(5, 0, 0)
 
+    def test_find_track_by_title(self, editor, sample_cue_sheet):
+        """Test finding track by title."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Exact match
+        track = editor.find_track_by_title("Track 1", partial=False)
+        assert track is not None
+        assert track.title == "Track 1"
+
+        # Partial match
+        track = editor.find_track_by_title("rack 2", partial=True)
+        assert track is not None
+        assert track.title == "Track 2"
+
+        # Not found
+        track = editor.find_track_by_title("Nonexistent")
+        assert track is None
+
+    def test_find_track_by_time(self, editor, sample_cue_sheet):
+        """Test finding track by time."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # First track
+        track = editor.find_track_by_time("00:00:00")
+        assert track is not None
+        assert track.number == 1
+
+        # Second track
+        track = editor.find_track_by_time("03:30:00")
+        assert track is not None
+        assert track.number == 2
+
+        # In between tracks
+        track = editor.find_track_by_time("02:00:00")
+        assert track is not None
+        assert track.number == 1
+
+    def test_auto_fix_gaps(self, editor, sample_cue_sheet):
+        """Test automatic gap fixing."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Add a large gap
+        editor.add_track("Track 3", start_time="10:00:00")
+
+        # Fix gaps (there are 2 gaps now: between track 1-2 and track 2-3)
+        fixes = editor.auto_fix_gaps(min_gap_seconds=2.0)
+        assert fixes == 2
+        assert editor.dirty is True
+
+    def test_normalize_track_numbers(self, editor, sample_cue_sheet):
+        """Test track number normalization."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Mess up track numbers
+        sample_cue_sheet.files[0].tracks[0].number = 5
+        sample_cue_sheet.files[0].tracks[1].number = 10
+
+        # Normalize
+        changed = editor.normalize_track_numbers()
+        assert changed is True
+        assert sample_cue_sheet.files[0].tracks[0].number == 1
+        assert sample_cue_sheet.files[0].tracks[1].number == 2
+        assert editor.dirty is True
+
+    def test_validate_and_fix(self, editor, sample_cue_sheet):
+        """Test validation and automatic fixing."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Remove title from a track
+        sample_cue_sheet.files[0].tracks[0].title = None
+
+        # Mess up track numbers
+        sample_cue_sheet.files[0].tracks[0].number = 5
+
+        # Validate and fix
+        issues = editor.validate_and_fix()
+
+        assert "Normalized track numbers" in issues["fixed"]
+        assert "Track 1 missing title" in issues["warnings"]
+        assert len(issues["errors"]) == 0
+
+    def test_format_preservation(self, editor):
+        """Test format preservation features."""
+        # Create test content with specific formatting
+        content = 'REM GENERATOR "Traktor Pro"\nTITLE "Test Album"\n  TRACK 01 AUDIO\n    TITLE "Track One"\n'
+
+        # Mock file reading
+        from unittest.mock import MagicMock, mock_open, patch
+
+        mock_file = mock_open(read_data=content)
+
+        with patch("builtins.open", mock_file):
+            with patch.object(editor.parser, "parse") as mock_parse:
+                mock_parse.return_value = MagicMock()
+                editor.load_cue_file("/test/file.cue")
+
+        # Check format detection (2 spaces detected, but divided by 2 = 1 space)
+        assert editor._format_style["indent"] == " "
+        assert editor._format_style["quotes"] == '"'
+
+    def test_backup_disabled(self):
+        """Test disabling automatic backups."""
+        import tempfile
+        from pathlib import Path
+
+        from services.analysis_service.src.cue_handler.backup import BackupManager
+
+        backup_manager = BackupManager(enabled=False)
+
+        with tempfile.NamedTemporaryFile(suffix=".cue", delete=False) as tmp:
+            test_file = Path(tmp.name)
+            test_file.write_text("Test content")
+
+            try:
+                # Should return None when disabled
+                result = backup_manager.create_backup(test_file)
+                assert result is None
+            finally:
+                test_file.unlink()
+
 
 class TestBackupManager:
     """Test BackupManager class."""

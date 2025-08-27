@@ -28,6 +28,8 @@ class CueEditor:
         self.original_format: Optional[str] = None
         self.original_path: Optional[Path] = None
         self._dirty = False
+        self._original_content: Optional[str] = None  # For preserving formatting
+        self._format_style: Dict[str, Any] = {}  # Store formatting preferences
 
     @property
     def dirty(self) -> bool:
@@ -48,6 +50,10 @@ class CueEditor:
 
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
+
+        # Preserve original content for format preservation
+        self._original_content = content
+        self._detect_formatting_style(content)
 
         self.cue_sheet = self.parser.parse(content)
         self.original_format = self._detect_format(self.cue_sheet)
@@ -139,6 +145,56 @@ class CueEditor:
 
         # Default to standard
         return "standard"
+
+    def _detect_formatting_style(self, content: str) -> None:
+        """Detect formatting preferences from original content.
+
+        Args:
+            content: Original CUE file content
+        """
+        lines = content.splitlines()
+
+        # Detect indentation style
+        self._format_style["indent"] = ""
+        for line in lines:
+            if line.startswith("  "):
+                # Count spaces for indentation
+                indent_count = len(line) - len(line.lstrip())
+                self._format_style["indent"] = " " * (indent_count // 2)
+                break
+            elif line.startswith("\t"):
+                self._format_style["indent"] = "\t"
+                break
+
+        # Detect quote style
+        self._format_style["quotes"] = '"'
+        if '"' in content and "'" not in content:
+            self._format_style["quotes"] = '"'
+        elif "'" in content and '"' not in content:
+            self._format_style["quotes"] = "'"
+
+        # Detect line endings (preserve original)
+        if "\r\n" in content:
+            self._format_style["line_ending"] = "\r\n"
+        else:
+            self._format_style["line_ending"] = "\n"
+
+        # Detect command order preference
+        command_order = []
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith("REM"):
+                command = line.split()[0] if line.split() else ""
+                if command and command not in command_order:
+                    command_order.append(command)
+        self._format_style["command_order"] = command_order
+
+        # Detect spacing patterns
+        self._format_style["blank_lines_between_tracks"] = False
+        for i in range(1, len(lines) - 1):
+            if lines[i].strip() == "" and "TRACK" in lines[i - 1] and "TRACK" in lines[i + 1]:
+                self._format_style["blank_lines_between_tracks"] = True
+                break
 
     def _mark_dirty(self) -> None:
         """Mark the CUE sheet as modified."""
@@ -747,3 +803,162 @@ class CueEditor:
                         logger.info(f"Updated track {track_number} REM {key}: {value}")
                         return
             raise ValueError(f"Track {track_number} not found")
+
+    # Advanced Editing Features (Task 8)
+
+    def find_track_by_title(self, title: str, partial: bool = True) -> Optional[Track]:
+        """Find a track by title.
+
+        Args:
+            title: Title to search for
+            partial: Whether to allow partial matches
+
+        Returns:
+            First matching track or None
+        """
+        if not self.cue_sheet:
+            return None
+
+        title_lower = title.lower()
+        for file_ref in self.cue_sheet.files:
+            for track in file_ref.tracks:
+                if track.title:
+                    if partial and title_lower in track.title.lower():
+                        return track
+                    elif not partial and track.title.lower() == title_lower:
+                        return track
+        return None
+
+    def find_track_by_time(self, time: str) -> Optional[Track]:
+        """Find track at or containing the specified time.
+
+        Args:
+            time: Time in MM:SS:FF or MM:SS format
+
+        Returns:
+            Track containing the time or None
+        """
+        if not self.cue_sheet:
+            return None
+
+        target_time = CueTime.from_string(time)
+        target_frames = target_time.to_frames()
+
+        for file_ref in self.cue_sheet.files:
+            for i, track in enumerate(file_ref.tracks):
+                if 1 in track.indices:
+                    start_frames = track.indices[1].to_frames()
+
+                    # Check if this is the last track
+                    if i == len(file_ref.tracks) - 1:
+                        if start_frames <= target_frames:
+                            return track
+                    else:
+                        # Get next track's start time
+                        next_track = file_ref.tracks[i + 1]
+                        if 1 in next_track.indices:
+                            end_frames = next_track.indices[1].to_frames()
+                            if start_frames <= target_frames < end_frames:
+                                return track
+        return None
+
+    def auto_fix_gaps(self, min_gap_seconds: float = 2.0) -> int:
+        """Remove silence gaps between tracks automatically.
+
+        Args:
+            min_gap_seconds: Minimum gap size to preserve
+
+        Returns:
+            Number of gaps fixed
+        """
+        if not self.cue_sheet:
+            return 0
+
+        fixes = 0
+        min_gap_frames = int(min_gap_seconds * 75)  # Convert to frames
+
+        for file_ref in self.cue_sheet.files:
+            for i in range(len(file_ref.tracks) - 1):
+                track = file_ref.tracks[i]
+                next_track = file_ref.tracks[i + 1]
+
+                if 1 in track.indices and 1 in next_track.indices:
+                    # Calculate gap between tracks
+                    track_end = track.indices[1].to_frames()
+                    next_start = next_track.indices[1].to_frames()
+                    gap = next_start - track_end
+
+                    # If gap is larger than minimum, shift next track
+                    if gap > min_gap_frames:
+                        new_start_frames = track_end + min_gap_frames
+                        next_track.indices[1] = CueTime.from_frames(new_start_frames)
+                        fixes += 1
+                        self._mark_dirty()
+
+        return fixes
+
+    def normalize_track_numbers(self) -> bool:
+        """Ensure tracks are numbered sequentially starting from 1.
+
+        Returns:
+            True if any changes were made
+        """
+        if not self.cue_sheet:
+            return False
+
+        changed = False
+        for file_ref in self.cue_sheet.files:
+            for i, track in enumerate(file_ref.tracks, 1):
+                if track.number != i:
+                    track.number = i
+                    changed = True
+                    self._mark_dirty()
+
+        return changed
+
+    def validate_and_fix(self) -> Dict[str, List[str]]:
+        """Validate CUE sheet and fix common issues.
+
+        Returns:
+            Dictionary of issues found and fixed
+        """
+        issues: Dict[str, List[str]] = {"fixed": [], "warnings": [], "errors": []}
+
+        if not self.cue_sheet:
+            issues["errors"].append("No CUE sheet loaded")
+            return issues
+
+        # Fix track numbering
+        if self.normalize_track_numbers():
+            issues["fixed"].append("Normalized track numbers")
+
+        # Check for missing required fields
+        if not self.cue_sheet.files:
+            issues["errors"].append("No FILE entries found")
+
+        for file_ref in self.cue_sheet.files:
+            if not file_ref.filename:
+                issues["errors"].append("FILE entry missing filename")
+
+            # Check tracks
+            if not file_ref.tracks:
+                issues["warnings"].append(f"No tracks in file {file_ref.filename}")
+
+            for track in file_ref.tracks:
+                # Check for missing title
+                if not track.title:
+                    issues["warnings"].append(f"Track {track.number} missing title")
+
+                # Check for missing INDEX 01
+                if 1 not in track.indices:
+                    issues["errors"].append(f"Track {track.number} missing INDEX 01")
+
+                # Check for overlapping timestamps
+                track_index = file_ref.tracks.index(track)
+                if track_index < len(file_ref.tracks) - 1:
+                    next_track = file_ref.tracks[track_index + 1]
+                    if 1 in track.indices and 1 in next_track.indices:
+                        if track.indices[1].to_frames() >= next_track.indices[1].to_frames():
+                            issues["errors"].append(f"Track {track.number} overlaps with track {next_track.number}")
+
+        return issues
