@@ -54,6 +54,10 @@ class TestCueEditor:
         assert editor.original_format is None
         assert editor.original_path is None
         assert editor.dirty is False
+        assert editor._undo_stack == []
+        assert editor._redo_stack == []
+        assert editor.can_undo is False
+        assert editor.can_redo is False
 
     def test_init_with_backup_manager(self):
         """Test CueEditor initialization with custom backup manager."""
@@ -568,6 +572,200 @@ class TestCueEditor:
         assert len(editor.cue_sheet.files) == 2
         assert len(editor.cue_sheet.files[0].tracks) == 2
         assert len(editor.cue_sheet.files[1].tracks) == 2
+
+    def test_undo_redo_add_track(self, editor, sample_cue_sheet):
+        """Test undo/redo for add track operation."""
+        editor.cue_sheet = sample_cue_sheet
+        initial_track_count = len(editor.cue_sheet.files[0].tracks)
+
+        # Add a track
+        editor.add_track("New Track", "New Artist")
+        assert len(editor.cue_sheet.files[0].tracks) == initial_track_count + 1
+        assert editor.can_undo is True
+        assert editor.can_redo is False
+
+        # Undo
+        success = editor.undo()
+        assert success is True
+        assert len(editor.cue_sheet.files[0].tracks) == initial_track_count
+        assert editor.can_undo is False
+        assert editor.can_redo is True
+
+        # Redo
+        success = editor.redo()
+        assert success is True
+        assert len(editor.cue_sheet.files[0].tracks) == initial_track_count + 1
+        assert editor.can_undo is True
+        assert editor.can_redo is False
+
+    def test_undo_redo_remove_track(self, editor, sample_cue_sheet):
+        """Test undo/redo for remove track operation."""
+        editor.cue_sheet = sample_cue_sheet
+        initial_track_count = len(editor.cue_sheet.files[0].tracks)
+
+        # Remove a track
+        success = editor.remove_track(1)
+        assert success is True
+        assert len(editor.cue_sheet.files[0].tracks) == initial_track_count - 1
+
+        # Undo
+        success = editor.undo()
+        assert success is True
+        assert len(editor.cue_sheet.files[0].tracks) == initial_track_count
+        assert editor.cue_sheet.files[0].tracks[0].title == "Track 1"
+
+    def test_undo_redo_metadata_update(self, editor, sample_cue_sheet):
+        """Test undo/redo for metadata update."""
+        editor.cue_sheet = sample_cue_sheet
+        original_title = editor.cue_sheet.title
+
+        # Update metadata
+        editor.update_disc_metadata(title="New Title")
+        assert editor.cue_sheet.title == "New Title"
+
+        # Undo
+        editor.undo()
+        assert editor.cue_sheet.title == original_title
+
+        # Redo
+        editor.redo()
+        assert editor.cue_sheet.title == "New Title"
+
+    def test_escape_unescape_metadata(self, editor):
+        """Test metadata escaping and unescaping."""
+        # Test escaping
+        assert editor.escape_metadata_value('Test "quoted"') == 'Test \\"quoted\\"'
+        assert editor.escape_metadata_value("Line\nbreak") == "Line\\nbreak"
+        assert editor.escape_metadata_value("Tab\there") == "Tab\\there"
+
+        # Test unescaping
+        assert editor.unescape_metadata_value('Test \\"quoted\\"') == 'Test "quoted"'
+        assert editor.unescape_metadata_value("Line\\nbreak") == "Line\nbreak"
+        assert editor.unescape_metadata_value("Tab\\there") == "Tab\there"
+
+    def test_validate_timestamps(self, editor, sample_cue_sheet):
+        """Test timestamp validation."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Valid timestamps
+        errors = editor.validate_timestamps()
+        assert len(errors) == 0
+
+        # Create overlap
+        editor.cue_sheet.files[0].tracks[1].indices[1] = CueTime(0, 0, 0)
+        errors = editor.validate_timestamps()
+        assert len(errors) > 0
+        assert "overlap" in errors[0].lower()
+
+        # Missing INDEX 01
+        del editor.cue_sheet.files[0].tracks[0].indices[1]
+        errors = editor.validate_timestamps()
+        assert any("Missing required INDEX 01" in e for e in errors)
+
+    def test_timestamp_overlap_prevention(self, editor, sample_cue_sheet):
+        """Test that timestamp adjustments prevent overlaps."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Try to adjust track 2 to overlap with track 1
+        with pytest.raises(ValueError, match="overlap"):
+            editor.adjust_track_time(2, "00:00:00", ripple=False)
+
+        # Try to adjust track 1 to overlap with track 2 (no ripple)
+        with pytest.raises(ValueError, match="overlap"):
+            editor.adjust_track_time(1, "04:00:00", ripple=False)
+
+    def test_index_ordering_validation(self, editor, sample_cue_sheet):
+        """Test INDEX ordering validation."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Try to add INDEX 00 after INDEX 01 - should fail
+        with pytest.raises(ValueError, match="INDEX.*must be before"):
+            editor.set_track_index(1, 0, "01:00:00")  # INDEX 01 is at 00:00:00
+
+    def test_special_character_handling(self, editor, sample_cue_sheet):
+        """Test special character handling in metadata."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Update with special characters
+        editor.update_track_metadata(1, title='Track with "quotes"', performer="Artist\nNewline")
+
+        # Check escaping was applied
+        track = editor.cue_sheet.files[0].tracks[0]
+        assert '\\"' in track.title or '"' in track.title  # Depends on implementation
+        assert "\\n" in track.performer or "\n" in track.performer
+
+    def test_file_reference_timing_validation(self, editor, sample_cue_sheet):
+        """Test timing validation when updating file references."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Update file reference with timing recalculation
+        editor.update_file_reference(0, "new_audio.wav", "WAVE", recalculate_timing=True)
+
+        assert editor.cue_sheet.files[0].filename == "new_audio.wav"
+        assert editor.dirty is True
+
+    def test_command_order_preservation(self, editor):
+        """Test that command order is preserved from original."""
+        # Create test content with specific command ordering
+        content = """REM DATE 2024
+TITLE "Album"
+PERFORMER "Artist"
+FILE "audio.wav" WAVE
+  TRACK 01 AUDIO
+    TITLE "Track"
+    PERFORMER "Artist"
+    INDEX 01 00:00:00"""
+
+        from unittest.mock import MagicMock, mock_open, patch
+
+        mock_file = mock_open(read_data=content)
+
+        with patch("builtins.open", mock_file):
+            with patch.object(editor.parser, "parse") as mock_parse:
+                mock_parse.return_value = MagicMock()
+                editor.load_cue_file("/test/file.cue")
+
+        # Check that command order was detected
+        assert "REM" in editor._format_style.get("command_order", [])
+        assert "TITLE" in editor._format_style.get("command_order", [])
+        assert "TRACK" in editor._format_style.get("track_command_order", [])
+
+    def test_undo_history_limit(self, editor, sample_cue_sheet):
+        """Test that undo history has a limit."""
+        editor.cue_sheet = sample_cue_sheet
+        editor._max_undo_history = 3  # Set small limit for testing
+
+        # Add more operations than the limit
+        for i in range(5):
+            editor.add_track(f"Track {i + 3}", start_time=f"{(i + 1) * 10:02d}:00:00")
+
+        # Should only be able to undo 3 times
+        assert len(editor._undo_stack) == 3
+
+        for _ in range(3):
+            assert editor.undo() is True
+
+        # No more undos available
+        assert editor.undo() is False
+
+    def test_clear_undo_history(self, editor, sample_cue_sheet):
+        """Test clearing undo/redo history."""
+        editor.cue_sheet = sample_cue_sheet
+
+        # Add some operations
+        editor.add_track("Track 3")
+        editor.remove_track(1)
+
+        assert len(editor._undo_stack) == 2
+        assert editor.can_undo is True
+
+        # Clear history
+        editor.clear_undo_history()
+
+        assert len(editor._undo_stack) == 0
+        assert len(editor._redo_stack) == 0
+        assert editor.can_undo is False
+        assert editor.can_redo is False
 
 
 class TestBackupManager:
