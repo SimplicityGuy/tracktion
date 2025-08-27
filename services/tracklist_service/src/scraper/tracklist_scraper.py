@@ -104,10 +104,12 @@ class TracklistScraper(ScraperBase):
             if element:
                 if element.name == "meta":
                     content = element.get("content", "")
-                    # Parse from meta content like "DJ Name @ Event"
-                    if "@" in content:
-                        return str(content.split("@")[0].strip())
-                    return str(content.strip())
+                    if isinstance(content, str):
+                        # Parse from meta content like "DJ Name @ Event"
+                        if "@" in content:
+                            return content.split("@")[0].strip()
+                        return content.strip()
+                    return "Unknown DJ"
                 else:
                     text = element.get_text(strip=True)
                     if text:
@@ -133,8 +135,12 @@ class TracklistScraper(ScraperBase):
         # Date
         date_elem = soup.select_one("div.when time, time.eventDate, span.dateInfo")
         if date_elem:
-            date_str = date_elem.get("datetime") or date_elem.get_text(strip=True)
-            info["date"] = self._parse_date(date_str)
+            datetime_attr = date_elem.get("datetime")
+            if isinstance(datetime_attr, str):
+                info["date"] = self._parse_date(datetime_attr)
+            else:
+                date_text = date_elem.get_text(strip=True)
+                info["date"] = self._parse_date(date_text)
 
         return info
 
@@ -205,6 +211,7 @@ class TracklistScraper(ScraperBase):
                 bpm=bpm,
                 key=key,
                 genre=genre,
+                notes=None  # Added missing field
             )
         except (ValueError, AttributeError, KeyError) as e:
             # Log parsing error for debugging but continue processing
@@ -396,6 +403,8 @@ class TracklistScraper(ScraperBase):
                         to_track=tracks[i + 1].number,
                         transition_type=trans_type,
                         timestamp_ms=next_start,
+                        duration_ms=None,  # Added missing field
+                        notes=None  # Added missing field
                     )
                 )
 
@@ -403,7 +412,19 @@ class TracklistScraper(ScraperBase):
 
     def _extract_metadata(self, soup: BeautifulSoup) -> Optional[TracklistMetadata]:
         """Extract additional metadata from the page."""
-        metadata = TracklistMetadata()
+        # Initialize with all required fields
+        metadata = TracklistMetadata(
+            recording_type=None,
+            duration_minutes=None,
+            play_count=None,
+            favorite_count=None,
+            comment_count=None,
+            download_url=None,
+            stream_url=None,
+            soundcloud_url=None,
+            mixcloud_url=None,
+            youtube_url=None
+        )
 
         # Recording type
         type_elem = soup.select_one("span.setType, div.recordingType")
@@ -437,13 +458,15 @@ class TracklistScraper(ScraperBase):
 
         # External links
         for link in soup.select("a.external, a.streamLink"):
-            href = link.get("href", "").lower()
-            if "soundcloud.com" in href:
-                metadata.soundcloud_url = link.get("href")
-            elif "mixcloud.com" in href:
-                metadata.mixcloud_url = link.get("href")
-            elif "youtube.com" in href or "youtu.be" in href:
-                metadata.youtube_url = link.get("href")
+            href = link.get("href", "")
+            if isinstance(href, str):
+                href_lower = href.lower()
+                if "soundcloud.com" in href_lower:
+                    metadata.soundcloud_url = href
+                elif "mixcloud.com" in href_lower:
+                    metadata.mixcloud_url = href
+                elif "youtube.com" in href_lower or "youtu.be" in href_lower:
+                    metadata.youtube_url = href
 
         # Tags/genres
         tag_elems = soup.select("a.tag, span.genre, div.styleTag")

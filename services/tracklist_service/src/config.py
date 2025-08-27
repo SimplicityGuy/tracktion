@@ -73,6 +73,22 @@ class MessageQueueConfig:
     prefetch_count: int = 1
 
 
+@dataclass  
+class DatabaseConfig:
+    """Configuration for PostgreSQL database."""
+
+    host: str = "localhost"
+    port: int = 5432
+    name: str = "tracktion_tracklist"
+    user: str = "tracklist_user"
+    password: str = "tracklist_password"
+    pool_size: int = 10
+    max_overflow: int = 20
+    pool_timeout: int = 30
+    pool_recycle: int = 3600
+    echo_queries: bool = False
+
+
 @dataclass
 class ServiceConfig:
     """Main configuration for the tracklist service."""
@@ -81,6 +97,7 @@ class ServiceConfig:
     api: APIConfig = field(default_factory=APIConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
     message_queue: MessageQueueConfig = field(default_factory=MessageQueueConfig)
+    database: DatabaseConfig = field(default_factory=DatabaseConfig)
 
     # Service-level settings
     log_level: str = "INFO"

@@ -242,3 +242,206 @@ class ServiceUnavailableError(TracklistServiceError):
         super().__init__(message, "SERVICE_UNAVAILABLE", details)
         self.service_name = service_name
         self.retry_after = retry_after
+
+
+class ImportError(TracklistServiceError):
+    """Raised when tracklist import operations fail."""
+
+    def __init__(
+        self,
+        message: str,
+        url: Optional[str] = None,
+        tracklist_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize import error.
+
+        Args:
+            message: Error message
+            url: URL that failed to import
+            tracklist_id: ID of tracklist being imported
+            details: Additional error details
+        """
+        error_details = details or {}
+        if url:
+            error_details["url"] = url
+        if tracklist_id:
+            error_details["tracklist_id"] = tracklist_id
+
+        super().__init__(message, "IMPORT_ERROR", error_details)
+        self.url = url
+        self.tracklist_id = tracklist_id
+
+
+class MatchingError(TracklistServiceError):
+    """Raised when audio file matching fails."""
+
+    def __init__(
+        self,
+        message: str,
+        audio_file_id: Optional[str] = None,
+        confidence_score: Optional[float] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize matching error.
+
+        Args:
+            message: Error message
+            audio_file_id: ID of audio file that failed to match
+            confidence_score: Confidence score at time of failure
+            details: Additional error details
+        """
+        error_details = details or {}
+        if audio_file_id:
+            error_details["audio_file_id"] = audio_file_id
+        if confidence_score is not None:
+            error_details["confidence_score"] = confidence_score
+
+        super().__init__(message, "MATCHING_ERROR", error_details)
+        self.audio_file_id = audio_file_id
+        self.confidence_score = confidence_score
+
+
+class TimingError(TracklistServiceError):
+    """Raised when timing adjustment operations fail."""
+
+    def __init__(
+        self,
+        message: str,
+        track_position: Optional[int] = None,
+        timing_issue: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize timing error.
+
+        Args:
+            message: Error message
+            track_position: Position of track with timing issue
+            timing_issue: Type of timing issue (overlap, gap, invalid, etc.)
+            details: Additional error details
+        """
+        error_details = details or {}
+        if track_position is not None:
+            error_details["track_position"] = track_position
+        if timing_issue:
+            error_details["timing_issue"] = timing_issue
+
+        super().__init__(message, "TIMING_ERROR", error_details)
+        self.track_position = track_position
+        self.timing_issue = timing_issue
+
+
+class CueGenerationError(TracklistServiceError):
+    """Raised when CUE file generation fails."""
+
+    def __init__(
+        self,
+        message: str,
+        cue_format: Optional[str] = None,
+        tracklist_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize CUE generation error.
+
+        Args:
+            message: Error message
+            cue_format: CUE format being generated
+            tracklist_id: ID of tracklist for CUE generation
+            details: Additional error details
+        """
+        error_details = details or {}
+        if cue_format:
+            error_details["cue_format"] = cue_format
+        if tracklist_id:
+            error_details["tracklist_id"] = tracklist_id
+
+        super().__init__(message, "CUE_GENERATION_ERROR", error_details)
+        self.cue_format = cue_format
+        self.tracklist_id = tracklist_id
+
+
+class DatabaseError(TracklistServiceError):
+    """Raised when database operations fail."""
+
+    def __init__(
+        self,
+        message: str,
+        operation: Optional[str] = None,
+        table: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize database error.
+
+        Args:
+            message: Error message
+            operation: Database operation that failed (insert, update, delete, select)
+            table: Database table involved in the error
+            details: Additional error details
+        """
+        error_details = details or {}
+        if operation:
+            error_details["operation"] = operation
+        if table:
+            error_details["table"] = table
+
+        super().__init__(message, "DATABASE_ERROR", error_details)
+        self.operation = operation
+        self.table = table
+
+
+class AudioFileError(TracklistServiceError):
+    """Raised when audio file operations fail."""
+
+    def __init__(
+        self,
+        message: str,
+        audio_file_id: Optional[str] = None,
+        file_path: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize audio file error.
+
+        Args:
+            message: Error message
+            audio_file_id: ID of audio file
+            file_path: Path to audio file
+            details: Additional error details
+        """
+        error_details = details or {}
+        if audio_file_id:
+            error_details["audio_file_id"] = audio_file_id
+        if file_path:
+            error_details["file_path"] = file_path
+
+        super().__init__(message, "AUDIO_FILE_ERROR", error_details)
+        self.audio_file_id = audio_file_id
+        self.file_path = file_path
+
+
+class TimeoutError(TracklistServiceError):
+    """Raised when operations timeout."""
+
+    def __init__(
+        self,
+        message: str,
+        operation: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize timeout error.
+
+        Args:
+            message: Error message
+            operation: Operation that timed out
+            timeout_seconds: Timeout value in seconds
+            details: Additional error details
+        """
+        error_details = details or {}
+        if operation:
+            error_details["operation"] = operation
+        if timeout_seconds is not None:
+            error_details["timeout_seconds"] = timeout_seconds
+
+        super().__init__(message, "TIMEOUT_ERROR", error_details)
+        self.operation = operation
+        self.timeout_seconds = timeout_seconds

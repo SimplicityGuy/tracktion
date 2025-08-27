@@ -158,7 +158,7 @@ class TextStrategy(ExtractionStrategy):
             search_area = soup
             if self.context:
                 context_elements = soup.select(self.context) or soup.find_all(class_=self.context)
-                if context_elements:
+                if context_elements and isinstance(context_elements[0], Tag):
                     search_area = context_elements[0]
 
             # Find text containing pattern

@@ -130,9 +130,10 @@ class SearchScraper(ScraperBase):
         result_containers = soup.find_all("div", class_="tlItem")
 
         for container in result_containers:
-            result = self._parse_single_result(container, search_type)
-            if result:
-                results.append(result)
+            if isinstance(container, Tag):  # Type guard to ensure it's a Tag
+                result = self._parse_single_result(container, search_type)
+                if result:
+                    results.append(result)
 
         return results
 
@@ -153,7 +154,8 @@ class SearchScraper(ScraperBase):
             if not title_elem:
                 return None
 
-            url = urljoin(self.config.base_url, title_elem.get("href", ""))
+            href = title_elem.get("href", "")
+            url = urljoin(self.config.base_url, href if isinstance(href, str) else "")
 
             # Extract DJ name
             dj_elem = container.find("span", class_="djName")
@@ -206,8 +208,10 @@ class SearchScraper(ScraperBase):
                 venue=venue,
                 set_type=set_type,
                 url=url,
+                duration=None,  # Added missing field
                 track_count=track_count,
                 genre=genre,
+                description=None,  # Added missing field
                 source_url=url,
             )
 
@@ -235,7 +239,7 @@ class SearchScraper(ScraperBase):
         if pagination_elem:
             # Try to find total pages
             last_page_elem = pagination_elem.find("a", class_="last")
-            if last_page_elem:
+            if last_page_elem and isinstance(last_page_elem, Tag):
                 try:
                     # Extract page number from href or text
                     total_pages = int(last_page_elem.text.strip())

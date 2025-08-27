@@ -187,9 +187,11 @@ class BatchJobQueue:
             if existing_job_id:
                 # Check if existing job is still active
                 existing_job = self.redis.hgetall(f"job:{existing_job_id}")
-                if existing_job and existing_job.get("status") in ["pending", "processing"]:
-                    logger.debug(f"Skipping duplicate URL: {job.url}")
-                    continue
+                if existing_job:
+                    status = existing_job.get("status")
+                    if status and status in ["pending", "processing"]:
+                        logger.debug(f"Skipping duplicate URL: {job.url}")
+                        continue
 
             # Mark URL as being processed
             self.redis.setex(f"url_hash:{url_hash}", 3600, job.id)
@@ -257,14 +259,16 @@ class BatchJobQueue:
         job_ids = self.redis.smembers(f"batch:{batch_id}:jobs")
         jobs_status = {"pending": 0, "processing": 0, "completed": 0, "failed": 0}
 
-        for job_id in job_ids:
-            job_data = self.redis.hgetall(f"job:{job_id}")
-            if job_data:
-                status = job_data.get("status", "pending")
-                jobs_status[status] = jobs_status.get(status, 0) + 1
+        if isinstance(job_ids, set):
+            for job_id in job_ids:
+                job_data = self.redis.hgetall(f"job:{job_id}")
+                if job_data:
+                    status = job_data.get("status", "pending")
+                    jobs_status[status] = jobs_status.get(status, 0) + 1
 
-        batch_meta["jobs_status"] = jobs_status
-        batch_meta["progress_percentage"] = (jobs_status["completed"] / len(job_ids)) * 100 if job_ids else 0
+            if isinstance(batch_meta, dict):
+                batch_meta["jobs_status"] = jobs_status
+                batch_meta["progress_percentage"] = (jobs_status["completed"] / len(job_ids)) * 100 if job_ids else 0
 
         return dict(batch_meta)
 
