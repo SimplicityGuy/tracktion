@@ -10,6 +10,7 @@ from datetime import timedelta
 from typing import List, Optional, Tuple, Dict, Any
 
 from ..models.tracklist import TrackEntry
+from ..utils.time_utils import parse_time_string
 
 logger = logging.getLogger(__name__)
 
@@ -72,39 +73,11 @@ class TimingService:
             - H:MM:SS (e.g., "1:05:30")
             - Decimal minutes (e.g., "5.5" for 5 minutes 30 seconds)
         """
-        if not timing_str:
-            return timedelta(0)
-
-        timing_str = timing_str.strip()
-
-        # Try decimal minutes format
-        if "." in timing_str and ":" not in timing_str:
-            try:
-                minutes = float(timing_str)
-                return timedelta(minutes=minutes)
-            except ValueError:
-                pass
-
-        # Try time format (MM:SS or HH:MM:SS)
-        if ":" in timing_str:
-            parts = timing_str.split(":")
-
-            try:
-                if len(parts) == 2:
-                    # MM:SS or M:SS format
-                    minutes = int(parts[0])
-                    seconds = int(parts[1])
-                    return timedelta(minutes=minutes, seconds=seconds)
-                elif len(parts) == 3:
-                    # HH:MM:SS or H:MM:SS format
-                    hours = int(parts[0])
-                    minutes = int(parts[1])
-                    seconds = int(parts[2])
-                    return timedelta(hours=hours, minutes=minutes, seconds=seconds)
-            except ValueError:
-                logger.warning(f"Failed to parse timing: {timing_str}")
-
-        return timedelta(0)
+        # Delegate to the centralized utility function
+        result = parse_time_string(timing_str)
+        if result == timedelta(0) and timing_str:
+            logger.warning(f"Failed to parse timing: {timing_str}")
+        return result
 
     def calculate_offset_from_start(
         self, first_track_time: timedelta, mix_start_time: timedelta = timedelta(0)

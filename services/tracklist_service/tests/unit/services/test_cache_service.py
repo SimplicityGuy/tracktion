@@ -3,7 +3,6 @@ Tests for CacheService implementation.
 """
 
 import pytest
-from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -239,6 +238,3 @@ class TestCacheService:
 
         # Should not raise exception when disconnecting without connection
         await service.disconnect()
-
-
-

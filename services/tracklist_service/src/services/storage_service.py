@@ -5,17 +5,20 @@ This module provides file storage capabilities for CUE files with support for
 both local filesystem and S3 cloud storage, including versioning and retrieval.
 """
 
-import os
 import hashlib
-import shutil
 import json
+import logging
+import os
+import shutil
 from abc import ABC, abstractmethod
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 class StorageConfig(BaseModel):
@@ -78,38 +81,47 @@ class StorageBackend(ABC):
         pass
 
     @abstractmethod
-    def list_versions(self, file_path: str) -> List[Dict]:
+    def list_versions(self, file_path: str) -> List[Dict[str, any]]:
         """List all versions of a file."""
         pass
 
 
 class FilesystemBackend(StorageBackend):
-    """Filesystem storage backend."""
+    """Local filesystem storage backend."""
 
     def __init__(self, config: Dict):
+        """Initialize filesystem backend with configuration."""
         self.base_path = Path(config.get("base_path", "/data/cue_files/"))
-        self.structure = config.get("structure", "{year}/{month}/{audio_file_id}/{format}.cue")
         self.permissions = config.get("permissions", "644")
+        self.structure = config.get("structure", "{year}/{month}/{tracklist_id}/{format}.cue")
 
         # Create base directory if it doesn't exist
         self.base_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Filesystem backend initialized with base path: {self.base_path}")
 
     def store(self, content: str, file_path: str, metadata: Optional[Dict] = None) -> StorageResult:
-        """Store content to filesystem."""
-        try:
-            full_path = self.base_path / file_path.lstrip("/")
+        """
+        Store content to filesystem.
 
-            # Create directory structure
+        Args:
+            content: File content to store
+            file_path: Relative path for file
+            metadata: Optional metadata
+
+        Returns:
+            StorageResult with operation details
+        """
+        try:
+            # Construct full path
+            full_path = self.base_path / file_path
+
+            # Create parent directories
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Handle versioning
+            # Handle versioning if file exists
             version = 1
             if full_path.exists():
-                version = self._get_next_version(full_path)
-                if version > 1:
-                    # Backup existing file
-                    backup_path = full_path.with_suffix(f".v{version - 1}.cue")
-                    shutil.copy2(full_path, backup_path)
+                version = self._create_backup(full_path)
 
             # Write content
             full_path.write_text(content, encoding="utf-8")
@@ -117,15 +129,13 @@ class FilesystemBackend(StorageBackend):
             # Set permissions
             os.chmod(full_path, int(self.permissions, 8))
 
-            # Calculate checksum and size
-            checksum = self._calculate_checksum(content)
-            file_size = len(content.encode("utf-8"))
+            # Calculate checksum
+            checksum = hashlib.sha256(content.encode()).hexdigest()
 
-            # Store metadata if provided
-            if metadata:
-                metadata_path = full_path.with_suffix(".metadata.json")
-                with open(metadata_path, "w") as f:
-                    json.dump(metadata, f, indent=2, default=str)
+            # Get file size
+            file_size = len(content.encode())
+
+            logger.info(f"Stored file: {full_path} (size: {file_size}, checksum: {checksum[:8]}...)")
 
             return StorageResult(
                 success=True,
@@ -133,61 +143,81 @@ class FilesystemBackend(StorageBackend):
                 checksum=checksum,
                 file_size=file_size,
                 version=version,
-                error=None,
+                metadata=metadata or {},
             )
 
         except Exception as e:
-            return StorageResult(
-                success=False,
-                file_path=None,
-                checksum=None,
-                file_size=None,
-                version=None,
-                error=f"Failed to store file: {str(e)}",
-            )
+            logger.error(f"Failed to store file {file_path}: {e}", exc_info=True)
+            return StorageResult(success=False, error=str(e))
 
     def retrieve(self, file_path: str) -> Tuple[bool, Optional[str], Optional[str]]:
-        """Retrieve content from filesystem."""
+        """
+        Retrieve content from filesystem.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            Tuple of (success, content, error)
+        """
         try:
-            full_path = self.base_path / file_path.lstrip("/")
+            # Handle both absolute and relative paths
+            if Path(file_path).is_absolute():
+                full_path = Path(file_path)
+            else:
+                full_path = self.base_path / file_path
 
             if not full_path.exists():
-                return False, None, f"File not found: {file_path}"
+                return False, None, f"File not found: {full_path}"
 
             content = full_path.read_text(encoding="utf-8")
+            logger.debug(f"Retrieved file: {full_path} ({len(content)} bytes)")
+
             return True, content, None
 
         except Exception as e:
-            return False, None, f"Failed to retrieve file: {str(e)}"
+            logger.error(f"Failed to retrieve file {file_path}: {e}", exc_info=True)
+            return False, None, str(e)
 
     def delete(self, file_path: str) -> bool:
-        """Delete file from filesystem."""
+        """
+        Delete file from filesystem.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            Success status
+        """
         try:
-            full_path = self.base_path / file_path.lstrip("/")
+            full_path = self.base_path / file_path
 
             if full_path.exists():
+                # Create backup before deletion
+                self._create_backup(full_path, suffix=".deleted")
                 full_path.unlink()
-
-                # Also delete metadata file if it exists
-                metadata_path = full_path.with_suffix(".metadata.json")
-                if metadata_path.exists():
-                    metadata_path.unlink()
-
+                logger.info(f"Deleted file: {full_path}")
                 return True
+
+            logger.warning(f"File not found for deletion: {full_path}")
             return False
 
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to delete file {file_path}: {e}", exc_info=True)
             return False
 
     def exists(self, file_path: str) -> bool:
-        """Check if file exists on filesystem."""
-        full_path = self.base_path / file_path.lstrip("/")
-        return full_path.exists()
+        """Check if file exists."""
+        # Handle both absolute and relative paths
+        if Path(file_path).is_absolute():
+            return Path(file_path).exists()
+        else:
+            return (self.base_path / file_path).exists()
 
-    def list_versions(self, file_path: str) -> List[Dict]:
+    def list_versions(self, file_path: str) -> List[Dict[str, any]]:
         """List all versions of a file."""
         try:
-            full_path = self.base_path / file_path.lstrip("/")
+            full_path = self.base_path / file_path
             versions = []
 
             # Current version
@@ -195,222 +225,265 @@ class FilesystemBackend(StorageBackend):
                 stat = full_path.stat()
                 versions.append(
                     {
-                        "version": 1,
+                        "version": "current",
                         "path": str(full_path),
                         "size": stat.st_size,
                         "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                        "is_current": True,
                     }
                 )
 
-            # Previous versions
-            for i in range(2, 10):  # Check up to version 10
-                version_path = full_path.with_suffix(f".v{i}.cue")
-                if version_path.exists():
-                    stat = version_path.stat()
-                    versions.append(
-                        {
-                            "version": i,
-                            "path": str(version_path),
-                            "size": stat.st_size,
-                            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                            "is_current": False,
-                        }
-                    )
+            # Backup versions
+            for backup in full_path.parent.glob(f"{full_path.name}.v*"):
+                stat = backup.stat()
+                version_num = backup.suffix.split(".v")[1]
+                versions.append(
+                    {
+                        "version": version_num,
+                        "path": str(backup),
+                        "size": stat.st_size,
+                        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    }
+                )
 
             return sorted(versions, key=lambda x: x["version"], reverse=True)
 
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to list versions for {file_path}: {e}", exc_info=True)
             return []
 
-    def _get_next_version(self, file_path: Path) -> int:
-        """Get the next version number for a file."""
+    def _create_backup(self, file_path: Path, suffix: str = ".v") -> int:
+        """Create backup of existing file."""
+        if not file_path.exists():
+            return 1
+
+        # Find next version number
         version = 1
-        for i in range(2, 100):  # Max 100 versions
-            version_path = file_path.with_suffix(f".v{i}.cue")
-            if not version_path.exists():
-                return i
+        existing_versions = list(file_path.parent.glob(f"{file_path.name}{suffix}*"))
+        if existing_versions:
+            version_numbers = []
+            for v in existing_versions:
+                try:
+                    version_numbers.append(int(v.suffix.split(suffix)[1]))
+                except (ValueError, IndexError):
+                    continue
+            if version_numbers:
+                version = max(version_numbers) + 1
+
+        # Create backup
+        backup_path = file_path.with_suffix(f"{file_path.suffix}{suffix}{version}")
+        shutil.copy2(file_path, backup_path)
+        logger.debug(f"Created backup: {backup_path}")
+
         return version
-
-    def _calculate_checksum(self, content: str) -> str:
-        """Calculate SHA256 checksum of content."""
-        return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-    def cleanup_old_versions(self, file_path: str, max_versions: int = 5) -> None:
-        """Clean up old versions beyond the maximum."""
-        try:
-            versions = self.list_versions(file_path)
-
-            # Remove versions beyond max_versions
-            if len(versions) > max_versions:
-                for version_info in versions[max_versions:]:
-                    if not version_info["is_current"]:
-                        Path(version_info["path"]).unlink()
-
-        except Exception:
-            pass  # Fail silently for cleanup
 
 
 class S3Backend(StorageBackend):
-    """S3 storage backend (placeholder implementation)."""
+    """AWS S3 storage backend."""
 
     def __init__(self, config: Dict):
+        """Initialize S3 backend with configuration."""
         self.bucket = config.get("bucket", "tracktion-cue-files")
         self.prefix = config.get("prefix", "cue_files/")
         self.acl = config.get("acl", "private")
         self.storage_class = config.get("storage_class", "STANDARD_IA")
 
-        # NOTE: This is a placeholder implementation
-        # In a real implementation, you would initialize boto3 client here
-        self._client = None
+        # S3 client would be initialized here
+        self.s3_client = None  # Placeholder
+        logger.info(f"S3 backend initialized for bucket: {self.bucket}")
 
     def store(self, content: str, file_path: str, metadata: Optional[Dict] = None) -> StorageResult:
-        """Store content to S3 (placeholder)."""
-        # This is a placeholder implementation
-        # In a real implementation, you would use boto3 to upload to S3
-        return StorageResult(
-            success=False,
-            file_path=None,
-            checksum=None,
-            file_size=None,
-            version=None,
-            error="S3 backend not implemented in this demo version",
-        )
+        """Store content to S3."""
+        # Placeholder implementation
+        logger.warning("S3 storage not implemented, using placeholder")
+        return StorageResult(success=False, error="S3 backend not implemented")
 
     def retrieve(self, file_path: str) -> Tuple[bool, Optional[str], Optional[str]]:
-        """Retrieve content from S3 (placeholder)."""
-        return False, None, "S3 backend not implemented in this demo version"
+        """Retrieve content from S3."""
+        # Placeholder implementation
+        return False, None, "S3 backend not implemented"
 
     def delete(self, file_path: str) -> bool:
-        """Delete file from S3 (placeholder)."""
+        """Delete file from S3."""
+        # Placeholder implementation
         return False
 
     def exists(self, file_path: str) -> bool:
-        """Check if file exists in S3 (placeholder)."""
+        """Check if file exists in S3."""
+        # Placeholder implementation
         return False
 
-    def list_versions(self, file_path: str) -> List[Dict]:
-        """List all versions of a file in S3 (placeholder)."""
+    def list_versions(self, file_path: str) -> List[Dict[str, any]]:
+        """List all versions of a file in S3."""
+        # Placeholder implementation
         return []
 
 
 class StorageService:
-    """Main storage service for CUE files."""
+    """Main storage service managing different backends."""
 
     def __init__(self, config: Optional[StorageConfig] = None):
-        self.config = config or StorageConfig(primary="filesystem", backup=True, max_versions=5)
-        self.primary_backend = self._create_backend(self.config.primary)
-        self.backup_enabled = self.config.backup
-        self.max_versions = self.config.max_versions
+        """Initialize storage service with configuration."""
+        self.config = config or StorageConfig()
 
-    def _create_backend(self, backend_type: str) -> StorageBackend:
-        """Create a storage backend based on type."""
-        if backend_type == "filesystem":
-            return FilesystemBackend(self.config.filesystem)
-        elif backend_type == "s3":
-            return S3Backend(self.config.s3)
-        else:
-            raise ValueError(f"Unsupported storage backend: {backend_type}")
+        # Initialize backends
+        self.backends = {}
 
-    def generate_file_path(
-        self, audio_file_id: UUID, cue_format: str, year: Optional[int] = None, month: Optional[int] = None
-    ) -> str:
-        """Generate file path based on configuration structure."""
-        now = datetime.utcnow()
-        year = year or now.year
-        month = month or now.month
+        # Initialize filesystem backend
+        self.backends["filesystem"] = FilesystemBackend(self.config.filesystem)
 
-        structure_template = self.config.filesystem.get("structure", "{year}/{month}/{audio_file_id}/{format}.cue")
-        return str(
-            structure_template.format(
-                year=year, month=f"{month:02d}", audio_file_id=str(audio_file_id), format=cue_format
-            )
-        )
+        # Initialize S3 backend if configured
+        if self.config.primary == "s3":
+            self.backends["s3"] = S3Backend(self.config.s3)
+
+        # Set primary backend
+        self.primary_backend = self.backends.get(self.config.primary, self.backends["filesystem"])
+
+        logger.info(f"Storage service initialized with primary backend: {self.config.primary}")
 
     def store_cue_file(
-        self, content: str, audio_file_id: UUID, cue_format: str, metadata: Optional[Dict] = None
-    ) -> StorageResult:
-        """Store a CUE file."""
-        file_path = self.generate_file_path(audio_file_id, cue_format)
+        self, file_path: str, content: str, metadata: Optional[Dict] = None
+    ) -> Tuple[bool, str, Optional[str]]:
+        """
+        Store CUE file content.
 
-        # Add storage metadata
-        storage_metadata = {
-            "audio_file_id": str(audio_file_id),
-            "format": cue_format,
-            "stored_at": datetime.utcnow().isoformat(),
-            "content_type": "application/x-cue",
-        }
+        Args:
+            file_path: Relative path for file
+            content: CUE file content
+            metadata: Optional metadata
 
-        if metadata:
-            storage_metadata.update(metadata)
+        Returns:
+            Tuple of (success, stored_path, error)
+        """
+        try:
+            result = self.primary_backend.store(content, file_path, metadata)
 
-        result = self.primary_backend.store(content, file_path, storage_metadata)
+            if result.success:
+                # Store metadata
+                self._store_metadata(
+                    file_path,
+                    {
+                        "checksum": result.checksum,
+                        "size": result.file_size,
+                        "version": result.version,
+                        "stored_at": datetime.utcnow().isoformat(),
+                        **(metadata or {}),
+                    },
+                )
 
-        # Update result with the relative file path for consistency
-        if result.success:
-            result.file_path = file_path
+                return True, result.file_path, None
+            else:
+                return False, None, result.error
 
-            # Clean up old versions if successful
-            if self.backup_enabled and hasattr(self.primary_backend, "cleanup_old_versions"):
-                self.primary_backend.cleanup_old_versions(file_path, self.max_versions)
-
-        return result
+        except Exception as e:
+            logger.error(f"Failed to store CUE file {file_path}: {e}", exc_info=True)
+            return False, None, str(e)
 
     def retrieve_cue_file(self, file_path: str) -> Tuple[bool, Optional[str], Optional[str]]:
-        """Retrieve a CUE file."""
+        """
+        Retrieve CUE file content.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            Tuple of (success, content, error)
+        """
         return self.primary_backend.retrieve(file_path)
 
     def delete_cue_file(self, file_path: str) -> bool:
-        """Delete a CUE file."""
+        """
+        Delete CUE file.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            Success status
+        """
         return self.primary_backend.delete(file_path)
 
-    def file_exists(self, file_path: str) -> bool:
-        """Check if CUE file exists."""
-        return self.primary_backend.exists(file_path)
-
-    def list_file_versions(self, file_path: str) -> List[Dict]:
-        """List all versions of a CUE file."""
-        return self.primary_backend.list_versions(file_path)
-
     def get_file_info(self, file_path: str) -> Optional[Dict]:
-        """Get information about a stored file."""
+        """
+        Get file information.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            File information dictionary or None
+        """
         try:
-            if not self.file_exists(file_path):
+            if not self.primary_backend.exists(file_path):
                 return None
 
-            versions = self.list_file_versions(file_path)
-            if not versions:
-                return None
+            # Get metadata
+            metadata = self._get_metadata(file_path)
 
-            current_version = next((v for v in versions if v["is_current"]), versions[0])
+            # Get version info
+            versions = self.primary_backend.list_versions(file_path)
 
-            return {
-                "path": file_path,
-                "current_version": current_version["version"],
-                "size": current_version["size"],
-                "modified": current_version["modified"],
-                "total_versions": len(versions),
-            }
+            return {"exists": True, "metadata": metadata, "versions": versions, "version_count": len(versions)}
 
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to get file info for {file_path}: {e}", exc_info=True)
             return None
 
-    def cleanup_orphaned_files(self, active_file_paths: List[str]) -> int:
-        """Clean up orphaned CUE files not in the active list."""
-        # This is a placeholder for a cleanup operation
-        # In a real implementation, you would scan the storage
-        # and remove files not in the active_file_paths list
-        return 0
+    def _store_metadata(self, file_path: str, metadata: Dict) -> None:
+        """Store metadata for a file."""
+        try:
+            metadata_path = f"{file_path}.metadata.json"
+            metadata_content = json.dumps(metadata, indent=2)
+            self.primary_backend.store(metadata_content, metadata_path)
+        except Exception as e:
+            logger.warning(f"Failed to store metadata for {file_path}: {e}")
+
+    def _get_metadata(self, file_path: str) -> Optional[Dict]:
+        """Get metadata for a file."""
+        try:
+            metadata_path = f"{file_path}.metadata.json"
+            success, content, _ = self.primary_backend.retrieve(metadata_path)
+            if success and content:
+                return json.loads(content)
+        except Exception as e:
+            logger.debug(f"No metadata found for {file_path}: {e}")
+        return None
+
+    def list_cue_files(self, tracklist_id: Optional[UUID] = None, format_type: Optional[str] = None) -> List[str]:
+        """
+        List CUE files matching criteria.
+
+        Args:
+            tracklist_id: Filter by tracklist ID
+            format_type: Filter by format
+
+        Returns:
+            List of file paths
+        """
+        # This would need proper implementation based on backend
+        # For now, return empty list
+        return []
 
     def get_storage_stats(self) -> Dict:
-        """Get storage statistics."""
-        # This is a placeholder for storage statistics
-        # In a real implementation, you would calculate actual usage
+        """
+        Get storage statistics.
+
+        Returns:
+            Statistics dictionary
+        """
         return {
             "backend": self.config.primary,
-            "backup_enabled": self.backup_enabled,
-            "max_versions": self.max_versions,
-            "total_files": 0,
-            "total_size": 0,
-            "total_versions": 0,
+            "backup_enabled": self.config.backup,
+            "max_versions": self.config.max_versions,
         }
+
+
+# Singleton instance
+_storage_service: Optional[StorageService] = None
+
+
+def get_storage_service(config: Optional[StorageConfig] = None) -> StorageService:
+    """Get or create storage service instance."""
+    global _storage_service
+    if _storage_service is None:
+        _storage_service = StorageService(config)
+    return _storage_service

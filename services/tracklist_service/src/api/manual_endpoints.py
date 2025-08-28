@@ -13,10 +13,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
+from services.tracklist_service.src.models.cue_file import CueFormat
 from services.tracklist_service.src.services.catalog_search_service import CatalogSearchService
 from services.tracklist_service.src.services.cue_integration import CueIntegrationService
 from services.tracklist_service.src.services.draft_service import DraftService
 from services.tracklist_service.src.services.timing_service import TimingService
+from services.tracklist_service.src.utils.time_utils import parse_time_string
 from shared.core_types.src.database import get_db_session
 
 logger = logging.getLogger(__name__)
@@ -70,29 +72,8 @@ class UpdateTrackTimingRequest(BaseModel):
     end_time: Optional[str] = Field(None, description="End time in HH:MM:SS format")
 
 
-def parse_time_string(time_str: str) -> int:
-    """Parse HH:MM:SS or MM:SS time string to seconds.
-
-    Args:
-        time_str: Time string in HH:MM:SS or MM:SS format.
-
-    Returns:
-        Total seconds.
-
-    Raises:
-        ValueError: If time string format is invalid.
-    """
-    parts = time_str.split(":")
-    if len(parts) == 2:
-        # MM:SS format
-        minutes, seconds = map(int, parts)
-        return minutes * 60 + seconds
-    elif len(parts) == 3:
-        # HH:MM:SS format
-        hours, minutes, seconds = map(int, parts)
-        return hours * 3600 + minutes * 60 + seconds
-    else:
-        raise ValueError(f"Invalid time format: {time_str}")
+# Note: parse_time_string function has been moved to utils.time_utils module
+# and is now imported at the top of this file
 
 
 @router.post("/manual", response_model=Tracklist, status_code=status.HTTP_201_CREATED)
@@ -200,14 +181,14 @@ def add_track(
                 track.position += 1
 
     # Create new track
-    from datetime import timedelta
+    # timedelta import removed - using parse_time_string directly
 
     new_track = TrackEntry(
         position=request.position,
         artist=request.artist,
         title=request.title,
-        start_time=timedelta(seconds=parse_time_string(request.start_time)),
-        end_time=timedelta(seconds=parse_time_string(request.end_time)) if request.end_time else None,
+        start_time=parse_time_string(request.start_time),
+        end_time=parse_time_string(request.end_time) if request.end_time else None,
         remix=request.remix,
         label=request.label,
         is_manual_entry=True,
@@ -268,16 +249,16 @@ def update_track(
         )
 
     # Update track fields
-    from datetime import timedelta
+    # timedelta import removed - using parse_time_string directly
 
     if request.artist is not None:
         track.artist = request.artist
     if request.title is not None:
         track.title = request.title
     if request.start_time is not None:
-        track.start_time = timedelta(seconds=parse_time_string(request.start_time))
+        track.start_time = parse_time_string(request.start_time)
     if request.end_time is not None:
-        track.end_time = timedelta(seconds=parse_time_string(request.end_time))
+        track.end_time = parse_time_string(request.end_time)
     if request.remix is not None:
         track.remix = request.remix
     if request.label is not None:
@@ -358,7 +339,7 @@ def update_track_timing(
     Raises:
         HTTPException: If tracklist or track not found or timing conflict.
     """
-    from datetime import timedelta
+    # timedelta import removed - using parse_time_string directly
 
     draft_service = DraftService(db)
     timing_service = TimingService()
@@ -382,9 +363,9 @@ def update_track_timing(
         )
 
     # Update timing
-    track.start_time = timedelta(seconds=parse_time_string(request.start_time))
+    track.start_time = parse_time_string(request.start_time)
     if request.end_time:
-        track.end_time = timedelta(seconds=parse_time_string(request.end_time))
+        track.end_time = parse_time_string(request.end_time)
 
     # Use TimingService for validation
     conflicts = timing_service.detect_all_timing_conflicts(draft.tracks)
@@ -532,9 +513,10 @@ def match_tracks_to_catalog(
 
 
 @router.post("/{tracklist_id}/publish", response_model=Tracklist)
-def publish_draft(
+async def publish_draft(
     tracklist_id: UUID,
     validate_before_publish: bool = True,
+    generate_cue_async: bool = True,
     db: Session = Depends(get_db_session),
 ) -> Tracklist:
     """Publish a draft as final version.
@@ -589,23 +571,44 @@ def publish_draft(
     try:
         published = draft_service.publish_draft(tracklist_id)
 
-        # Automatically generate CUE file for published tracklist
-        # In production, this would be done async via message queue
-        cue_service = CueIntegrationService()
+        # Generate CUE file asynchronously if requested
+        if generate_cue_async:
+            # Use async message queue for non-blocking CUE generation
+            from services.tracklist_service.src.messaging.cue_generation_handler import CueGenerationHandler
 
-        # For now, use a placeholder audio file path
-        # In real implementation, this would come from the AudioFile table
-        audio_file_path = f"/tmp/audio_{published.audio_file_id}.wav"
+            cue_handler = CueGenerationHandler()
 
-        cue_result = cue_service.generate_cue_file(published, audio_file_path, cue_format="standard")
+            # Publish CUE generation request to message queue
+            success = await cue_handler.publish_generation_request(
+                tracklist_id=published.id,
+                audio_file_id=published.audio_file_id,
+                formats=["standard", "cdj"],  # Generate multiple formats by default
+                validate_audio=False,  # Skip validation for now
+                store_files=True,
+                priority="normal",
+                metadata={"source": "manual_publish"},
+            )
 
-        if not cue_result.success:
-            logger.warning(f"CUE generation failed: {cue_result.error}")
+            if success:
+                logger.info(f"CUE generation queued for tracklist {published.id}")
+            else:
+                logger.warning(f"Failed to queue CUE generation for tracklist {published.id}")
         else:
-            logger.info(f"CUE file generated: {cue_result.cue_file_path}")
-            # Store the reference in the database
-            if cue_result.cue_file_path:
-                cue_service.store_cue_file_reference(published.id, cue_result.cue_file_path)
+            # Fallback to synchronous generation (for testing)
+            cue_service = CueIntegrationService()
+
+            # Note: generate_cue_file method doesn't exist, this is placeholder
+            # In real implementation, use generate_cue_content
+            success, content, error = cue_service.generate_cue_content(
+                published,
+                cue_format=CueFormat.STANDARD,
+                audio_filename=f"audio_{published.audio_file_id}.wav",
+            )
+
+            if not success:
+                logger.warning(f"CUE generation failed: {error}")
+            else:
+                logger.info("CUE file generated successfully")
 
         return published
     except ValueError as e:
@@ -841,9 +844,9 @@ def auto_calculate_end_times(
     # Parse audio duration if provided
     audio_duration_td = None
     if audio_duration:
-        from datetime import timedelta
+        # timedelta import removed - using parse_time_string directly
 
-        audio_duration_td = timedelta(seconds=parse_time_string(audio_duration))
+        audio_duration_td = parse_time_string(audio_duration)
 
     # Calculate end times
     timing_service = TimingService()
@@ -890,9 +893,9 @@ def get_timing_suggestions(
     # Parse target duration if provided
     target_duration_td = None
     if target_duration:
-        from datetime import timedelta
+        # timedelta import removed - using parse_time_string directly
 
-        target_duration_td = timedelta(seconds=parse_time_string(target_duration))
+        target_duration_td = parse_time_string(target_duration)
 
     # Get timing suggestions
     timing_service = TimingService()
@@ -938,9 +941,9 @@ def validate_timing(
     # Parse audio duration if provided
     audio_duration_td = None
     if audio_duration:
-        from datetime import timedelta
+        # timedelta import removed - using parse_time_string directly
 
-        audio_duration_td = timedelta(seconds=parse_time_string(audio_duration))
+        audio_duration_td = parse_time_string(audio_duration)
 
     # Validate timing
     timing_service = TimingService()

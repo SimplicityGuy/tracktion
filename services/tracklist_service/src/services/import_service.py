@@ -18,6 +18,7 @@ from ..models.tracklist_models import Track as ScrapedTrack
 from ..models.tracklist_models import Tracklist as ScrapedTracklist
 from ..scraper.tracklist_scraper import TracklistScraper
 from ..config import get_config
+from ..utils.time_utils import parse_time_string, milliseconds_to_timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -187,17 +188,11 @@ class ImportService:
             return timedelta(0)
 
         if hasattr(cue_point, "timestamp_ms") and cue_point.timestamp_ms is not None:
-            return timedelta(milliseconds=cue_point.timestamp_ms)
+            return milliseconds_to_timedelta(cue_point.timestamp_ms)
 
         if hasattr(cue_point, "formatted_time") and cue_point.formatted_time:
-            # Parse MM:SS or HH:MM:SS format
-            parts = cue_point.formatted_time.split(":")
-            if len(parts) == 2:
-                minutes, seconds = map(int, parts)
-                return timedelta(minutes=minutes, seconds=seconds)
-            elif len(parts) == 3:
-                hours, minutes, seconds = map(int, parts)
-                return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+            # Use centralized parsing function
+            return parse_time_string(cue_point.formatted_time)
 
         return timedelta(0)
 

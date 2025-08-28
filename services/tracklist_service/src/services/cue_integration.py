@@ -8,10 +8,10 @@ to integrate CUE file generation and validation with tracklist data.
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
-from datetime import timedelta
 
 from ..models.tracklist import Tracklist
 from ..models.cue_file import CueFormat, ValidationResult
+from ..utils.time_utils import timedelta_to_milliseconds
 
 # Add the analysis service to the path so we can import from it
 analysis_service_path = Path(__file__).parent.parent.parent.parent / "analysis_service" / "src"
@@ -66,10 +66,8 @@ class CueFormatMapper:
 class TracklistToCueMapper:
     """Maps tracklist data to CUE handler data structures."""
 
-    @staticmethod
-    def timedelta_to_milliseconds(td: timedelta) -> int:
-        """Convert timedelta to milliseconds."""
-        return int(td.total_seconds() * 1000)
+    # Note: timedelta_to_milliseconds has been moved to utils.time_utils
+    # and is imported at the top of this file
 
     @staticmethod
     def milliseconds_to_cue_time(ms: int) -> CueTime:
@@ -87,7 +85,7 @@ class TracklistToCueMapper:
         cue_tracks = []
 
         for track in tracklist.tracks:
-            start_ms = cls.timedelta_to_milliseconds(track.start_time)
+            start_ms = timedelta_to_milliseconds(track.start_time)
 
             # Build performer and title
             performer = track.artist
