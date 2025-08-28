@@ -10,9 +10,9 @@ from typing import List, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import Column, String, Float, DateTime, ForeignKey, JSON, Text
+from sqlalchemy import Column, String, Float, DateTime, ForeignKey, JSON, Text, Boolean, Integer
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import DeclarativeBase
 from typing import TYPE_CHECKING
 
 
@@ -38,6 +38,7 @@ class TrackEntry(BaseModel):
     catalog_track_id: Optional[UUID] = Field(None, description="Link to catalog track")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Confidence score")
     transition_type: Optional[str] = Field(None, description="Type of transition to next track")
+    is_manual_entry: bool = Field(default=False, description="Flag for manually entered tracks")
 
     @field_validator("position")
     @classmethod
@@ -68,6 +69,7 @@ class TrackEntry(BaseModel):
             "catalog_track_id": str(self.catalog_track_id) if self.catalog_track_id else None,
             "confidence": self.confidence,
             "transition_type": self.transition_type,
+            "is_manual_entry": self.is_manual_entry,
         }
 
     @classmethod
@@ -84,6 +86,7 @@ class TrackEntry(BaseModel):
             catalog_track_id=UUID(data["catalog_track_id"]) if data.get("catalog_track_id") else None,
             confidence=data.get("confidence", 1.0),
             transition_type=data.get("transition_type"),
+            is_manual_entry=data.get("is_manual_entry", False),
         )
 
 
@@ -98,6 +101,9 @@ class Tracklist(BaseModel):
     tracks: List[TrackEntry] = Field(default_factory=list, description="List of tracks")
     cue_file_id: Optional[UUID] = Field(None, description="Associated CUE file ID")
     confidence_score: float = Field(default=1.0, ge=0.0, le=1.0, description="Overall confidence score")
+    draft_version: Optional[int] = Field(None, description="Version number for drafts")
+    is_draft: bool = Field(default=False, description="Flag for draft status")
+    parent_tracklist_id: Optional[UUID] = Field(None, description="For versioning")
 
     model_config = {"json_encoders": {UUID: str}}
 
@@ -138,7 +144,7 @@ class TracklistDB(Base):
     __tablename__ = "tracklists"
 
     id = Column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid4)
-    audio_file_id = Column(PostgresUUID(as_uuid=True), ForeignKey("recordings.id"), nullable=False)
+    audio_file_id = Column(PostgresUUID(as_uuid=True), nullable=False)  # Foreign key to recordings.id
     source = Column(String(50), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -146,9 +152,13 @@ class TracklistDB(Base):
     cue_file_path = Column(Text, nullable=True)
     cue_file_id = Column(PostgresUUID(as_uuid=True), nullable=True)
     confidence_score = Column(Float, default=1.0, nullable=False)
+    draft_version = Column(Integer, nullable=True)
+    is_draft = Column(Boolean, default=False, nullable=False)
+    parent_tracklist_id = Column(PostgresUUID(as_uuid=True), ForeignKey("tracklists.id"), nullable=True)
 
     # Relationships
-    recording = relationship("Recording", backref="tracklists")
+    # Note: Recording model is in a different service, so relationship is commented out
+    # recording = relationship("Recording", backref="tracklists")
 
     def to_model(self) -> Tracklist:
         """Convert to Pydantic model."""
@@ -165,6 +175,9 @@ class TracklistDB(Base):
             tracks=tracks_list,
             cue_file_id=self.cue_file_id,
             confidence_score=self.confidence_score,
+            draft_version=self.draft_version,
+            is_draft=self.is_draft,
+            parent_tracklist_id=self.parent_tracklist_id,
         )
 
     @classmethod
@@ -179,6 +192,9 @@ class TracklistDB(Base):
             tracks=[track.to_dict() for track in model.tracks],
             cue_file_id=model.cue_file_id,
             confidence_score=model.confidence_score,
+            draft_version=model.draft_version,
+            is_draft=model.is_draft,
+            parent_tracklist_id=model.parent_tracklist_id,
         )
 
 
