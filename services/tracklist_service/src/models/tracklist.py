@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import Column, String, Float, DateTime, ForeignKey, JSON, Text, Boolean, Integer
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, relationship
 from typing import TYPE_CHECKING
 
 
@@ -161,6 +161,11 @@ class TracklistDB(Base):
     # Relationships
     # Note: Recording model is in a different service, so relationship is commented out
     # recording = relationship("Recording", backref="tracklists")
+    versions = relationship("TracklistVersion", back_populates="tracklist", cascade="all, delete-orphan")
+    sync_configuration = relationship(
+        "SyncConfiguration", back_populates="tracklist", uselist=False, cascade="all, delete-orphan"
+    )
+    sync_events = relationship("SyncEvent", back_populates="tracklist", cascade="all, delete-orphan")
 
     def to_model(self) -> Tracklist:
         """Convert to Pydantic model."""
