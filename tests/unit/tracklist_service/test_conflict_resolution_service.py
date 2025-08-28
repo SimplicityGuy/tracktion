@@ -74,9 +74,7 @@ class TestConflictResolutionService:
             "tracks_modified": [],
         }
 
-        conflicts = await conflict_service.detect_conflicts(
-            tracklist_id, current_state, proposed_changes
-        )
+        conflicts = await conflict_service.detect_conflicts(tracklist_id, current_state, proposed_changes)
 
         assert len(conflicts) == 0
 
@@ -91,9 +89,7 @@ class TestConflictResolutionService:
             "tracks_modified": [],
         }
 
-        conflicts = await conflict_service.detect_conflicts(
-            tracklist_id, current_state, proposed_changes
-        )
+        conflicts = await conflict_service.detect_conflicts(tracklist_id, current_state, proposed_changes)
 
         assert len(conflicts) > 0
         assert conflicts[0]["type"] == ConflictType.MAJOR_RESTRUCTURE.value
@@ -117,9 +113,7 @@ class TestConflictResolutionService:
             ],
         }
 
-        conflicts = await conflict_service.detect_conflicts(
-            tracklist_id, current_state, proposed_changes
-        )
+        conflicts = await conflict_service.detect_conflicts(tracklist_id, current_state, proposed_changes)
 
         assert len(conflicts) == 1
         assert conflicts[0]["type"] == ConflictType.TRACK_MODIFIED.value
@@ -137,9 +131,7 @@ class TestConflictResolutionService:
             "tracks_modified": [],
         }
 
-        conflicts = await conflict_service.detect_conflicts(
-            tracklist_id, current_state, proposed_changes
-        )
+        conflicts = await conflict_service.detect_conflicts(tracklist_id, current_state, proposed_changes)
 
         assert len(conflicts) == 1
         assert conflicts[0]["type"] == ConflictType.TRACK_REMOVED.value
@@ -170,15 +162,11 @@ class TestConflictResolutionService:
         assert confidence == 0.9
 
         # Minor change in major field
-        confidence = conflict_service._calculate_field_confidence(
-            "title", "Track 1", "Track 1 (Extended)"
-        )
+        confidence = conflict_service._calculate_field_confidence("title", "Track 1", "Track 1 (Extended)")
         assert confidence == 0.85
 
         # Complete change in major field
-        confidence = conflict_service._calculate_field_confidence(
-            "artist", "Artist A", "Artist B"
-        )
+        confidence = conflict_service._calculate_field_confidence("artist", "Artist A", "Artist B")
         assert confidence == 0.3
 
     def test_is_critical_track(self, conflict_service):
@@ -302,15 +290,9 @@ class TestConflictResolutionService:
                 "recommended_strategy": ResolutionStrategy.MANUAL_EDIT.value,
             },
         ]
-        proposed_changes = {
-            "tracks_modified": [
-                {"position": 1, "new": {"position": 1, "title": "New Title"}}
-            ]
-        }
+        proposed_changes = {"tracks_modified": [{"position": 1, "new": {"position": 1, "title": "New Title"}}]}
 
-        resolutions = await conflict_service.auto_resolve_conflicts(
-            tracklist_id, conflicts, proposed_changes
-        )
+        resolutions = await conflict_service.auto_resolve_conflicts(tracklist_id, conflicts, proposed_changes)
 
         assert len(resolutions) == 1  # Only auto-resolvable conflict
         assert resolutions[0]["conflict_id"] == "conflict1"

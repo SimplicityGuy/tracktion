@@ -7,10 +7,8 @@ from uuid import UUID, uuid4
 from enum import Enum
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from services.tracklist_service.src.models.synchronization import SyncEvent, SyncConfiguration
-from services.tracklist_service.src.models.tracklist import TracklistDB, TrackEntry
+from services.tracklist_service.src.models.tracklist import TracklistDB
 from services.tracklist_service.src.services.version_service import VersionService
 from services.tracklist_service.src.services.audit_service import AuditService
 
@@ -19,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class ResolutionStrategy(Enum):
     """Available conflict resolution strategies."""
-    
+
     KEEP_CURRENT = "keep_current"
     USE_PROPOSED = "use_proposed"
     MANUAL_EDIT = "manual_edit"
@@ -29,7 +27,7 @@ class ResolutionStrategy(Enum):
 
 class ConflictType(Enum):
     """Types of conflicts that can occur."""
-    
+
     TRACK_ADDED = "track_added"
     TRACK_REMOVED = "track_removed"
     TRACK_MODIFIED = "track_modified"
@@ -59,7 +57,7 @@ class ConflictResolutionService:
         self.confidence_threshold = 0.8
 
     async def detect_conflicts(
-        self, 
+        self,
         tracklist_id: UUID,
         current_state: Dict[str, Any],
         proposed_changes: Dict[str, Any],
@@ -78,46 +76,52 @@ class ConflictResolutionService:
 
         # Check for major structural changes
         if self._is_major_restructure(proposed_changes):
-            conflicts.append({
-                "id": str(uuid4()),
-                "type": ConflictType.MAJOR_RESTRUCTURE.value,
-                "severity": "high",
-                "description": "Major structural changes detected",
-                "details": {
-                    "tracks_added": len(proposed_changes.get("tracks_added", [])),
-                    "tracks_removed": len(proposed_changes.get("tracks_removed", [])),
-                    "tracks_modified": len(proposed_changes.get("tracks_modified", [])),
-                },
-                "auto_resolvable": False,
-                "recommended_strategy": ResolutionStrategy.MANUAL_EDIT.value,
-            })
+            conflicts.append(
+                {
+                    "id": str(uuid4()),
+                    "type": ConflictType.MAJOR_RESTRUCTURE.value,
+                    "severity": "high",
+                    "description": "Major structural changes detected",
+                    "details": {
+                        "tracks_added": len(proposed_changes.get("tracks_added", [])),
+                        "tracks_removed": len(proposed_changes.get("tracks_removed", [])),
+                        "tracks_modified": len(proposed_changes.get("tracks_modified", [])),
+                    },
+                    "auto_resolvable": False,
+                    "recommended_strategy": ResolutionStrategy.MANUAL_EDIT.value,
+                }
+            )
 
         # Check individual track conflicts
         for track_mod in proposed_changes.get("tracks_modified", []):
             conflict_detail = self._analyze_track_modification(track_mod)
             if conflict_detail:
-                conflicts.append({
-                    "id": str(uuid4()),
-                    "type": ConflictType.TRACK_MODIFIED.value,
-                    "severity": conflict_detail["severity"],
-                    "description": f"Track {track_mod['position']} has conflicting changes",
-                    "details": conflict_detail,
-                    "auto_resolvable": conflict_detail["confidence"] > self.confidence_threshold,
-                    "recommended_strategy": self._recommend_strategy(conflict_detail),
-                })
+                conflicts.append(
+                    {
+                        "id": str(uuid4()),
+                        "type": ConflictType.TRACK_MODIFIED.value,
+                        "severity": conflict_detail["severity"],
+                        "description": f"Track {track_mod['position']} has conflicting changes",
+                        "details": conflict_detail,
+                        "auto_resolvable": conflict_detail["confidence"] > self.confidence_threshold,
+                        "recommended_strategy": self._recommend_strategy(conflict_detail),
+                    }
+                )
 
         # Check removed tracks that might be important
         for track_removed in proposed_changes.get("tracks_removed", []):
             if self._is_critical_track(track_removed):
-                conflicts.append({
-                    "id": str(uuid4()),
-                    "type": ConflictType.TRACK_REMOVED.value,
-                    "severity": "medium",
-                    "description": f"Important track {track_removed['position']} would be removed",
-                    "details": track_removed,
-                    "auto_resolvable": False,
-                    "recommended_strategy": ResolutionStrategy.KEEP_CURRENT.value,
-                })
+                conflicts.append(
+                    {
+                        "id": str(uuid4()),
+                        "type": ConflictType.TRACK_REMOVED.value,
+                        "severity": "medium",
+                        "description": f"Important track {track_removed['position']} would be removed",
+                        "details": track_removed,
+                        "auto_resolvable": False,
+                        "recommended_strategy": ResolutionStrategy.KEEP_CURRENT.value,
+                    }
+                )
 
         return conflicts
 
@@ -133,7 +137,7 @@ class ConflictResolutionService:
         added = len(changes.get("tracks_added", []))
         removed = len(changes.get("tracks_removed", []))
         modified = len(changes.get("tracks_modified", []))
-        
+
         # Major restructure if many tracks affected
         total_changes = added + removed + modified
         return total_changes > 10 or removed > 5 or (added > 5 and removed > 2)
@@ -149,17 +153,19 @@ class ConflictResolutionService:
         """
         old = track_mod.get("old", {})
         new = track_mod.get("new", {})
-        
+
         # Calculate field-level changes
         changed_fields = []
         for field in ["artist", "title", "remix", "label"]:
             if old.get(field) != new.get(field):
-                changed_fields.append({
-                    "field": field,
-                    "old_value": old.get(field),
-                    "new_value": new.get(field),
-                    "confidence": self._calculate_field_confidence(field, old.get(field), new.get(field)),
-                })
+                changed_fields.append(
+                    {
+                        "field": field,
+                        "old_value": old.get(field),
+                        "new_value": new.get(field),
+                        "confidence": self._calculate_field_confidence(field, old.get(field), new.get(field)),
+                    }
+                )
 
         if not changed_fields:
             return None
@@ -195,7 +201,7 @@ class ConflictResolutionService:
         if not old_value and new_value:
             # Adding missing data is usually good
             return 0.9
-        
+
         if field in ["artist", "title"]:
             # Major fields need more caution
             if old_value and new_value:
@@ -203,14 +209,14 @@ class ConflictResolutionService:
                 if isinstance(old_value, str) and isinstance(new_value, str):
                     old_lower = old_value.lower()
                     new_lower = new_value.lower()
-                    
+
                     # Small changes like adding (Extended) are likely correct
                     if old_lower in new_lower or new_lower in old_lower:
                         return 0.85
-                    
+
                     # Complete changes need manual review
                     return 0.3
-        
+
         # Minor fields can be more confidently updated
         return 0.7
 
@@ -226,15 +232,15 @@ class ConflictResolutionService:
         # Tracks with specific markers or at key positions might be critical
         position = track.get("position", 0)
         title = track.get("title", "").lower()
-        
+
         # First and last tracks are often important
         if position == 1:
             return True
-            
+
         # Intro/outro tracks are important
         if any(marker in title for marker in ["intro", "outro", "opening", "closing"]):
             return True
-            
+
         return False
 
     def _recommend_strategy(self, conflict_detail: Dict[str, Any]) -> str:
@@ -248,7 +254,7 @@ class ConflictResolutionService:
         """
         confidence = conflict_detail.get("confidence", 0)
         severity = conflict_detail.get("severity", "low")
-        
+
         if confidence > 0.85:
             return ResolutionStrategy.USE_PROPOSED.value
         elif confidence > 0.7 and severity == "low":
@@ -321,7 +327,7 @@ class ConflictResolutionService:
             Formatted conflict details
         """
         details = conflict.get("details", {})
-        
+
         if conflict["type"] == ConflictType.TRACK_MODIFIED.value:
             # Format track modification conflicts
             position = details.get("position")
@@ -412,7 +418,7 @@ class ConflictResolutionService:
         """
         strategy = resolution.get("strategy")
         conflict_id = resolution.get("conflict_id")
-        
+
         if strategy == ResolutionStrategy.KEEP_CURRENT.value:
             # No changes needed
             logger.info(f"Keeping current state for conflict {conflict_id}")
@@ -444,7 +450,7 @@ class ConflictResolutionService:
         # Implementation depends on the exact structure of your tracklist
         if "tracks" in proposed_data:
             tracklist.tracks = proposed_data["tracks"]
-        
+
         tracklist.updated_at = datetime.utcnow()
 
     async def _apply_manual_edits(
@@ -461,7 +467,7 @@ class ConflictResolutionService:
         # Apply user's manual edits
         if "tracks" in manual_data:
             tracklist.tracks = manual_data["tracks"]
-        
+
         tracklist.updated_at = datetime.utcnow()
 
     async def _apply_merge(
@@ -478,7 +484,7 @@ class ConflictResolutionService:
         # Apply merged changes - combination of current and proposed
         if "tracks" in merge_data:
             tracklist.tracks = merge_data["tracks"]
-        
+
         tracklist.updated_at = datetime.utcnow()
 
     async def auto_resolve_conflicts(
@@ -498,7 +504,7 @@ class ConflictResolutionService:
             List of resolutions
         """
         resolutions = []
-        
+
         for conflict in conflicts:
             if conflict.get("auto_resolvable", False):
                 resolution = {
@@ -507,16 +513,13 @@ class ConflictResolutionService:
                     "automated": True,
                     "confidence": conflict.get("details", {}).get("confidence", 0),
                 }
-                
+
                 # Add proposed data if using proposed strategy
                 if resolution["strategy"] == ResolutionStrategy.USE_PROPOSED.value:
-                    resolution["proposed_data"] = self._extract_proposed_data(
-                        conflict,
-                        proposed_changes
-                    )
-                
+                    resolution["proposed_data"] = self._extract_proposed_data(conflict, proposed_changes)
+
                 resolutions.append(resolution)
-        
+
         return resolutions
 
     def _extract_proposed_data(
@@ -539,5 +542,5 @@ class ConflictResolutionService:
             for mod in proposed_changes.get("tracks_modified", []):
                 if mod.get("position") == position:
                     return {"tracks": [mod["new"]]}
-        
+
         return {}

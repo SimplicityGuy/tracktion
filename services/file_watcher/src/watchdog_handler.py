@@ -127,8 +127,8 @@ class TracktionEventHandler(FileSystemEventHandler):
                 "timestamp": datetime.now(UTC).isoformat(),
             }
 
-            # Add file stats if file still exists
-            if file_path_obj.exists():
+            # Add file stats and hashes if file still exists (not for deleted events)
+            if file_path_obj.exists() and event_type != "deleted":
                 try:
                     stat = file_path_obj.stat()
                     file_info.update(
@@ -137,8 +137,20 @@ class TracktionEventHandler(FileSystemEventHandler):
                             "modified_time": str(stat.st_mtime),
                         }
                     )
+
+                    # Calculate dual hashes for non-deleted files
+                    from .file_scanner import FileScanner
+
+                    scanner = FileScanner()
+                    sha256_hash, xxh128_hash = scanner._calculate_dual_hashes(file_path_obj)
+                    file_info.update(
+                        {
+                            "sha256_hash": sha256_hash,
+                            "xxh128_hash": xxh128_hash,
+                        }
+                    )
                 except Exception as e:
-                    logger.warning("Could not get file stats", path=file_path, error=str(e))
+                    logger.warning("Could not get file stats or hashes", path=file_path, error=str(e))
 
             # Add any additional kwargs (like old_path)
             file_info.update(kwargs)

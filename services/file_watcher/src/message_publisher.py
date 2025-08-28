@@ -202,16 +202,32 @@ class MessagePublisher:
         # Generate correlation ID for tracing
         correlation_id = str(uuid.uuid4())
 
-        # Build message payload with instance metadata
+        # Build message payload according to spec format
         message = {
             "correlation_id": correlation_id,
             "timestamp": datetime.now(UTC).isoformat(),
             "event_type": event_type,
-            "file_info": file_info,
-            "file_type": self._determine_file_type(file_info.get("extension", "")),
+            "file_path": file_info.get("path", ""),
             "instance_id": self.instance_id,
             "watched_directory": self.watched_directory,
         }
+
+        # Add old_path for moved/renamed events
+        if "old_path" in file_info:
+            message["old_path"] = file_info["old_path"]
+
+        # Add hashes for non-deleted events
+        if event_type != "deleted":
+            if "sha256_hash" in file_info:
+                message["sha256_hash"] = file_info["sha256_hash"]
+            if "xxh128_hash" in file_info:
+                message["xxh128_hash"] = file_info["xxh128_hash"]
+
+        # Add file metadata if available
+        if "size_bytes" in file_info:
+            message["size_bytes"] = file_info["size_bytes"]
+        if "extension" in file_info:
+            message["file_type"] = self._determine_file_type(file_info["extension"])
 
         # Special handling for OGG files
         if file_info.get("extension", "").lower() in [".ogg", ".oga"]:

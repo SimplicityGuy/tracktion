@@ -242,3 +242,144 @@ class TestMessagePublisher:
                 file_path="/music/test.ogg",
                 extension=".ogg",
             )
+
+    @patch("services.file_watcher.src.message_publisher.pika.BlockingConnection")
+    @patch("services.file_watcher.src.message_publisher.uuid.uuid4")
+    @patch("services.file_watcher.src.message_publisher.datetime")
+    def test_publish_file_event_deleted(self, mock_datetime, mock_uuid, mock_connection_class):
+        """Test publishing file deletion event."""
+        # Setup mocks
+        mock_uuid.return_value = uuid.UUID("12345678-1234-5678-1234-567812345678")
+        mock_datetime.now.return_value.isoformat.return_value = "2024-01-01T00:00:00"
+
+        mock_connection = MagicMock()
+        mock_channel = MagicMock()
+        mock_connection.channel.return_value = mock_channel
+        mock_connection.is_closed = False
+        mock_connection_class.return_value = mock_connection
+
+        publisher = MessagePublisher()
+        publisher.connect()
+
+        # Test data for deleted file
+        file_info = {
+            "path": "/music/test.mp3",
+            "name": "test.mp3",
+            "extension": ".mp3",
+        }
+
+        result = publisher.publish_file_event(file_info, "deleted")
+
+        assert result is True
+
+        # Verify message was published
+        mock_channel.basic_publish.assert_called_once()
+        call_args = mock_channel.basic_publish.call_args
+
+        # Check exchange and routing key
+        assert call_args.kwargs["exchange"] == "file_events"
+        assert call_args.kwargs["routing_key"] == "file.deleted"
+
+        # Check message body
+        body = json.loads(call_args.kwargs["body"])
+        assert body["event_type"] == "deleted"
+        assert body["file_path"] == "/music/test.mp3"
+        # Should NOT have hashes for deleted files
+        assert "sha256_hash" not in body
+        assert "xxh128_hash" not in body
+
+    @patch("services.file_watcher.src.message_publisher.pika.BlockingConnection")
+    @patch("services.file_watcher.src.message_publisher.uuid.uuid4")
+    @patch("services.file_watcher.src.message_publisher.datetime")
+    def test_publish_file_event_moved(self, mock_datetime, mock_uuid, mock_connection_class):
+        """Test publishing file moved event."""
+        # Setup mocks
+        mock_uuid.return_value = uuid.UUID("12345678-1234-5678-1234-567812345678")
+        mock_datetime.now.return_value.isoformat.return_value = "2024-01-01T00:00:00"
+
+        mock_connection = MagicMock()
+        mock_channel = MagicMock()
+        mock_connection.channel.return_value = mock_channel
+        mock_connection.is_closed = False
+        mock_connection_class.return_value = mock_connection
+
+        publisher = MessagePublisher()
+        publisher.connect()
+
+        # Test data for moved file
+        file_info = {
+            "path": "/music/new/test.mp3",
+            "old_path": "/music/old/test.mp3",
+            "name": "test.mp3",
+            "extension": ".mp3",
+            "sha256_hash": "abc123",
+            "xxh128_hash": "def456",
+        }
+
+        result = publisher.publish_file_event(file_info, "moved")
+
+        assert result is True
+
+        # Verify message was published
+        mock_channel.basic_publish.assert_called_once()
+        call_args = mock_channel.basic_publish.call_args
+
+        # Check exchange and routing key
+        assert call_args.kwargs["exchange"] == "file_events"
+        assert call_args.kwargs["routing_key"] == "file.moved"
+
+        # Check message body
+        body = json.loads(call_args.kwargs["body"])
+        assert body["event_type"] == "moved"
+        assert body["file_path"] == "/music/new/test.mp3"
+        assert body["old_path"] == "/music/old/test.mp3"
+        assert body["sha256_hash"] == "abc123"
+        assert body["xxh128_hash"] == "def456"
+
+    @patch("services.file_watcher.src.message_publisher.pika.BlockingConnection")
+    @patch("services.file_watcher.src.message_publisher.uuid.uuid4")
+    @patch("services.file_watcher.src.message_publisher.datetime")
+    def test_publish_file_event_renamed(self, mock_datetime, mock_uuid, mock_connection_class):
+        """Test publishing file renamed event."""
+        # Setup mocks
+        mock_uuid.return_value = uuid.UUID("12345678-1234-5678-1234-567812345678")
+        mock_datetime.now.return_value.isoformat.return_value = "2024-01-01T00:00:00"
+
+        mock_connection = MagicMock()
+        mock_channel = MagicMock()
+        mock_connection.channel.return_value = mock_channel
+        mock_connection.is_closed = False
+        mock_connection_class.return_value = mock_connection
+
+        publisher = MessagePublisher()
+        publisher.connect()
+
+        # Test data for renamed file
+        file_info = {
+            "path": "/music/new_name.mp3",
+            "old_path": "/music/old_name.mp3",
+            "name": "new_name.mp3",
+            "extension": ".mp3",
+            "sha256_hash": "abc123",
+            "xxh128_hash": "def456",
+        }
+
+        result = publisher.publish_file_event(file_info, "renamed")
+
+        assert result is True
+
+        # Verify message was published
+        mock_channel.basic_publish.assert_called_once()
+        call_args = mock_channel.basic_publish.call_args
+
+        # Check exchange and routing key
+        assert call_args.kwargs["exchange"] == "file_events"
+        assert call_args.kwargs["routing_key"] == "file.renamed"
+
+        # Check message body
+        body = json.loads(call_args.kwargs["body"])
+        assert body["event_type"] == "renamed"
+        assert body["file_path"] == "/music/new_name.mp3"
+        assert body["old_path"] == "/music/old_name.mp3"
+        assert body["sha256_hash"] == "abc123"
+        assert body["xxh128_hash"] == "def456"

@@ -43,7 +43,7 @@ class SyncEventConsumer:
         self.channel = None
         self.queue = None
         self.consumer_tag = None
-        
+
         # Database setup
         config = get_config()
         self.engine = create_async_engine(config.database.url, echo=False)
@@ -52,7 +52,7 @@ class SyncEventConsumer:
             class_=AsyncSession,
             expire_on_commit=False,
         )
-        
+
         # Services will be initialized per session
         self.sync_service = None
         self.conflict_service = None
@@ -64,17 +64,17 @@ class SyncEventConsumer:
         try:
             await self.rabbitmq_client.connect()
             self.channel = await self.rabbitmq_client.connection.channel()
-            
+
             # Set prefetch count for load balancing
             await self.channel.set_qos(prefetch_count=10)
-            
+
             # Declare the sync events exchange
             exchange = await self.channel.declare_exchange(
                 "tracklist.sync.events",
                 ExchangeType.TOPIC,
                 durable=True,
             )
-            
+
             # Declare consumer queue
             self.queue = await self.channel.declare_queue(
                 "sync.events.consumer",
@@ -84,7 +84,7 @@ class SyncEventConsumer:
                     "x-message-ttl": 86400000,  # 24 hours
                 },
             )
-            
+
             # Bind queue to relevant routing keys
             routing_keys = [
                 "sync.trigger.*",
@@ -93,12 +93,12 @@ class SyncEventConsumer:
                 "sync.batch.*",
                 "sync.cue.process",
             ]
-            
+
             for routing_key in routing_keys:
                 await self.queue.bind(exchange, routing_key)
-            
+
             logger.info("Connected to RabbitMQ for sync event consumption")
-            
+
         except Exception as e:
             logger.error(f"Failed to connect to RabbitMQ: {e}")
             raise
@@ -107,11 +107,11 @@ class SyncEventConsumer:
         """Start consuming messages from the queue."""
         if not self.queue:
             await self.connect()
-        
+
         # Start consuming
         self.consumer_tag = await self.queue.consume(self.process_message)
         logger.info("Started consuming sync events")
-        
+
         # Keep the consumer running
         await asyncio.Future()  # Run forever
 
@@ -139,9 +139,9 @@ class SyncEventConsumer:
                 # Parse message
                 body = json.loads(message.body.decode())
                 routing_key = message.routing_key
-                
+
                 logger.info(f"Processing message with routing key: {routing_key}")
-                
+
                 # Route message based on routing key
                 if routing_key.startswith("sync.trigger"):
                     await self._handle_sync_trigger(body)
@@ -155,15 +155,15 @@ class SyncEventConsumer:
                     await self._handle_cue_regeneration(body)
                 else:
                     logger.warning(f"Unknown routing key: {routing_key}")
-                    
+
             except Exception as e:
                 logger.error(f"Failed to process message: {e}")
-                
+
                 # Check retry count
                 headers = message.headers or {}
                 retry_count = headers.get("retry_count", 0)
                 max_retries = headers.get("max_retries", 3)
-                
+
                 if retry_count < max_retries:
                     # Requeue with increased retry count
                     await self._requeue_message(message, retry_count + 1)
@@ -180,13 +180,13 @@ class SyncEventConsumer:
         """
         try:
             request = SyncTriggerRequest(**body)
-            
+
             async with self.SessionLocal() as session:
                 sync_service = SynchronizationService(session)
-                
+
                 # Parse source
                 source = SyncSource(request.source)
-                
+
                 # Trigger sync
                 result = await sync_service.trigger_manual_sync(
                     tracklist_id=request.tracklist_id,
@@ -194,9 +194,9 @@ class SyncEventConsumer:
                     force=request.force,
                     actor=request.actor,
                 )
-                
+
                 logger.info(f"Sync triggered for tracklist {request.tracklist_id}: {result['status']}")
-                
+
         except Exception as e:
             logger.error(f"Failed to handle sync trigger: {e}")
             raise
@@ -209,10 +209,10 @@ class SyncEventConsumer:
         """
         try:
             request = ConflictResolutionRequest(**body)
-            
+
             async with self.SessionLocal() as session:
                 conflict_service = ConflictResolutionService(session)
-                
+
                 if request.auto_resolve:
                     # Auto-resolve conflicts
                     # This would need to fetch conflicts and auto-resolve them
@@ -224,12 +224,12 @@ class SyncEventConsumer:
                         resolutions=request.conflict_resolutions,
                         actor=request.actor,
                     )
-                    
+
                     if success:
                         logger.info(f"Resolved conflicts for tracklist {request.tracklist_id}")
                     else:
                         logger.error(f"Failed to resolve conflicts: {error}")
-                        
+
         except Exception as e:
             logger.error(f"Failed to handle conflict resolution: {e}")
             raise
@@ -242,21 +242,21 @@ class SyncEventConsumer:
         """
         try:
             request = VersionRollbackRequest(**body)
-            
+
             async with self.SessionLocal() as session:
                 version_service = VersionService(session)
-                
+
                 # Perform rollback
                 result = await version_service.rollback_to_version(
                     version_id=request.version_id,
                     create_backup=request.create_backup,
                 )
-                
+
                 if result:
                     logger.info(f"Rolled back tracklist {request.tracklist_id} to version {request.version_id}")
                 else:
                     logger.error(f"Failed to rollback tracklist {request.tracklist_id}")
-                    
+
         except Exception as e:
             logger.error(f"Failed to handle version rollback: {e}")
             raise
@@ -269,18 +269,18 @@ class SyncEventConsumer:
         """
         try:
             request = BatchSyncRequest(**body)
-            
+
             async with self.SessionLocal() as session:
                 sync_service = SynchronizationService(session)
-                
+
                 # Process batch sync
                 results = []
                 source = SyncSource(request.source)
-                
+
                 if request.parallel:
                     # Process in parallel with semaphore
                     semaphore = asyncio.Semaphore(request.max_parallel)
-                    
+
                     async def sync_with_semaphore(tracklist_id):
                         async with semaphore:
                             return await sync_service.trigger_manual_sync(
@@ -289,12 +289,9 @@ class SyncEventConsumer:
                                 force=False,
                                 actor=request.actor,
                             )
-                    
-                    tasks = [
-                        sync_with_semaphore(tid)
-                        for tid in request.tracklist_ids
-                    ]
-                    
+
+                    tasks = [sync_with_semaphore(tid) for tid in request.tracklist_ids]
+
                     results = await asyncio.gather(*tasks, return_exceptions=True)
                 else:
                     # Process sequentially
@@ -312,11 +309,11 @@ class SyncEventConsumer:
                                 results.append({"status": "error", "error": str(e)})
                             else:
                                 raise
-                
+
                 # Log results
                 successful = sum(1 for r in results if isinstance(r, dict) and r.get("status") == "completed")
                 logger.info(f"Batch sync completed: {successful}/{len(request.tracklist_ids)} successful")
-                
+
         except Exception as e:
             logger.error(f"Failed to handle batch sync: {e}")
             raise
@@ -328,19 +325,19 @@ class SyncEventConsumer:
             body: Message body
         """
         try:
-            message = CueRegenerationTriggeredMessage(**body)
-            
+            CueRegenerationTriggeredMessage(**body)  # Validate message format
+
             async with self.SessionLocal() as session:
                 cue_service = CueRegenerationService(session)
-                
+
                 # Process regeneration queue
                 processed = await cue_service.process_regeneration_queue(
                     max_jobs=10,
                     priority_filter=None,
                 )
-                
+
                 logger.info(f"Processed {len(processed)} CUE regeneration jobs")
-                
+
         except Exception as e:
             logger.error(f"Failed to handle CUE regeneration: {e}")
             raise
@@ -360,7 +357,7 @@ class SyncEventConsumer:
             # Update headers
             headers = dict(message.headers or {})
             headers["retry_count"] = retry_count
-            
+
             # Create new message
             new_message = aio_pika.Message(
                 body=message.body,
@@ -369,15 +366,15 @@ class SyncEventConsumer:
                 delivery_mode=message.delivery_mode,
                 headers=headers,
             )
-            
+
             # Publish back to exchange with delay
             exchange = await self.channel.get_exchange("tracklist.sync.events")
             await exchange.publish(
                 new_message,
                 routing_key=message.routing_key,
             )
-            
+
             logger.info(f"Requeued message with retry count {retry_count}")
-            
+
         except Exception as e:
             logger.error(f"Failed to requeue message: {e}")

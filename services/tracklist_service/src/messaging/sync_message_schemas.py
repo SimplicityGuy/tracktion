@@ -10,32 +10,32 @@ from pydantic import BaseModel, Field
 
 class SyncEventType(str, Enum):
     """Types of synchronization events."""
-    
+
     # Sync lifecycle events
     SYNC_STARTED = "sync_started"
     SYNC_COMPLETED = "sync_completed"
     SYNC_FAILED = "sync_failed"
     SYNC_STATUS_UPDATE = "sync_status_update"
-    
+
     # Conflict events
     CONFLICT_DETECTED = "conflict_detected"
     CONFLICT_RESOLVED = "conflict_resolved"
-    
+
     # Version events
     VERSION_CREATED = "version_created"
     VERSION_ROLLBACK = "version_rollback"
     VERSION_PRUNED = "version_pruned"
-    
+
     # CUE regeneration events
     CUE_REGENERATION_TRIGGERED = "cue_regeneration_triggered"
     CUE_REGENERATION_COMPLETED = "cue_regeneration_completed"
     CUE_REGENERATION_FAILED = "cue_regeneration_failed"
-    
+
     # Batch operations
     BATCH_SYNC_STARTED = "batch_sync_started"
     BATCH_SYNC_COMPLETED = "batch_sync_completed"
     BATCH_SYNC_FAILED = "batch_sync_failed"
-    
+
     # Configuration events
     SYNC_CONFIG_UPDATED = "sync_config_updated"
     SYNC_SCHEDULED = "sync_scheduled"
@@ -44,17 +44,17 @@ class SyncEventType(str, Enum):
 
 class BaseSyncMessage(BaseModel):
     """Base message schema for synchronization events."""
-    
+
     message_id: UUID = Field(description="Unique message identifier")
     event_type: SyncEventType = Field(description="Type of sync event")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     correlation_id: Optional[UUID] = Field(None, description="Correlation ID for tracking")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
-    
+
     def to_json(self) -> str:
         """Convert message to JSON string."""
         return self.model_dump_json()
-    
+
     @classmethod
     def from_json(cls, json_str: str) -> "BaseSyncMessage":
         """Create message from JSON string."""
@@ -63,7 +63,7 @@ class BaseSyncMessage(BaseModel):
 
 class SyncEventMessage(BaseSyncMessage):
     """Generic sync event message."""
-    
+
     tracklist_id: UUID = Field(description="ID of the tracklist")
     source: str = Field(description="Sync source (1001tracklists, manual, etc)")
     actor: str = Field(default="system", description="Who triggered the event")
@@ -71,7 +71,7 @@ class SyncEventMessage(BaseSyncMessage):
 
 class SyncCompletedMessage(SyncEventMessage):
     """Message for sync completion events."""
-    
+
     event_type: SyncEventType = Field(SyncEventType.SYNC_COMPLETED, frozen=True)
     changes_applied: int = Field(description="Number of changes applied")
     confidence: float = Field(description="Confidence score of changes")
@@ -80,7 +80,7 @@ class SyncCompletedMessage(SyncEventMessage):
 
 class SyncFailedMessage(SyncEventMessage):
     """Message for sync failure events."""
-    
+
     event_type: SyncEventType = Field(SyncEventType.SYNC_FAILED, frozen=True)
     error_message: str = Field(description="Error message")
     retry_count: int = Field(default=0, description="Number of retries attempted")
@@ -89,7 +89,7 @@ class SyncFailedMessage(SyncEventMessage):
 
 class ConflictDetectedMessage(BaseSyncMessage):
     """Message for conflict detection events."""
-    
+
     event_type: SyncEventType = Field(SyncEventType.CONFLICT_DETECTED, frozen=True)
     tracklist_id: UUID = Field(description="ID of the tracklist")
     source: str = Field(description="Source of the conflict")
@@ -100,7 +100,7 @@ class ConflictDetectedMessage(BaseSyncMessage):
 
 class VersionCreatedMessage(BaseSyncMessage):
     """Message for version creation events."""
-    
+
     event_type: SyncEventType = Field(SyncEventType.VERSION_CREATED, frozen=True)
     tracklist_id: UUID = Field(description="ID of the tracklist")
     version_id: UUID = Field(description="ID of the new version")
@@ -112,7 +112,7 @@ class VersionCreatedMessage(BaseSyncMessage):
 
 class CueRegenerationTriggeredMessage(BaseSyncMessage):
     """Message for CUE regeneration trigger events."""
-    
+
     event_type: SyncEventType = Field(SyncEventType.CUE_REGENERATION_TRIGGERED, frozen=True)
     tracklist_id: UUID = Field(description="ID of the tracklist")
     trigger: str = Field(description="What triggered regeneration")
@@ -124,7 +124,7 @@ class CueRegenerationTriggeredMessage(BaseSyncMessage):
 
 class BatchSyncMessage(BaseSyncMessage):
     """Message for batch synchronization operations."""
-    
+
     event_type: SyncEventType = Field(description="Batch event type")
     tracklist_ids: List[UUID] = Field(description="List of tracklist IDs")
     tracklist_count: int = Field(description="Number of tracklists")
@@ -132,10 +132,10 @@ class BatchSyncMessage(BaseSyncMessage):
     operation: str = Field(description="Batch operation type")
     actor: str = Field(default="system", description="Who triggered the batch")
     progress: Optional[int] = Field(None, description="Progress percentage (0-100)")
-    
+
     class Config:
         """Pydantic configuration."""
-        
+
         json_encoders = {
             UUID: str,
             datetime: lambda v: v.isoformat(),
@@ -144,7 +144,7 @@ class BatchSyncMessage(BaseSyncMessage):
 
 class SyncStatusUpdateMessage(BaseSyncMessage):
     """Message for sync status updates."""
-    
+
     event_type: SyncEventType = Field(SyncEventType.SYNC_STATUS_UPDATE, frozen=True)
     tracklist_id: UUID = Field(description="ID of the tracklist")
     status: str = Field(description="Current status")
@@ -154,7 +154,7 @@ class SyncStatusUpdateMessage(BaseSyncMessage):
 
 class SyncConfigurationMessage(BaseSyncMessage):
     """Message for sync configuration changes."""
-    
+
     event_type: SyncEventType = Field(SyncEventType.SYNC_CONFIG_UPDATED, frozen=True)
     tracklist_id: UUID = Field(description="ID of the tracklist")
     config_changes: Dict[str, Any] = Field(description="Configuration changes")
@@ -164,7 +164,7 @@ class SyncConfigurationMessage(BaseSyncMessage):
 # Consumer message handlers schemas
 class SyncTriggerRequest(BaseModel):
     """Request to trigger synchronization."""
-    
+
     tracklist_id: UUID = Field(description="ID of the tracklist")
     source: str = Field(default="all", description="Sync source")
     force: bool = Field(default=False, description="Force sync even if recently synced")
@@ -175,7 +175,7 @@ class SyncTriggerRequest(BaseModel):
 
 class ConflictResolutionRequest(BaseModel):
     """Request to resolve conflicts."""
-    
+
     tracklist_id: UUID = Field(description="ID of the tracklist")
     conflict_resolutions: List[Dict[str, Any]] = Field(description="Conflict resolutions")
     auto_resolve: bool = Field(default=False, description="Auto-resolve if possible")
@@ -184,7 +184,7 @@ class ConflictResolutionRequest(BaseModel):
 
 class VersionRollbackRequest(BaseModel):
     """Request to rollback to a version."""
-    
+
     tracklist_id: UUID = Field(description="ID of the tracklist")
     version_id: UUID = Field(description="ID of version to rollback to")
     create_backup: bool = Field(default=True, description="Create backup before rollback")
@@ -194,7 +194,7 @@ class VersionRollbackRequest(BaseModel):
 
 class BatchSyncRequest(BaseModel):
     """Request for batch synchronization."""
-    
+
     tracklist_ids: List[UUID] = Field(description="List of tracklist IDs")
     source: str = Field(default="all", description="Sync source")
     parallel: bool = Field(default=True, description="Process in parallel")

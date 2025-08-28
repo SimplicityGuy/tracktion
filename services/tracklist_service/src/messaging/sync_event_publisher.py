@@ -1,6 +1,5 @@
 """RabbitMQ event publishers for synchronization events."""
 
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -45,26 +44,26 @@ class SyncEventPublisher:
         try:
             await self.rabbitmq_client.connect()
             self.channel = await self.rabbitmq_client.connection.channel()
-            
+
             # Declare the sync events exchange
             self.exchange = await self.channel.declare_exchange(
                 self.exchange_name,
                 self.exchange_type,
                 durable=True,
             )
-            
+
             # Declare dead letter exchange for failed messages
             await self.channel.declare_exchange(
                 f"{self.exchange_name}.dlx",
                 ExchangeType.TOPIC,
                 durable=True,
             )
-            
+
             # Declare queues for different event types
             await self._setup_queues()
-            
+
             logger.info(f"Connected to RabbitMQ exchange: {self.exchange_name}")
-            
+
         except Exception as e:
             logger.error(f"Failed to connect to RabbitMQ: {e}")
             raise
@@ -79,7 +78,7 @@ class SyncEventPublisher:
             ("sync.events.batch", "sync.batch.*"),
             ("sync.events.all", "sync.#"),  # Catch-all queue
         ]
-        
+
         for queue_name, routing_pattern in queues:
             # Declare queue with dead letter exchange
             queue = await self.channel.declare_queue(
@@ -91,10 +90,10 @@ class SyncEventPublisher:
                     "x-max-retries": 3,
                 },
             )
-            
+
             # Bind queue to exchange
             await queue.bind(self.exchange, routing_pattern)
-            
+
             # Declare dead letter queue
             dlq = await self.channel.declare_queue(
                 f"{queue_name}.dlq",
@@ -103,7 +102,7 @@ class SyncEventPublisher:
                     "x-message-ttl": 604800000,  # 7 days
                 },
             )
-            
+
             # Bind dead letter queue
             await dlq.bind(
                 f"{self.exchange_name}.dlx",
@@ -141,16 +140,16 @@ class SyncEventPublisher:
                 actor=actor,
                 metadata=metadata or {},
             )
-            
+
             await self._publish_message(
                 message,
                 routing_key="sync.status.started",
                 priority=7,
             )
-            
+
             logger.info(f"Published sync started event for tracklist {tracklist_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to publish sync started event: {e}")
             return False
@@ -189,16 +188,16 @@ class SyncEventPublisher:
                 duration_seconds=metadata.get("duration_seconds", 0) if metadata else 0,
                 metadata=metadata or {},
             )
-            
+
             await self._publish_message(
                 message,
                 routing_key="sync.status.completed",
                 priority=5,
             )
-            
+
             logger.info(f"Published sync completed event for tracklist {tracklist_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to publish sync completed event: {e}")
             return False
@@ -239,16 +238,16 @@ class SyncEventPublisher:
                 will_retry=will_retry,
                 metadata=metadata or {},
             )
-            
+
             await self._publish_message(
                 message,
                 routing_key="sync.status.failed",
                 priority=8,  # Higher priority for failures
             )
-            
+
             logger.info(f"Published sync failed event for tracklist {tracklist_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to publish sync failed event: {e}")
             return False
@@ -284,16 +283,16 @@ class SyncEventPublisher:
                 auto_resolvable=auto_resolvable,
                 metadata=metadata or {},
             )
-            
+
             await self._publish_message(
                 message,
                 routing_key="sync.conflict.detected",
                 priority=9,  # High priority for conflicts
             )
-            
+
             logger.info(f"Published conflict detected event for tracklist {tracklist_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to publish conflict detected event: {e}")
             return False
@@ -331,16 +330,16 @@ class SyncEventPublisher:
                     **(metadata or {}),
                 },
             )
-            
+
             await self._publish_message(
                 message,
                 routing_key="sync.conflict.resolved",
                 priority=6,
             )
-            
+
             logger.info(f"Published conflict resolved event for tracklist {tracklist_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to publish conflict resolved event: {e}")
             return False
@@ -381,16 +380,16 @@ class SyncEventPublisher:
                 created_by=created_by,
                 metadata=metadata or {},
             )
-            
+
             await self._publish_message(
                 message,
                 routing_key="sync.version.created",
                 priority=5,
             )
-            
+
             logger.info(f"Published version created event for tracklist {tracklist_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to publish version created event: {e}")
             return False
@@ -429,7 +428,7 @@ class SyncEventPublisher:
                 actor=actor,
                 metadata=metadata or {},
             )
-            
+
             # Determine priority based on regeneration priority
             message_priority = {
                 "critical": 10,
@@ -438,16 +437,16 @@ class SyncEventPublisher:
                 "low": 3,
                 "batch": 1,
             }.get(priority, 5)
-            
+
             await self._publish_message(
                 message,
                 routing_key="sync.cue.triggered",
                 priority=message_priority,
             )
-            
+
             logger.info(f"Published CUE regeneration triggered event for tracklist {tracklist_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to publish CUE regeneration event: {e}")
             return False
@@ -483,16 +482,16 @@ class SyncEventPublisher:
                 actor=actor,
                 metadata=metadata or {},
             )
-            
+
             await self._publish_message(
                 message,
                 routing_key=f"sync.batch.{operation}",
                 priority=4,  # Lower priority for batch operations
             )
-            
+
             logger.info(f"Published batch sync event for {len(tracklist_ids)} tracklists")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to publish batch sync event: {e}")
             return False
@@ -527,16 +526,16 @@ class SyncEventPublisher:
                 message=message,
                 metadata=metadata or {},
             )
-            
+
             await self._publish_message(
                 update_message,
                 routing_key="sync.status.update",
                 priority=3,  # Low priority for status updates
             )
-            
+
             logger.debug(f"Published status update for tracklist {tracklist_id}: {status}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to publish status update: {e}")
             return False
@@ -556,7 +555,7 @@ class SyncEventPublisher:
         """
         if not self.exchange:
             await self.connect()
-        
+
         # Create AMQP message
         amqp_message = Message(
             body=message.to_json().encode(),
@@ -571,11 +570,11 @@ class SyncEventPublisher:
                 "max_retries": 3,
             },
         )
-        
+
         # Publish message
         await self.exchange.publish(
             amqp_message,
             routing_key=routing_key,
         )
-        
+
         logger.debug(f"Published message {message.message_id} with routing key {routing_key}")
