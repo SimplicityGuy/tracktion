@@ -104,6 +104,7 @@ class Tracklist(BaseModel):
     draft_version: Optional[int] = Field(None, description="Version number for drafts")
     is_draft: bool = Field(default=False, description="Flag for draft status")
     parent_tracklist_id: Optional[UUID] = Field(None, description="For versioning")
+    default_cue_format: Optional[str] = Field(None, description="User preferred CUE format")
 
     model_config = {"json_encoders": {UUID: str}}
 
@@ -155,6 +156,7 @@ class TracklistDB(Base):
     draft_version = Column(Integer, nullable=True)
     is_draft = Column(Boolean, default=False, nullable=False)
     parent_tracklist_id = Column(PostgresUUID(as_uuid=True), ForeignKey("tracklists.id"), nullable=True)
+    default_cue_format = Column(String(20), nullable=True)
 
     # Relationships
     # Note: Recording model is in a different service, so relationship is commented out
@@ -178,6 +180,7 @@ class TracklistDB(Base):
             draft_version=self.draft_version,
             is_draft=self.is_draft,
             parent_tracklist_id=self.parent_tracklist_id,
+            default_cue_format=self.default_cue_format,
         )
 
     @classmethod
@@ -195,6 +198,7 @@ class TracklistDB(Base):
             draft_version=model.draft_version,
             is_draft=model.is_draft,
             parent_tracklist_id=model.parent_tracklist_id,
+            default_cue_format=model.default_cue_format,
         )
 
 

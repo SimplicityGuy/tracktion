@@ -1,27 +1,56 @@
 """
-Unit tests for CUE file integration service.
+Unit tests for CUE handler integration service.
 """
 
 from datetime import timedelta
-from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
+from services.tracklist_service.src.models.cue_file import CueFormat
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
-from services.tracklist_service.src.services.cue_integration import CueIntegrationService
+from services.tracklist_service.src.services.cue_integration import (
+    CueFormatMapper,
+    CueIntegrationService,
+    TracklistToCueMapper,
+)
 
 
-class TestCueIntegrationService:
-    """Test CUE integration service functionality."""
+class TestCueFormatMapper:
+    """Test CueFormatMapper class."""
 
-    @pytest.fixture
-    def cue_service(self):
-        """Create a CUE integration service instance."""
-        with patch("services.tracklist_service.src.services.cue_integration.CUE_HANDLER_AVAILABLE", True):
-            service = CueIntegrationService(output_dir=Path("/tmp/test_cue"))
-            return service
+    def test_format_mapping(self):
+        """Test format mapping between enums."""
+        # Test all supported formats
+        test_cases = [
+            CueFormat.STANDARD,
+            CueFormat.CDJ,
+            CueFormat.TRAKTOR,
+            CueFormat.SERATO,
+            CueFormat.REKORDBOX,
+            CueFormat.KODI,
+        ]
+
+        for format_val in test_cases:
+            # Forward mapping
+            handler_format = CueFormatMapper.to_cue_handler_format(format_val)
+            assert handler_format is not None
+
+            # Reverse mapping
+            back_to_original = CueFormatMapper.from_cue_handler_format(handler_format)
+            assert back_to_original == format_val
+
+    def test_unsupported_format_error(self):
+        """Test error handling for unsupported formats."""
+        # This should not happen in practice but test error handling
+        with patch.dict(CueFormatMapper.FORMAT_MAPPING, {}, clear=True):
+            with pytest.raises(ValueError, match="Unsupported format"):
+                CueFormatMapper.to_cue_handler_format(CueFormat.STANDARD)
+
+
+class TestTracklistToCueMapper:
+    """Test TracklistToCueMapper class."""
 
     @pytest.fixture
     def sample_tracklist(self):
@@ -30,182 +59,160 @@ class TestCueIntegrationService:
             TrackEntry(
                 position=1,
                 start_time=timedelta(minutes=0),
-                end_time=timedelta(minutes=5, seconds=30),
-                artist="Artist 1",
-                title="Track 1",
+                end_time=timedelta(minutes=3, seconds=30),
+                artist="Test Artist 1",
+                title="Test Track 1",
                 remix="Original Mix",
-                label="Label 1",
+                label="Test Label 1",
+                catalog_track_id=uuid4(),
+                confidence=0.95,
+                transition_type="cut",
+                is_manual_entry=True,
             ),
             TrackEntry(
                 position=2,
-                start_time=timedelta(minutes=5, seconds=30),
-                end_time=timedelta(minutes=10, seconds=15),
-                artist="Artist 2",
-                title="Track 2",
-                remix="Remix",
-                label="Label 2",
-            ),
-            TrackEntry(
-                position=3,
-                start_time=timedelta(minutes=10, seconds=15),
-                end_time=timedelta(minutes=15),
-                artist="Artist 3",
-                title="Track 3",
+                start_time=timedelta(minutes=3, seconds=30),
+                end_time=timedelta(minutes=7, seconds=15),
+                artist="Test Artist 2",
+                title="Test Track 2",
+                confidence=0.8,
+                is_manual_entry=False,
             ),
         ]
 
         return Tracklist(
-            id=uuid4(), audio_file_id=uuid4(), source="1001tracklists", tracks=tracks, confidence_score=0.9
+            audio_file_id=uuid4(), source="manual", tracks=tracks, confidence_score=0.87, is_draft=True, draft_version=1
         )
 
-    def test_timedelta_to_cue_time(self, cue_service):
-        """Test converting timedelta to CUE time format."""
-        # Test various timedeltas
-        td1 = timedelta(minutes=5, seconds=30)
-        assert cue_service._timedelta_to_cue_time(td1) == "05:30:00"
+    def test_timedelta_to_milliseconds(self):
+        """Test converting timedelta to milliseconds."""
+        td = timedelta(minutes=3, seconds=30, milliseconds=500)
+        ms = TracklistToCueMapper.timedelta_to_milliseconds(td)
 
-        td2 = timedelta(hours=1, minutes=15, seconds=45)
-        assert cue_service._timedelta_to_cue_time(td2) == "75:45:00"
+        expected_ms = (3 * 60 + 30) * 1000 + 500
+        assert ms == expected_ms
 
-        td3 = timedelta(seconds=45)
-        assert cue_service._timedelta_to_cue_time(td3) == "00:45:00"
+    def test_milliseconds_to_cue_time(self):
+        """Test converting milliseconds to CUE time."""
+        ms = 210000  # 3 minutes 30 seconds
+        cue_time = TracklistToCueMapper.milliseconds_to_cue_time(ms)
 
-        td4 = timedelta(0)
-        assert cue_service._timedelta_to_cue_time(td4) == "00:00:00"
+        assert cue_time.minutes == 3
+        assert cue_time.seconds == 30
+        assert cue_time.frames >= 0
 
-    @patch("services.tracklist_service.src.services.cue_integration.CUE_HANDLER_AVAILABLE", True)
-    def test_create_cue_track(self, cue_service):
-        """Test creating a CueTrack from TrackEntry."""
-        track_entry = TrackEntry(
-            position=1,
-            start_time=timedelta(minutes=2, seconds=30),
-            end_time=timedelta(minutes=5),
-            artist="Test Artist",
-            title="Test Track",
-            remix="Extended Mix",
-            label="Test Label",
-        )
+    def test_tracklist_to_cue_tracks(self, sample_tracklist):
+        """Test converting tracklist to CUE tracks."""
+        cue_tracks = TracklistToCueMapper.tracklist_to_cue_tracks(sample_tracklist)
 
-        # Mock CueTrack class
-        with patch("services.tracklist_service.src.services.cue_integration.CueTrack") as MockCueTrack:
-            mock_track = MagicMock()
-            MockCueTrack.return_value = mock_track
+        assert len(cue_tracks) == 2
 
-            result = cue_service._create_cue_track(track_entry)
+        # Check first track
+        track1 = cue_tracks[0]
+        assert track1.number == 1
+        assert track1.title == "Test Track 1 (Original Mix)"
+        assert track1.performer == "Test Artist 1"
+        assert 1 in track1.indices  # INDEX 01
+        assert "LABEL" in track1.rem_fields
+        assert "CATALOG_ID" in track1.rem_fields
+        assert "CONFIDENCE" in track1.rem_fields
+        assert "TRANSITION" in track1.rem_fields
+        assert "MANUAL_ENTRY" in track1.rem_fields
 
-            assert mock_track.number == 1
-            assert mock_track.performer == "Test Artist"
-            assert "Test Track" in mock_track.title
-            assert "Extended Mix" in mock_track.title
-            assert mock_track.index01 == "02:30:00"
-            assert "Test Label" in mock_track.rem
+        # Check second track
+        track2 = cue_tracks[1]
+        assert track2.number == 2
+        assert track2.title == "Test Track 2"  # No remix
+        assert "MANUAL_ENTRY" not in track2.rem_fields  # False, so not included
 
-    @patch("services.tracklist_service.src.services.cue_integration.CUE_HANDLER_AVAILABLE", True)
-    def test_convert_tracklist_to_cue(self, cue_service, sample_tracklist):
-        """Test converting a Tracklist to CueDisc."""
-        audio_file_path = "/path/to/audio.mp3"
 
-        with patch("services.tracklist_service.src.services.cue_integration.CueDisc") as MockCueDisc:
-            with patch("services.tracklist_service.src.services.cue_integration.CueFile") as MockCueFile:
-                with patch("services.tracklist_service.src.services.cue_integration.CueTrack") as MockCueTrack:
-                    mock_disc = MagicMock()
-                    MockCueDisc.return_value = mock_disc
-                    mock_file = MagicMock()
-                    mock_file.tracks = []
-                    MockCueFile.return_value = mock_file
+class TestCueIntegrationService:
+    """Test CueIntegrationService class."""
 
-                    result = cue_service.convert_tracklist_to_cue(sample_tracklist, audio_file_path, "standard")
+    @pytest.fixture
+    def service(self):
+        """Create CueIntegrationService instance."""
+        return CueIntegrationService()
 
-                    assert result == mock_disc
-                    assert mock_disc.title == "Mix - 1001tracklists"
-                    assert mock_disc.performer == "Various Artists"
-                    # Check that files were appended
-                    mock_disc.files.append.assert_called()
+    @pytest.fixture
+    def sample_tracklist(self):
+        """Create a sample tracklist."""
+        tracks = [
+            TrackEntry(position=1, start_time=timedelta(minutes=0), artist="Artist 1", title="Track 1"),
+            TrackEntry(position=2, start_time=timedelta(minutes=4), artist="Artist 2", title="Track 2"),
+        ]
 
-    @patch("services.tracklist_service.src.services.cue_integration.CUE_HANDLER_AVAILABLE", True)
-    def test_generate_cue_file(self, cue_service, sample_tracklist):
-        """Test generating a CUE file from tracklist."""
-        audio_file_path = "/path/to/audio.mp3"
+        return Tracklist(audio_file_id=uuid4(), source="manual", tracks=tracks)
 
-        with patch("services.tracklist_service.src.services.cue_integration.get_generator") as mock_get_gen:
-            mock_generator = MagicMock()
-            mock_generator.generate.return_value = 'PERFORMER "Various Artists"\nTITLE "Mix"'
-            mock_get_gen.return_value = mock_generator
+    def test_initialization(self, service):
+        """Test service initialization."""
+        assert service.generator is not None
+        assert service.validator is not None
+        assert service.converter is not None
+        assert service.format_mapper is not None
+        assert service.tracklist_mapper is not None
 
-            with patch.object(cue_service, "convert_tracklist_to_cue") as mock_convert:
-                mock_disc = MagicMock()
-                mock_convert.return_value = mock_disc
+    @patch("services.tracklist_service.src.services.cue_integration.get_generator")
+    def test_generate_cue_content_success(self, mock_get_generator, service, sample_tracklist):
+        """Test successful CUE content generation."""
+        # Setup mock
+        mock_generator = MagicMock()
+        mock_generator.generate.return_value = "MOCK CUE CONTENT"
+        mock_get_generator.return_value = mock_generator
 
-                with patch("builtins.open", mock_open()) as mock_file:
-                    result = cue_service.generate_cue_file(sample_tracklist, audio_file_path, "standard")
+        # Test
+        success, content, error = service.generate_cue_content(sample_tracklist, CueFormat.STANDARD, "test_audio.wav")
 
-                    assert result is not None
-                    assert result.success is True
-                    assert result.cue_file_path is not None
-                    assert "audio_standard.cue" in result.cue_file_path
-                    assert result.cue_file_id is not None
-                    mock_file.assert_called_once()
+        assert success is True
+        assert content == "MOCK CUE CONTENT"
+        assert error is None
+        assert mock_get_generator.called
 
-    @patch("services.tracklist_service.src.services.cue_integration.CUE_HANDLER_AVAILABLE", False)
-    def test_generate_cue_file_no_handler(self, cue_service, sample_tracklist):
-        """Test CUE generation when handler is not available."""
-        audio_file_path = "/path/to/audio.mp3"
+        # Verify generator was called with disc and files list
+        mock_generator.generate.assert_called_once()
+        args = mock_generator.generate.call_args[0]
+        assert len(args) == 2  # disc and files list
+        cue_disc, cue_files = args
+        assert cue_disc.title == f"Tracklist {sample_tracklist.id}"
+        assert len(cue_files) == 1
+        assert cue_files[0].filename == "test_audio.wav"
+        assert cue_files[0].file_type == "WAVE"
+        assert len(cue_files[0].tracks) == 2
 
-        result = cue_service.generate_cue_file(sample_tracklist, audio_file_path)
+    @patch("services.tracklist_service.src.services.cue_integration.get_generator")
+    def test_generate_cue_content_failure(self, mock_get_generator, service, sample_tracklist):
+        """Test CUE content generation failure."""
+        # Setup mock to raise exception
+        mock_get_generator.side_effect = Exception("Generation failed")
 
-        assert result is not None
-        assert result.success is False
-        assert result.error == "CUE handler not available"
+        # Test
+        success, content, error = service.generate_cue_content(sample_tracklist, CueFormat.CDJ)
 
-    def test_store_cue_file_reference(self, cue_service):
-        """Test storing CUE file reference."""
-        tracklist_id = uuid4()
-        cue_file_path = "/path/to/file.cue"
+        assert success is False
+        assert content == ""
+        assert "Generation failed" in error
 
-        result = cue_service.store_cue_file_reference(tracklist_id, cue_file_path)
-        assert result is True
+    def test_validate_cue_content_valid(self, service):
+        """Test CUE content validation with valid content."""
+        with patch.object(service.validator, "validate") as mock_validate:
+            # Setup mock validation result
+            mock_validation = MagicMock()
+            mock_validation.is_valid = True
+            mock_validation.issues = []
+            mock_validate.return_value = mock_validation
 
-    @patch("services.tracklist_service.src.services.cue_integration.CUE_HANDLER_AVAILABLE", True)
-    def test_validate_cue_file(self, cue_service):
-        """Test CUE file validation."""
-        cue_file_path = "/path/to/test.cue"
-        cue_content = 'PERFORMER "Test"\nTITLE "Test"'
+            # Test
+            result = service.validate_cue_content("VALID CUE CONTENT")
 
-        with patch("cue_handler.CueValidator") as MockValidator:
-            mock_validator = MagicMock()
-            mock_result = MagicMock()
-            mock_result.is_valid = True
-            mock_validator.return_value.validate_content.return_value = mock_result
-            MockValidator.return_value = mock_validator
+            assert result.valid is True
+            assert result.error is None
+            assert len(result.warnings) == 0
 
-            with patch("builtins.open", mock_open(read_data=cue_content)):
-                result = cue_service.validate_cue_file(cue_file_path)
-                assert result is True
+    def test_get_supported_formats(self, service):
+        """Test getting list of supported formats."""
+        formats = service.get_supported_formats()
 
-    @patch("services.tracklist_service.src.services.cue_integration.CUE_HANDLER_AVAILABLE", True)
-    def test_validate_cue_file_with_warnings(self, cue_service):
-        """Test CUE file validation with warnings."""
-        cue_file_path = "/path/to/test.cue"
-
-        with patch("cue_handler.CueValidator") as MockValidator:
-            mock_validator = MagicMock()
-            mock_result = MagicMock()
-            mock_result.is_valid = False
-            mock_result.severity = "warning"
-            mock_result.issues = ["Warning: Missing REM field"]
-            mock_validator.return_value.validate_content.return_value = mock_result
-            MockValidator.return_value = mock_validator
-
-            with patch("builtins.open", mock_open(read_data="")):
-                result = cue_service.validate_cue_file(cue_file_path)
-                assert result is True  # Warnings are acceptable
-
-    @patch("services.tracklist_service.src.services.cue_integration.CUE_HANDLER_AVAILABLE", True)
-    def test_validate_cue_file_with_errors(self, cue_service):
-        """Test CUE file validation with errors."""
-        cue_file_path = "/path/to/test.cue"
-
-        # Mock the entire validation at the service level instead
-        with patch.object(cue_service, "validate_cue_file", return_value=False):
-            result = cue_service.validate_cue_file(cue_file_path)
-            assert result is False  # Errors mean invalid
+        assert len(formats) == 6
+        assert CueFormat.STANDARD in formats
+        assert CueFormat.CDJ in formats
+        assert CueFormat.TRAKTOR in formats
