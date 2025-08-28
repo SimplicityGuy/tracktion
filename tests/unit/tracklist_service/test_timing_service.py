@@ -340,3 +340,155 @@ class TestTimingService:
         # Second track should be truncated to maximum
         duration2 = validated[1].end_time - validated[1].start_time
         assert duration2 <= timing_service.max_track_duration
+
+    # Tests for manual tracklist timing features
+
+    def test_detect_timing_conflicts_no_overlap(self, timing_service, sample_tracks):
+        """Test detecting no conflicts when tracks don't overlap."""
+        track = sample_tracks[0]
+        others = sample_tracks[1:]
+
+        conflicts = timing_service.detect_timing_conflicts(track, others)
+
+        assert len(conflicts) == 0
+
+    def test_detect_timing_conflicts_with_overlap(self, timing_service):
+        """Test detecting timing conflicts with overlapping tracks."""
+        track = TrackEntry(
+            position=1,
+            start_time=timedelta(seconds=0),
+            end_time=timedelta(seconds=200),  # Overlaps with track 2
+            artist="Artist 1",
+            title="Track 1",
+        )
+
+        others = [
+            TrackEntry(
+                position=2,
+                start_time=timedelta(seconds=180),  # Overlap from 180-200
+                end_time=timedelta(seconds=360),
+                artist="Artist 2",
+                title="Track 2",
+            )
+        ]
+
+        conflicts = timing_service.detect_timing_conflicts(track, others)
+
+        assert len(conflicts) == 1
+        assert conflicts[0]["type"] == "overlap"
+        assert conflicts[0]["overlap_duration"] == 20.0
+        assert conflicts[0]["severity"] == "high"
+
+    def test_auto_calculate_end_times_manual(self, timing_service):
+        """Test auto-calculating end times for manual tracklist."""
+        tracks = [
+            TrackEntry(
+                position=1,
+                start_time=timedelta(seconds=0),
+                artist="Artist 1",
+                title="Track 1",
+            ),
+            TrackEntry(
+                position=2,
+                start_time=timedelta(seconds=180),
+                artist="Artist 2",
+                title="Track 2",
+            ),
+            TrackEntry(
+                position=3,
+                start_time=timedelta(seconds=360),
+                artist="Artist 3",
+                title="Track 3",
+            ),
+        ]
+
+        result = timing_service.auto_calculate_end_times(
+            tracks,
+            audio_duration=timedelta(seconds=600),
+        )
+
+        assert result[0].end_time == timedelta(seconds=180)
+        assert result[1].end_time == timedelta(seconds=360)
+        assert result[2].end_time == timedelta(seconds=600)  # Uses audio duration
+
+    def test_shift_tracks_after_position(self, timing_service, sample_tracks):
+        """Test shifting tracks after a position."""
+        shift_amount = timedelta(seconds=30)
+
+        shifted = timing_service.shift_tracks_after_position(
+            sample_tracks,
+            position=1,
+            shift_amount=shift_amount,
+        )
+
+        assert len(shifted) == 2  # Only tracks 2 and 3
+        assert shifted[0].start_time == timedelta(minutes=5, seconds=30)
+        assert shifted[0].end_time == timedelta(minutes=10, seconds=30)
+        assert shifted[1].start_time == timedelta(minutes=10, seconds=30)
+
+    def test_normalize_track_positions(self, timing_service):
+        """Test normalizing track positions."""
+        tracks = [
+            TrackEntry(position=3, start_time=timedelta(0), artist="A", title="T"),
+            TrackEntry(position=7, start_time=timedelta(60), artist="B", title="T"),
+            TrackEntry(position=1, start_time=timedelta(120), artist="C", title="T"),
+        ]
+
+        normalized = timing_service.normalize_track_positions(tracks)
+
+        assert normalized[0].position == 1
+        assert normalized[1].position == 2
+        assert normalized[2].position == 3
+        # Check they're ordered by original position
+        assert normalized[0].artist == "C"
+        assert normalized[1].artist == "A"
+        assert normalized[2].artist == "B"
+
+    def test_calculate_total_duration_with_end_time(self, timing_service):
+        """Test calculating total duration when last track has end time."""
+        tracks = [
+            TrackEntry(
+                position=1,
+                start_time=timedelta(seconds=0),
+                end_time=timedelta(seconds=180),
+                artist="A",
+                title="T",
+            ),
+            TrackEntry(
+                position=2,
+                start_time=timedelta(seconds=180),
+                end_time=timedelta(seconds=600),
+                artist="B",
+                title="T",
+            ),
+        ]
+
+        duration = timing_service.calculate_total_duration(tracks)
+
+        assert duration == timedelta(seconds=600)
+
+    def test_suggest_timing_adjustments_overlap(self, timing_service):
+        """Test suggesting adjustments for overlapping tracks."""
+        tracks = [
+            TrackEntry(
+                position=1,
+                start_time=timedelta(seconds=0),
+                end_time=timedelta(seconds=200),  # Overlaps with track 2
+                artist="A",
+                title="T",
+            ),
+            TrackEntry(
+                position=2,
+                start_time=timedelta(seconds=180),
+                end_time=timedelta(seconds=360),
+                artist="B",
+                title="T",
+            ),
+        ]
+
+        suggestions = timing_service.suggest_timing_adjustments(tracks)
+
+        assert len(suggestions) == 1
+        assert suggestions[0]["type"] == "fix_overlap"
+        assert suggestions[0]["current_overlap"] == 20.0
+        assert suggestions[0]["priority"] == "high"

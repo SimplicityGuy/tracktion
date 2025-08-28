@@ -2,12 +2,12 @@
 Timing adjustment service for aligning tracklist timestamps.
 
 This service handles timing adjustments and validations for
-track timestamps when importing from 1001tracklists.
+track timestamps when importing from 1001tracklists and for manual tracklist creation.
 """
 
 import logging
 from datetime import timedelta
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
 from ..models.tracklist import TrackEntry
 
@@ -289,3 +289,249 @@ class TimingService:
                     track.end_time = track.start_time + self.max_track_duration
 
         return tracks
+
+    # Additional methods for manual tracklist timing adjustment
+
+    def detect_timing_conflicts(
+        self,
+        track: TrackEntry,
+        other_tracks: List[TrackEntry],
+    ) -> List[Dict[str, Any]]:
+        """
+        Detect timing conflicts between a track and other tracks.
+
+        Args:
+            track: Track to check.
+            other_tracks: Other tracks to check against.
+
+        Returns:
+            List of conflict dictionaries with details.
+        """
+        conflicts = []
+
+        track_end = track.end_time if track.end_time else track.start_time + timedelta(seconds=1)
+
+        for other in other_tracks:
+            if other.position == track.position:
+                continue
+
+            other_end = other.end_time if other.end_time else other.start_time + timedelta(seconds=1)
+
+            # Check for overlap: start1 < end2 AND start2 < end1
+            if track.start_time < other_end and other.start_time < track_end:
+                overlap_start = max(track.start_time, other.start_time)
+                overlap_end = min(track_end, other_end)
+                overlap_duration = (overlap_end - overlap_start).total_seconds()
+
+                conflict = {
+                    "type": "overlap",
+                    "track_position": track.position,
+                    "conflicting_position": other.position,
+                    "overlap_start": overlap_start,
+                    "overlap_end": overlap_end,
+                    "overlap_duration": overlap_duration,
+                    "severity": "high" if overlap_duration > 5 else "medium",
+                }
+                conflicts.append(conflict)
+
+        return conflicts
+
+    def auto_calculate_end_times(
+        self,
+        tracks: List[TrackEntry],
+        audio_duration: Optional[timedelta] = None,
+        default_gap: timedelta = timedelta(seconds=0),
+    ) -> List[TrackEntry]:
+        """
+        Automatically calculate end times based on next track's start time.
+
+        Args:
+            tracks: List of tracks to process.
+            audio_duration: Total audio duration (optional).
+            default_gap: Default gap between tracks (default: 0 seconds).
+
+        Returns:
+            List of tracks with calculated end times.
+        """
+        if not tracks:
+            return tracks
+
+        # Sort tracks by position
+        sorted_tracks = sorted(tracks, key=lambda t: t.position)
+
+        for i in range(len(sorted_tracks)):
+            track = sorted_tracks[i]
+
+            # If track already has an end time, skip
+            if track.end_time:
+                continue
+
+            # For all tracks except the last, set end time based on next track
+            if i < len(sorted_tracks) - 1:
+                next_track = sorted_tracks[i + 1]
+                track.end_time = next_track.start_time - default_gap
+            else:
+                # For the last track, use audio duration if available
+                if audio_duration:
+                    track.end_time = audio_duration
+                else:
+                    # Default to 3 minutes after start if no other info
+                    track.end_time = track.start_time + timedelta(minutes=3)
+
+        return sorted_tracks
+
+    def shift_tracks_after_position(
+        self,
+        tracks: List[TrackEntry],
+        position: int,
+        shift_amount: timedelta,
+    ) -> List[TrackEntry]:
+        """
+        Shift all tracks after a given position by a specified amount.
+
+        Args:
+            tracks: List of all tracks.
+            position: Position after which to shift tracks.
+            shift_amount: Amount to shift by (can be negative).
+
+        Returns:
+            List of shifted tracks.
+        """
+        shifted_tracks = []
+
+        for track in tracks:
+            if track.position > position:
+                track.start_time += shift_amount
+                if track.end_time:
+                    track.end_time += shift_amount
+                shifted_tracks.append(track)
+
+        return shifted_tracks
+
+    def normalize_track_positions(
+        self,
+        tracks: List[TrackEntry],
+    ) -> List[TrackEntry]:
+        """
+        Normalize track positions to ensure they are sequential starting from 1.
+
+        Args:
+            tracks: List of tracks to normalize.
+
+        Returns:
+            List of tracks with normalized positions.
+        """
+        if not tracks:
+            return tracks
+
+        # Sort by current position
+        sorted_tracks = sorted(tracks, key=lambda t: t.position)
+
+        # Reassign positions sequentially
+        for i, track in enumerate(sorted_tracks, start=1):
+            track.position = i
+
+        return sorted_tracks
+
+    def calculate_total_duration(
+        self,
+        tracks: List[TrackEntry],
+    ) -> timedelta:
+        """
+        Calculate total duration of a tracklist.
+
+        Args:
+            tracks: List of tracks.
+
+        Returns:
+            Total duration.
+        """
+        if not tracks:
+            return timedelta(0)
+
+        # Find the last track by position
+        last_track = max(tracks, key=lambda t: t.position)
+
+        if last_track.end_time:
+            return last_track.end_time
+        else:
+            # Estimate based on start time + default duration
+            return last_track.start_time + timedelta(minutes=3)
+
+    def suggest_timing_adjustments(
+        self,
+        tracks: List[TrackEntry],
+        target_duration: Optional[timedelta] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Suggest timing adjustments to fix conflicts and improve flow.
+
+        Args:
+            tracks: List of tracks to analyze.
+            target_duration: Target total duration (optional).
+
+        Returns:
+            List of adjustment suggestions.
+        """
+        suggestions: List[Dict[str, Any]] = []
+
+        if not tracks:
+            return suggestions
+
+        # Sort tracks by position
+        sorted_tracks = sorted(tracks, key=lambda t: t.position)
+
+        # Check for overlaps and suggest fixes
+        for i in range(len(sorted_tracks) - 1):
+            track = sorted_tracks[i]
+            next_track = sorted_tracks[i + 1]
+
+            track_end = track.end_time if track.end_time else track.start_time + timedelta(minutes=3)
+
+            if track_end > next_track.start_time:
+                # Overlap detected
+                overlap = (track_end - next_track.start_time).total_seconds()
+
+                suggestion = {
+                    "type": "fix_overlap",
+                    "track_position": track.position,
+                    "next_position": next_track.position,
+                    "current_overlap": overlap,
+                    "suggested_action": "adjust_end_time",
+                    "suggested_end": next_track.start_time - timedelta(seconds=0.5),
+                    "priority": "high",
+                }
+                suggestions.append(suggestion)
+            elif track_end < next_track.start_time - timedelta(seconds=10):
+                # Large gap detected
+                gap = (next_track.start_time - track_end).total_seconds()
+
+                if gap > 10:
+                    suggestion = {
+                        "type": "large_gap",
+                        "track_position": track.position,
+                        "next_position": next_track.position,
+                        "gap_duration": gap,
+                        "suggested_action": "extend_or_shift",
+                        "priority": "low",
+                    }
+                    suggestions.append(suggestion)
+
+        # Check total duration if target provided
+        if target_duration and sorted_tracks:
+            last_track = sorted_tracks[-1]
+            last_end = last_track.end_time if last_track.end_time else last_track.start_time + timedelta(minutes=3)
+
+            if last_end > target_duration:
+                excess = (last_end - target_duration).total_seconds()
+                suggestion = {
+                    "type": "exceeds_duration",
+                    "current_duration": last_end.total_seconds(),
+                    "target_duration": target_duration.total_seconds(),
+                    "excess_duration": excess,
+                    "suggested_action": "trim_or_remove_tracks",
+                    "priority": "medium",
+                }
+                suggestions.append(suggestion)
+
+        return suggestions
