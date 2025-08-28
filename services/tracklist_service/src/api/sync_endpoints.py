@@ -1,0 +1,684 @@
+"""API endpoints for tracklist synchronization operations."""
+
+import logging
+from typing import Any, Dict, List, Optional
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from services.tracklist_service.src.database import get_db
+from services.tracklist_service.src.services.sync_service import (
+    SynchronizationService,
+    SyncFrequency,
+    SyncSource,
+)
+from services.tracklist_service.src.services.version_service import VersionService
+from services.tracklist_service.src.services.conflict_resolution_service import (
+    ConflictResolutionService,
+    ResolutionStrategy,
+)
+from services.tracklist_service.src.services.audit_service import AuditService
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1/tracklists", tags=["synchronization"])
+
+
+# Request/Response Models
+class SyncRequest(BaseModel):
+    """Request model for triggering synchronization."""
+    
+    source: str = Field(default="all", description="Source to sync from")
+    force: bool = Field(default=False, description="Force sync even if recently synced")
+
+
+class SyncConfigUpdate(BaseModel):
+    """Request model for updating sync configuration."""
+    
+    sync_enabled: Optional[bool] = Field(None, description="Enable/disable sync")
+    sync_frequency: Optional[str] = Field(None, description="Sync frequency")
+    sync_source: Optional[str] = Field(None, description="Default sync source")
+    auto_accept_threshold: Optional[float] = Field(None, ge=0.0, le=1.0, description="Auto-accept threshold")
+    auto_resolve_conflicts: Optional[bool] = Field(None, description="Auto-resolve conflicts")
+    conflict_resolution: Optional[str] = Field(None, description="Conflict resolution strategy")
+
+
+class ConflictResolution(BaseModel):
+    """Request model for resolving a conflict."""
+    
+    conflict_id: str = Field(..., description="ID of the conflict")
+    strategy: str = Field(..., description="Resolution strategy to apply")
+    proposed_data: Optional[Dict[str, Any]] = Field(None, description="Data for proposed strategy")
+    manual_data: Optional[Dict[str, Any]] = Field(None, description="Data for manual edit")
+    merge_data: Optional[Dict[str, Any]] = Field(None, description="Data for merge strategy")
+
+
+class ConflictResolutionRequest(BaseModel):
+    """Request model for resolving multiple conflicts."""
+    
+    resolutions: List[ConflictResolution] = Field(..., description="List of conflict resolutions")
+
+
+class VersionRollbackRequest(BaseModel):
+    """Request model for version rollback."""
+    
+    version_id: UUID = Field(..., description="ID of version to rollback to")
+    create_backup: bool = Field(default=True, description="Create backup before rollback")
+
+
+# Sync Control Endpoints
+@router.post("/{tracklist_id}/sync")
+async def trigger_sync(
+    tracklist_id: UUID,
+    request: SyncRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Trigger synchronization for a tracklist.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        request: Sync request parameters
+        db: Database session
+    
+    Returns:
+        Sync status and results
+    """
+    try:
+        sync_service = SynchronizationService(db)
+        
+        # Parse source
+        try:
+            source = SyncSource(request.source)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid sync source: {request.source}",
+            )
+        
+        result = await sync_service.trigger_manual_sync(
+            tracklist_id=tracklist_id,
+            source=source,
+            force=request.force,
+            actor="api",
+        )
+        
+        if result.get("status") == "failed":
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get("error", "Sync failed"),
+            )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to trigger sync: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.get("/{tracklist_id}/sync/status")
+async def get_sync_status(
+    tracklist_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Get current synchronization status for a tracklist.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        db: Database session
+    
+    Returns:
+        Current sync status
+    """
+    try:
+        sync_service = SynchronizationService(db)
+        return await sync_service.get_sync_status(tracklist_id)
+        
+    except Exception as e:
+        logger.error(f"Failed to get sync status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.put("/{tracklist_id}/sync/config")
+async def update_sync_config(
+    tracklist_id: UUID,
+    request: SyncConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Update synchronization configuration for a tracklist.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        request: Configuration updates
+        db: Database session
+    
+    Returns:
+        Updated configuration
+    """
+    try:
+        sync_service = SynchronizationService(db)
+        
+        # Validate frequency if provided
+        if request.sync_frequency:
+            try:
+                SyncFrequency(request.sync_frequency)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid sync frequency: {request.sync_frequency}",
+                )
+        
+        # Validate source if provided
+        if request.sync_source:
+            try:
+                SyncSource(request.sync_source)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid sync source: {request.sync_source}",
+                )
+        
+        config_updates = request.dict(exclude_unset=True)
+        
+        result = await sync_service.update_sync_configuration(
+            tracklist_id=tracklist_id,
+            config_updates=config_updates,
+        )
+        
+        if result.get("status") == "failed":
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get("error", "Configuration update failed"),
+            )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update sync config: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.post("/{tracklist_id}/sync/schedule")
+async def schedule_sync(
+    tracklist_id: UUID,
+    frequency: str = Query(..., description="Sync frequency"),
+    source: str = Query(default="all", description="Sync source"),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Schedule automatic synchronization for a tracklist.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        frequency: Sync frequency
+        source: Sync source
+        db: Database session
+    
+    Returns:
+        Scheduling result
+    """
+    try:
+        sync_service = SynchronizationService(db)
+        
+        # Parse frequency
+        try:
+            freq_enum = SyncFrequency(frequency)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid frequency: {frequency}",
+            )
+        
+        # Parse source
+        try:
+            source_enum = SyncSource(source)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid source: {source}",
+            )
+        
+        return await sync_service.schedule_sync(
+            tracklist_id=tracklist_id,
+            frequency=freq_enum,
+            source=source_enum,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to schedule sync: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.delete("/{tracklist_id}/sync/schedule")
+async def cancel_scheduled_sync(
+    tracklist_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Cancel scheduled synchronization for a tracklist.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        db: Database session
+    
+    Returns:
+        Cancellation result
+    """
+    try:
+        sync_service = SynchronizationService(db)
+        return await sync_service.cancel_scheduled_sync(tracklist_id)
+        
+    except Exception as e:
+        logger.error(f"Failed to cancel scheduled sync: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+# Version History Endpoints
+@router.get("/{tracklist_id}/versions")
+async def get_version_history(
+    tracklist_id: UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Get version history for a tracklist.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        limit: Maximum number of versions to return
+        offset: Offset for pagination
+        db: Database session
+    
+    Returns:
+        List of versions with metadata
+    """
+    try:
+        version_service = VersionService(db)
+        versions = await version_service.get_version_history(
+            tracklist_id=tracklist_id,
+            limit=limit,
+            offset=offset,
+        )
+        
+        return {
+            "tracklist_id": str(tracklist_id),
+            "versions": [
+                {
+                    "version_id": str(v.id),
+                    "version_number": v.version_number,
+                    "created_at": v.created_at.isoformat(),
+                    "created_by": v.created_by,
+                    "change_type": v.change_type,
+                    "change_summary": v.change_summary,
+                    "is_current": v.is_current,
+                }
+                for v in versions
+            ],
+            "limit": limit,
+            "offset": offset,
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get version history: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.get("/{tracklist_id}/versions/{version_id}")
+async def get_version_details(
+    tracklist_id: UUID,
+    version_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Get details of a specific version.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        version_id: ID of the version
+        db: Database session
+    
+    Returns:
+        Version details including content
+    """
+    try:
+        version_service = VersionService(db)
+        version = await version_service.get_version(version_id)
+        
+        if not version or version.tracklist_id != tracklist_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Version not found",
+            )
+        
+        return {
+            "version_id": str(version.id),
+            "tracklist_id": str(version.tracklist_id),
+            "version_number": version.version_number,
+            "created_at": version.created_at.isoformat(),
+            "created_by": version.created_by,
+            "change_type": version.change_type,
+            "change_summary": version.change_summary,
+            "is_current": version.is_current,
+            "content": version.content,
+            "metadata": version.metadata,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get version details: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.post("/{tracklist_id}/versions/{version_id}/rollback")
+async def rollback_to_version(
+    tracklist_id: UUID,
+    version_id: UUID,
+    request: VersionRollbackRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Rollback tracklist to a specific version.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        version_id: ID of version to rollback to
+        request: Rollback parameters
+        db: Database session
+    
+    Returns:
+        Rollback result
+    """
+    try:
+        version_service = VersionService(db)
+        
+        # Verify version belongs to tracklist
+        version = await version_service.get_version(request.version_id)
+        if not version or version.tracklist_id != tracklist_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Version not found",
+            )
+        
+        # Perform rollback
+        new_tracklist = await version_service.rollback_to_version(
+            version_id=request.version_id,
+            create_backup=request.create_backup,
+        )
+        
+        if not new_tracklist:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Rollback failed",
+            )
+        
+        return {
+            "status": "success",
+            "tracklist_id": str(tracklist_id),
+            "rolled_back_to": str(request.version_id),
+            "new_version_created": True,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to rollback version: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.get("/{tracklist_id}/versions/compare")
+async def compare_versions(
+    tracklist_id: UUID,
+    version1: UUID = Query(..., description="First version ID"),
+    version2: UUID = Query(..., description="Second version ID"),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Compare two versions of a tracklist.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        version1: First version ID
+        version2: Second version ID
+        db: Database session
+    
+    Returns:
+        Comparison results showing differences
+    """
+    try:
+        version_service = VersionService(db)
+        
+        # Get both versions
+        v1 = await version_service.get_version(version1)
+        v2 = await version_service.get_version(version2)
+        
+        if not v1 or v1.tracklist_id != tracklist_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Version {version1} not found",
+            )
+        
+        if not v2 or v2.tracklist_id != tracklist_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Version {version2} not found",
+            )
+        
+        # Compare versions
+        diff = await version_service.compare_versions(version1, version2)
+        
+        return {
+            "tracklist_id": str(tracklist_id),
+            "version1": {
+                "id": str(v1.id),
+                "version_number": v1.version_number,
+                "created_at": v1.created_at.isoformat(),
+            },
+            "version2": {
+                "id": str(v2.id),
+                "version_number": v2.version_number,
+                "created_at": v2.created_at.isoformat(),
+            },
+            "differences": diff,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to compare versions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+# Conflict Resolution Endpoints
+@router.get("/{tracklist_id}/conflicts")
+async def get_pending_conflicts(
+    tracklist_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Get pending conflicts for a tracklist.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        db: Database session
+    
+    Returns:
+        List of pending conflicts
+    """
+    try:
+        # Get sync events with conflicts
+        from sqlalchemy import select
+        from services.tracklist_service.src.models.synchronization import SyncEvent
+        
+        query = select(SyncEvent).where(
+            SyncEvent.tracklist_id == tracklist_id,
+            SyncEvent.status == "conflict",
+        ).order_by(SyncEvent.created_at.desc())
+        
+        result = await db.execute(query)
+        events = result.scalars().all()
+        
+        conflicts = []
+        for event in events:
+            if event.conflict_data:
+                conflicts.append({
+                    "event_id": str(event.id),
+                    "created_at": event.created_at.isoformat(),
+                    "source": event.source,
+                    "conflicts": event.conflict_data.get("conflicts", []),
+                })
+        
+        return {
+            "tracklist_id": str(tracklist_id),
+            "pending_conflicts": conflicts,
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get pending conflicts: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.post("/{tracklist_id}/conflicts/resolve")
+async def resolve_conflicts(
+    tracklist_id: UUID,
+    request: ConflictResolutionRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Resolve conflicts for a tracklist.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        request: Conflict resolutions
+        db: Database session
+    
+    Returns:
+        Resolution result
+    """
+    try:
+        conflict_service = ConflictResolutionService(db)
+        
+        # Validate strategies
+        for resolution in request.resolutions:
+            try:
+                ResolutionStrategy(resolution.strategy)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid resolution strategy: {resolution.strategy}",
+                )
+        
+        # Apply resolutions
+        success, error = await conflict_service.resolve_conflicts(
+            tracklist_id=tracklist_id,
+            resolutions=[r.dict() for r in request.resolutions],
+            actor="api",
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=error or "Conflict resolution failed",
+            )
+        
+        return {
+            "status": "resolved",
+            "tracklist_id": str(tracklist_id),
+            "resolutions_applied": len(request.resolutions),
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to resolve conflicts: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+# Audit Trail Endpoint
+@router.get("/{tracklist_id}/audit")
+async def get_audit_trail(
+    tracklist_id: UUID,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    action: Optional[str] = Query(None, description="Filter by action"),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Get audit trail for a tracklist.
+    
+    Args:
+        tracklist_id: ID of the tracklist
+        limit: Maximum number of entries to return
+        offset: Offset for pagination
+        action: Optional action filter
+        db: Database session
+    
+    Returns:
+        Audit log entries
+    """
+    try:
+        audit_service = AuditService(db)
+        
+        logs = await audit_service.query_audit_logs(
+            entity_type="tracklist",
+            entity_id=tracklist_id,
+            action=action,
+            limit=limit,
+            offset=offset,
+        )
+        
+        return {
+            "tracklist_id": str(tracklist_id),
+            "audit_logs": [
+                {
+                    "id": str(log.id),
+                    "action": log.action,
+                    "actor": log.actor,
+                    "timestamp": log.timestamp.isoformat(),
+                    "changes": log.changes,
+                    "metadata": log.audit_metadata,
+                }
+                for log in logs
+            ],
+            "limit": limit,
+            "offset": offset,
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get audit trail: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
