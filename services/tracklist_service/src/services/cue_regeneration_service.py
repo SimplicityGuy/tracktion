@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from services.tracklist_service.src.models.tracklist import TracklistDB
 from services.tracklist_service.src.models.cue_file import CueFileDB
-from services.tracklist_service.src.services.cue_service import CueService
+from services.tracklist_service.src.services.cue_generation_service import CueGenerationService
 from services.tracklist_service.src.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class RegenerationTrigger(Enum):
     """Types of events that trigger CUE regeneration."""
-    
+
     MANUAL_EDIT = "manual_edit"
     SYNC_UPDATE = "sync_update"
     VERSION_ROLLBACK = "version_rollback"
@@ -33,7 +33,7 @@ class RegenerationTrigger(Enum):
 
 class RegenerationPriority(Enum):
     """Priority levels for CUE regeneration."""
-    
+
     CRITICAL = "critical"  # Immediate regeneration
     HIGH = "high"  # Within 1 minute
     NORMAL = "normal"  # Within 5 minutes
@@ -47,7 +47,7 @@ class CueRegenerationService:
     def __init__(
         self,
         session: AsyncSession,
-        cue_service: Optional[CueService] = None,
+        cue_service: Optional[CueGenerationService] = None,
         audit_service: Optional[AuditService] = None,
     ):
         """Initialize CUE regeneration service.
@@ -58,7 +58,7 @@ class CueRegenerationService:
             audit_service: Service for audit logging
         """
         self.session = session
-        self.cue_service = cue_service or CueService(session)
+        self.cue_service = cue_service or CueGenerationService(session)
         self.audit_service = audit_service or AuditService(session)
         self.regeneration_queue: List[Dict[str, Any]] = []
         self.cache_invalidation_set: Set[UUID] = set()
@@ -161,7 +161,7 @@ class CueRegenerationService:
             "metadata": RegenerationTrigger.METADATA_CHANGE,
             "format": RegenerationTrigger.FORMAT_UPDATE,
         }
-        
+
         return mapping.get(change_type, RegenerationTrigger.FORCED)
 
     def _determine_priority(
@@ -218,7 +218,7 @@ class CueRegenerationService:
             CueFileDB.tracklist_id == tracklist_id,
             CueFileDB.is_active.is_(True),
         )
-        
+
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
@@ -273,10 +273,8 @@ class CueRegenerationService:
             RegenerationPriority.LOW.value: 3,
             RegenerationPriority.BATCH.value: 4,
         }
-        
-        self.regeneration_queue.sort(
-            key=lambda x: (priority_order.get(x["priority"], 5), x["queued_at"])
-        )
+
+        self.regeneration_queue.sort(key=lambda x: (priority_order.get(x["priority"], 5), x["queued_at"]))
 
     async def _invalidate_cache(self, tracklist_id: UUID) -> None:
         """Invalidate CUE cache for a tracklist.
@@ -286,7 +284,7 @@ class CueRegenerationService:
         """
         # Add to invalidation set
         self.cache_invalidation_set.add(tracklist_id)
-        
+
         # In production, this would interact with a cache service
         logger.info(f"Cache invalidated for tracklist {tracklist_id}")
 
@@ -320,10 +318,10 @@ class CueRegenerationService:
                 job["status"] = "completed" if result else "failed"
                 job["processed_at"] = datetime.utcnow().isoformat()
                 processed.append(job)
-                
+
                 # Remove from queue
                 self.regeneration_queue.remove(job)
-                
+
             except Exception as e:
                 logger.error(f"Failed to process regeneration job {job['job_id']}: {e}")
                 job["status"] = "error"
@@ -343,7 +341,7 @@ class CueRegenerationService:
         try:
             tracklist_id = UUID(job["tracklist_id"])
             cue_file_id = UUID(job["cue_file_id"])
-            
+
             # Get the tracklist
             tracklist = await self.session.get(TracklistDB, tracklist_id)
             if not tracklist:
@@ -453,11 +451,8 @@ class CueRegenerationService:
         """
         if tracklist_id:
             # Filter queue for specific tracklist
-            tracklist_jobs = [
-                job for job in self.regeneration_queue
-                if job["tracklist_id"] == str(tracklist_id)
-            ]
-            
+            tracklist_jobs = [job for job in self.regeneration_queue if job["tracklist_id"] == str(tracklist_id)]
+
             return {
                 "tracklist_id": str(tracklist_id),
                 "queued_jobs": len(tracklist_jobs),
@@ -503,10 +498,7 @@ class CueRegenerationService:
                     break
         elif tracklist_id:
             # Cancel all jobs for tracklist
-            jobs_to_remove = [
-                job for job in self.regeneration_queue
-                if job["tracklist_id"] == str(tracklist_id)
-            ]
+            jobs_to_remove = [job for job in self.regeneration_queue if job["tracklist_id"] == str(tracklist_id)]
             for job in jobs_to_remove:
                 self.regeneration_queue.remove(job)
                 cancelled.append(job)
