@@ -32,9 +32,10 @@ from .storage_service import StorageService
 class CueGenerationService:
     """High-level service for orchestrating CUE file generation workflows."""
 
-    def __init__(self, storage_service: StorageService):
+    def __init__(self, storage_service: StorageService, cache_service=None):
         self.cue_integration = CueIntegrationService()
         self.storage_service = storage_service
+        self.cache_service = cache_service
 
     async def generate_cue_file(
         self, tracklist: Tracklist, generation_request: GenerateCueRequest
@@ -50,6 +51,11 @@ class CueGenerationService:
             Generation response with file data or error details
         """
         try:
+            # Check cache first if available
+            cached_content = None
+            if self.cache_service:
+                cached_content = await self.cache_service.get_cue_content(tracklist.id, generation_request.format.value)
+
             # Create generation job for tracking
             audio_filename = (
                 Path(generation_request.audio_file_path).name if generation_request.audio_file_path else "audio.wav"
@@ -67,13 +73,23 @@ class CueGenerationService:
                 validation_report=None,
             )
 
-            # Generate CUE content
-            success, content, error_msg = self.cue_integration.generate_cue_content(
-                tracklist=tracklist,
-                cue_format=generation_request.format,
-                audio_filename=audio_filename,
-                options=job.options,
-            )
+            # Use cached content if available and no custom options
+            if cached_content and not generation_request.options:
+                content = cached_content
+                success = True
+                error_msg = None
+            else:
+                # Generate CUE content
+                success, content, error_msg = self.cue_integration.generate_cue_content(
+                    tracklist=tracklist,
+                    cue_format=generation_request.format,
+                    audio_filename=audio_filename,
+                    options=job.options,
+                )
+
+                # Cache successful generation if no custom options
+                if success and self.cache_service and not generation_request.options:
+                    await self.cache_service.set_cue_content(tracklist.id, generation_request.format.value, content)
 
             if not success:
                 job.status = CueGenerationStatus.FAILED
@@ -232,7 +248,7 @@ class CueGenerationService:
         # For now, this is a placeholder for the API
         raise NotImplementedError("Regeneration requires CUE file repository")
 
-    def get_format_capabilities(self, cue_format: CueFormat) -> Dict[str, Any]:
+    async def get_format_capabilities(self, cue_format: CueFormat) -> Dict[str, Any]:
         """
         Get capabilities and limitations for a specific CUE format.
 
@@ -242,7 +258,34 @@ class CueGenerationService:
         Returns:
             Dictionary of format capabilities
         """
-        return self.cue_integration.get_format_capabilities(cue_format)
+        # Check cache first if available
+        if self.cache_service:
+            cached_capabilities = await self.cache_service.get_format_capabilities(cue_format.value)
+            if cached_capabilities:
+                return cached_capabilities
+
+        # Get capabilities from integration service
+        capabilities = self.cue_integration.get_format_capabilities(cue_format)
+
+        # Cache the result
+        if self.cache_service:
+            await self.cache_service.set_format_capabilities(cue_format.value, capabilities)
+
+        return capabilities
+
+    async def invalidate_tracklist_cache(self, tracklist_id: UUID) -> int:
+        """
+        Invalidate all cached CUE content for a specific tracklist.
+
+        Args:
+            tracklist_id: Tracklist ID to invalidate
+
+        Returns:
+            Number of cache entries invalidated
+        """
+        if self.cache_service:
+            return await self.cache_service.invalidate_tracklist_cache(tracklist_id)
+        return 0
 
     def get_conversion_preview(self, source_format: CueFormat, target_format: CueFormat) -> List[str]:
         """

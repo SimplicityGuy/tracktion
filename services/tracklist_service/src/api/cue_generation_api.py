@@ -8,13 +8,15 @@ with support for multiple formats, validation, and batch processing.
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Path
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Path, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import JSONResponse, FileResponse
 
 from ..models.cue_file import (
+    CueFileDB,
     CueFormat,
     GenerateCueRequest,
     BatchGenerateCueRequest,
@@ -25,6 +27,8 @@ from ..models.tracklist import Tracklist
 from ..services.cue_generation_service import CueGenerationService
 from ..services.audio_validation_service import AudioValidationService
 from ..services.storage_service import StorageService, StorageConfig
+from ..services.cache_service import CacheService, CacheConfig
+from ..repository.cue_file_repository import CueFileRepository
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +46,34 @@ storage_config = StorageConfig(
     max_versions=5,
 )
 storage_service = StorageService(storage_config)
-cue_generation_service = CueGenerationService(storage_service)
+
+# Initialize cache service
+cache_config = CacheConfig(
+    redis_host="localhost",
+    redis_port=6379,
+    default_ttl=3600,
+    cue_content_ttl=7200,
+    enable_compression=True,
+    cache_warming_enabled=True,
+    popular_formats=["standard", "cdj", "traktor"],
+)
+cache_service = CacheService(cache_config)
+
+# Initialize CUE generation service with cache
+cue_generation_service = CueGenerationService(storage_service, cache_service)
 audio_validation_service = AudioValidationService()
+
+
+# Database dependency (placeholder - implement with actual DB connection)
+async def get_db_session() -> AsyncSession:
+    """Get database session."""
+    raise NotImplementedError("Database session dependency not implemented")
+
+
+# Repository dependency
+async def get_cue_file_repository(session: AsyncSession = Depends(get_db_session)) -> CueFileRepository:
+    """Get CUE file repository."""
+    return CueFileRepository(session)
 
 
 async def get_tracklist_by_id(tracklist_id: UUID) -> Tracklist:
@@ -365,7 +395,7 @@ async def download_cue_file(cue_file_id: UUID = Path(description="CUE file ID"))
 
 async def process_cue_generation_async(tracklist: Tracklist, request: GenerateCueRequest, correlation_id: UUID) -> None:
     """
-    Process CUE generation asynchronously.
+    Process CUE generation asynchronously via RabbitMQ.
 
     Args:
         tracklist: Source tracklist
@@ -373,12 +403,37 @@ async def process_cue_generation_async(tracklist: Tracklist, request: GenerateCu
         correlation_id: Job correlation ID
     """
     try:
-        # Generate CUE file
-        response = await cue_generation_service.generate_cue_file(tracklist, request)
+        from services.tracklist_service.src.messaging.message_schemas import CueGenerationMessage
+        from services.tracklist_service.src.messaging.rabbitmq_client import get_rabbitmq_client
 
-        # TODO: Store job result in cache/database
-        # For now, just log the result
-        logger.info(f"Async CUE generation {correlation_id}: {'success' if response.success else 'failed'}")
+        # Create RabbitMQ message
+        job_id = uuid4()
+        message = CueGenerationMessage(
+            message_id=uuid4(),
+            correlation_id=correlation_id,
+            tracklist_id=tracklist.id,
+            format=request.format.value,
+            options=request.options,
+            validate_audio=request.validate_audio,
+            audio_file_path=request.audio_file_path,
+            job_id=job_id,
+            requested_by="api",
+            priority=7,  # High priority for API requests
+        )
+
+        # Publish to RabbitMQ
+        try:
+            rabbitmq_client = get_rabbitmq_client()
+            success = await rabbitmq_client.publish_message(message)
+            if success:
+                logger.info(f"Published async CUE generation request {job_id} to RabbitMQ")
+            else:
+                logger.error(f"Failed to publish CUE generation request {job_id} to RabbitMQ")
+        except RuntimeError:
+            # RabbitMQ not available, fall back to direct processing
+            logger.warning("RabbitMQ not available, processing CUE generation directly")
+            response = await cue_generation_service.generate_cue_file(tracklist, request)
+            logger.info(f"Direct CUE generation {correlation_id}: {'success' if response.success else 'failed'}")
 
     except Exception as e:
         logger.error(f"Async CUE generation {correlation_id} failed: {e}", exc_info=True)
@@ -388,7 +443,7 @@ async def process_batch_cue_generation_async(
     tracklist: Tracklist, request: BatchGenerateCueRequest, correlation_id: UUID
 ) -> None:
     """
-    Process batch CUE generation asynchronously.
+    Process batch CUE generation asynchronously via RabbitMQ.
 
     Args:
         tracklist: Source tracklist
@@ -396,17 +451,1011 @@ async def process_batch_cue_generation_async(
         correlation_id: Job correlation ID
     """
     try:
-        # Generate multiple formats
-        response = await cue_generation_service.generate_multiple_formats(tracklist, request)
+        from services.tracklist_service.src.messaging.message_schemas import BatchCueGenerationMessage
+        from services.tracklist_service.src.messaging.rabbitmq_client import get_rabbitmq_client
 
-        # TODO: Store job results in cache/database
-        # For now, just log the results
-        logger.info(
-            f"Async batch CUE generation {correlation_id}: {response.successful_files}/{response.total_files} successful"
+        # Create RabbitMQ message
+        batch_job_id = uuid4()
+        message = BatchCueGenerationMessage(
+            message_id=uuid4(),
+            correlation_id=correlation_id,
+            tracklist_id=tracklist.id,
+            formats=[fmt.value for fmt in request.formats],
+            options=request.options,
+            validate_audio=request.validate_audio,
+            audio_file_path=request.audio_file_path,
+            batch_job_id=batch_job_id,
+            requested_by="api",
+            priority=6,  # Slightly lower priority for batch operations
         )
+
+        # Publish to RabbitMQ
+        try:
+            rabbitmq_client = get_rabbitmq_client()
+            success = await rabbitmq_client.publish_message(message)
+            if success:
+                logger.info(f"Published async batch CUE generation request {batch_job_id} to RabbitMQ")
+            else:
+                logger.error(f"Failed to publish batch CUE generation request {batch_job_id} to RabbitMQ")
+        except RuntimeError:
+            # RabbitMQ not available, fall back to direct processing
+            logger.warning("RabbitMQ not available, processing batch CUE generation directly")
+            response = await cue_generation_service.generate_multiple_formats(tracklist, request)
+            logger.info(
+                f"Direct batch CUE generation {correlation_id}: {response.successful_files}/{response.total_files} successful"
+            )
 
     except Exception as e:
         logger.error(f"Async batch CUE generation {correlation_id} failed: {e}", exc_info=True)
+
+
+# CUE File Management Endpoints
+
+
+@router.get("/files/{cue_file_id}")
+async def get_cue_file_info(
+    cue_file_id: UUID = Path(description="CUE file ID"),
+    repository: CueFileRepository = Depends(get_cue_file_repository),
+) -> Dict[str, Any]:
+    """
+    Get information about a specific CUE file.
+
+    Args:
+        cue_file_id: CUE file ID
+        repository: CUE file repository
+
+    Returns:
+        CUE file information including metadata and versions
+    """
+    try:
+        # Get CUE file from database
+        cue_file = await repository.get_cue_file_by_id(cue_file_id)
+        if not cue_file:
+            raise HTTPException(status_code=404, detail=f"CUE file {cue_file_id} not found")
+
+        # Get storage information
+        file_info = storage_service.get_file_info(cue_file.file_path)
+
+        return {
+            "id": str(cue_file.id),
+            "tracklist_id": str(cue_file.tracklist_id),
+            "format": cue_file.format,
+            "file_path": cue_file.file_path,
+            "file_size": cue_file.file_size,
+            "checksum": cue_file.checksum,
+            "created_at": cue_file.created_at.isoformat(),
+            "updated_at": cue_file.updated_at.isoformat(),
+            "version": cue_file.version,
+            "is_active": cue_file.is_active,
+            "metadata": cue_file.format_metadata or {},
+            "storage_info": file_info,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get CUE file info: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve CUE file {cue_file_id}: {str(e)}")
+
+
+@router.get("/files/{cue_file_id}/download")
+async def download_cue_file_by_id(
+    cue_file_id: UUID = Path(description="CUE file ID"),
+    repository: CueFileRepository = Depends(get_cue_file_repository),
+) -> FileResponse:
+    """
+    Download a CUE file by its ID.
+
+    Args:
+        cue_file_id: CUE file ID
+        repository: CUE file repository
+
+    Returns:
+        File download response with proper headers
+    """
+    try:
+        # Get CUE file from database
+        cue_file = await repository.get_cue_file_by_id(cue_file_id)
+        if not cue_file:
+            raise HTTPException(status_code=404, detail=f"CUE file {cue_file_id} not found")
+
+        # Retrieve file content from storage
+        success, content, error = storage_service.retrieve_cue_file(cue_file.file_path)
+        if not success:
+            logger.error(f"Failed to retrieve CUE file content: {error}")
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve file content: {error}")
+
+        # Create temporary file for download
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".cue", delete=False) as tmp_file:
+            tmp_file.write(content)
+            tmp_path = tmp_file.name
+
+        # Generate appropriate filename
+        filename = f"{cue_file.format}_{str(cue_file_id)[:8]}_v{cue_file.version}.cue"
+
+        return FileResponse(
+            path=tmp_path,
+            filename=filename,
+            media_type="application/x-cue",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Cache-Control": "no-cache",
+                "X-File-Version": str(cue_file.version),
+                "X-File-Format": cue_file.format,
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to download CUE file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to download CUE file {cue_file_id}: {str(e)}")
+
+
+@router.post("/files/{cue_file_id}/regenerate")
+async def regenerate_cue_file(
+    cue_file_id: UUID = Path(description="CUE file ID"),
+    options: Optional[Dict[str, Any]] = None,
+    repository: CueFileRepository = Depends(get_cue_file_repository),
+) -> CueGenerationResponse:
+    """
+    Regenerate a CUE file with updated options.
+
+    Args:
+        cue_file_id: CUE file ID to regenerate
+        options: New generation options
+        repository: CUE file repository
+
+    Returns:
+        CueGenerationResponse with regeneration results
+    """
+    try:
+        # Get existing CUE file
+        cue_file = await repository.get_cue_file_by_id(cue_file_id)
+        if not cue_file:
+            return CueGenerationResponse(
+                success=False,
+                job_id=uuid4(),
+                cue_file_id=None,
+                file_path=None,
+                validation_report=None,
+                error=f"CUE file {cue_file_id} not found",
+                processing_time_ms=None,
+            )
+
+        # Get tracklist to regenerate from
+        tracklist = await get_tracklist_by_id(cue_file.tracklist_id)
+
+        # Use the regeneration service with new options
+        response = await cue_generation_service.regenerate_cue_file(cue_file_id, tracklist, options)
+
+        logger.info(f"Regenerated CUE file {cue_file_id}: {'success' if response.success else 'failed'}")
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to regenerate CUE file: {e}", exc_info=True)
+        return CueGenerationResponse(
+            success=False,
+            job_id=uuid4(),
+            cue_file_id=None,
+            file_path=None,
+            validation_report=None,
+            error=f"Regeneration failed: {str(e)}",
+            processing_time_ms=None,
+        )
+
+
+@router.delete("/files/{cue_file_id}")
+async def delete_cue_file(
+    cue_file_id: UUID = Path(description="CUE file ID"),
+    soft_delete: bool = Query(True, description="Whether to soft delete (default) or hard delete"),
+    repository: CueFileRepository = Depends(get_cue_file_repository),
+) -> Dict[str, Any]:
+    """
+    Delete a CUE file (soft delete by default).
+
+    Args:
+        cue_file_id: CUE file ID to delete
+        soft_delete: Whether to soft delete (True) or permanently delete (False)
+        repository: CUE file repository
+
+    Returns:
+        Deletion status and details
+    """
+    try:
+        # Check if file exists
+        cue_file = await repository.get_cue_file_by_id(cue_file_id)
+        if not cue_file:
+            raise HTTPException(status_code=404, detail=f"CUE file {cue_file_id} not found")
+
+        # Perform deletion based on type
+        if soft_delete:
+            success = await repository.soft_delete_cue_file(cue_file_id)
+        else:
+            # Also delete from storage for hard delete
+            storage_service.delete_cue_file(cue_file.file_path)
+            success = await repository.hard_delete_cue_file(cue_file_id)
+
+        if not success:
+            raise HTTPException(status_code=500, detail=f"Failed to delete CUE file {cue_file_id}")
+
+        deletion_result = {
+            "success": True,
+            "cue_file_id": str(cue_file_id),
+            "deletion_type": "soft" if soft_delete else "hard",
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "message": f"CUE file {'soft deleted' if soft_delete else 'permanently deleted'} successfully",
+        }
+
+        logger.info(f"{'Soft' if soft_delete else 'Hard'} deleted CUE file {cue_file_id}")
+        return deletion_result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete CUE file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete CUE file {cue_file_id}: {str(e)}")
+
+
+@router.get("/files/{cue_file_id}/versions")
+async def get_cue_file_versions(
+    cue_file_id: UUID = Path(description="CUE file ID"),
+    repository: CueFileRepository = Depends(get_cue_file_repository),
+) -> List[Dict[str, Any]]:
+    """
+    Get all versions of a CUE file.
+
+    Args:
+        cue_file_id: CUE file ID
+        repository: CUE file repository
+
+    Returns:
+        List of file versions with metadata
+    """
+    try:
+        # Get all versions for this CUE file
+        versions = await repository.get_file_versions(cue_file_id)
+
+        if not versions:
+            raise HTTPException(status_code=404, detail=f"CUE file {cue_file_id} not found or has no versions")
+
+        # Convert to response format
+        version_data = []
+        for version in versions:
+            # Get storage info if available
+            storage_info = storage_service.get_file_info(version.file_path)
+
+            version_data.append(
+                {
+                    "id": str(version.id),
+                    "version": version.version,
+                    "file_path": version.file_path,
+                    "size": version.file_size,
+                    "checksum": version.checksum,
+                    "created_at": version.created_at.isoformat(),
+                    "updated_at": version.updated_at.isoformat(),
+                    "is_current": version.is_active,
+                    "format": version.format,
+                    "metadata": version.format_metadata or {},
+                    "storage_info": storage_info,
+                }
+            )
+
+        logger.debug(f"Retrieved {len(version_data)} versions for CUE file {cue_file_id}")
+        return version_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get CUE file versions: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve versions for CUE file {cue_file_id}: {str(e)}")
+
+
+@router.get("/files")
+async def list_cue_files(
+    tracklist_id: Optional[UUID] = Query(None, description="Filter by tracklist ID"),
+    format: Optional[str] = Query(None, description="Filter by CUE format"),
+    limit: int = Query(20, description="Number of files to return", ge=1, le=100),
+    offset: int = Query(0, description="Number of files to skip", ge=0),
+    repository: CueFileRepository = Depends(get_cue_file_repository),
+) -> Dict[str, Any]:
+    """
+    List CUE files with optional filtering and pagination.
+
+    Args:
+        tracklist_id: Optional filter by tracklist ID
+        format: Optional filter by CUE format
+        limit: Number of files to return (1-100)
+        offset: Number of files to skip
+        repository: CUE file repository
+
+    Returns:
+        List of CUE files with pagination metadata
+    """
+    try:
+        # Validate format if provided
+        if format:
+            try:
+                CueFormat(format)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid CUE format: {format}")
+
+        # Get files from repository
+        cue_files = await repository.list_cue_files(
+            tracklist_id=tracklist_id,
+            cue_format=format,
+            limit=limit,
+            offset=offset,
+        )
+
+        # Get total count for pagination
+        total_count = await repository.count_cue_files(
+            tracklist_id=tracklist_id,
+            cue_format=format,
+        )
+
+        # Convert to response format
+        file_data = []
+        for cue_file in cue_files:
+            # Get storage info if available
+            storage_info = storage_service.get_file_info(cue_file.file_path)
+
+            file_data.append(
+                {
+                    "id": str(cue_file.id),
+                    "tracklist_id": str(cue_file.tracklist_id),
+                    "format": cue_file.format,
+                    "file_path": cue_file.file_path,
+                    "file_size": cue_file.file_size,
+                    "checksum": cue_file.checksum,
+                    "created_at": cue_file.created_at.isoformat(),
+                    "updated_at": cue_file.updated_at.isoformat(),
+                    "version": cue_file.version,
+                    "is_active": cue_file.is_active,
+                    "metadata": cue_file.format_metadata or {},
+                    "storage_info": storage_info,
+                }
+            )
+
+        has_more = (offset + len(file_data)) < total_count
+
+        response = {
+            "files": file_data,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": total_count,
+                "has_more": has_more,
+                "returned": len(file_data),
+            },
+            "filters": {
+                "tracklist_id": str(tracklist_id) if tracklist_id else None,
+                "format": format,
+            },
+        }
+
+        logger.debug(f"Listed {len(file_data)} CUE files (total: {total_count})")
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list CUE files: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list CUE files: {str(e)}")
+
+
+# Validation Endpoints
+
+
+@router.post("/files/{cue_file_id}/validate")
+async def validate_cue_file(
+    cue_file_id: UUID = Path(description="CUE file ID"),
+    audio_file_path: Optional[str] = Query(None, description="Path to audio file for validation"),
+    validation_options: Optional[Dict[str, Any]] = None,
+    repository: CueFileRepository = Depends(get_cue_file_repository),
+) -> Dict[str, Any]:
+    """
+    Validate a CUE file against audio file and format specifications.
+
+    Args:
+        cue_file_id: CUE file ID to validate
+        audio_file_path: Optional path to audio file for duration validation
+        validation_options: Optional validation configuration
+        repository: CUE file repository
+
+    Returns:
+        Detailed validation report with errors, warnings, and metadata
+    """
+    try:
+        start_time = time.time()
+
+        # Get CUE file from database
+        cue_file = await repository.get_cue_file_by_id(cue_file_id)
+        if not cue_file:
+            raise HTTPException(status_code=404, detail=f"CUE file {cue_file_id} not found")
+
+        # Retrieve CUE file content from storage
+        success, content, error = storage_service.retrieve_cue_file(cue_file.file_path)
+        if not success:
+            logger.error(f"Failed to retrieve CUE file content for validation: {error}")
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve file content: {error}")
+
+        # Initialize validation report
+        validation_report = {
+            "cue_file_id": str(cue_file_id),
+            "format": cue_file.format,
+            "file_path": cue_file.file_path,
+            "validation_timestamp": datetime.now(timezone.utc).isoformat(),
+            "valid": True,
+            "errors": [],
+            "warnings": [],
+            "metadata": {
+                "file_size": cue_file.file_size,
+                "checksum": cue_file.checksum,
+                "version": cue_file.version,
+            },
+        }
+
+        # Validate CUE content using CUE integration service
+        try:
+            format_validation = cue_generation_service.cue_integration.validate_cue_content(
+                content, CueFormat(cue_file.format), validation_options or {}
+            )
+
+            validation_report["valid"] = format_validation.valid
+            if format_validation.error:
+                validation_report["errors"].append(
+                    {"type": "format_error", "message": format_validation.error, "severity": "error"}
+                )
+
+            validation_report["warnings"].extend(
+                [
+                    {"type": "format_warning", "message": warning, "severity": "warning"}
+                    for warning in format_validation.warnings
+                ]
+            )
+
+            # Add format-specific metadata
+            if format_validation.metadata:
+                validation_report["metadata"].update(format_validation.metadata)
+
+        except Exception as e:
+            validation_report["valid"] = False
+            validation_report["errors"].append(
+                {"type": "validation_error", "message": f"CUE content validation failed: {str(e)}", "severity": "error"}
+            )
+
+        # Validate against audio file if provided
+        if audio_file_path:
+            try:
+                # Get tracklist for audio validation
+                tracklist = await get_tracklist_by_id(cue_file.tracklist_id)
+
+                # Validate timing against audio duration
+                audio_validation = await audio_validation_service.validate_tracklist_timing(
+                    tracklist, audio_file_path, validation_options or {}
+                )
+
+                if not audio_validation.valid:
+                    validation_report["valid"] = False
+                    validation_report["errors"].append(
+                        {
+                            "type": "audio_timing_error",
+                            "message": audio_validation.error or "Audio timing validation failed",
+                            "severity": "error",
+                        }
+                    )
+
+                validation_report["warnings"].extend(
+                    [
+                        {"type": "audio_timing_warning", "message": warning, "severity": "warning"}
+                        for warning in audio_validation.warnings
+                    ]
+                )
+
+                # Add audio validation metadata
+                validation_report["metadata"]["audio_duration"] = audio_validation.audio_duration
+                validation_report["metadata"]["tracklist_duration"] = audio_validation.tracklist_duration
+
+            except Exception as e:
+                validation_report["warnings"].append(
+                    {
+                        "type": "audio_validation_warning",
+                        "message": f"Audio validation failed: {str(e)}",
+                        "severity": "warning",
+                    }
+                )
+
+        # Add processing time
+        processing_time = (time.time() - start_time) * 1000
+        validation_report["processing_time_ms"] = round(processing_time, 2)
+
+        # Add actionable recommendations
+        recommendations = []
+        if not validation_report["valid"]:
+            if any(err["type"] == "format_error" for err in validation_report["errors"]):
+                recommendations.append("Fix CUE format issues by regenerating the file")
+            if any(err["type"] == "audio_timing_error" for err in validation_report["errors"]):
+                recommendations.append("Check tracklist timing against actual audio duration")
+
+        if validation_report["warnings"]:
+            recommendations.append("Review warnings for potential quality improvements")
+
+        validation_report["recommendations"] = recommendations
+
+        logger.info(
+            f"Validated CUE file {cue_file_id}: {'valid' if validation_report['valid'] else 'invalid'} "
+            f"({len(validation_report['errors'])} errors, {len(validation_report['warnings'])} warnings)"
+        )
+
+        return validation_report
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to validate CUE file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to validate CUE file {cue_file_id}: {str(e)}")
+
+
+@router.post("/validate")
+async def validate_tracklist_for_cue(
+    tracklist_id: UUID = Query(description="Tracklist ID"),
+    format: str = Query(description="Target CUE format"),
+    audio_file_path: Optional[str] = Query(None, description="Path to audio file for validation"),
+    validation_options: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Validate a tracklist for CUE file generation in a specific format.
+
+    Args:
+        tracklist_id: Tracklist ID to validate
+        format: Target CUE format for validation
+        audio_file_path: Optional path to audio file for duration validation
+        validation_options: Optional validation configuration
+
+    Returns:
+        Detailed validation report for tracklist compatibility
+    """
+    try:
+        start_time = time.time()
+
+        # Validate format
+        try:
+            cue_format = CueFormat(format)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Unsupported CUE format: {format}")
+
+        # Get tracklist
+        tracklist = await get_tracklist_by_id(tracklist_id)
+
+        # Validate tracklist for CUE generation
+        validation_result = await cue_generation_service.validate_tracklist_for_cue(
+            tracklist, cue_format, validation_options or {}
+        )
+
+        # Initialize comprehensive validation report
+        validation_report = {
+            "tracklist_id": str(tracklist_id),
+            "target_format": format,
+            "validation_timestamp": datetime.now(timezone.utc).isoformat(),
+            "valid": validation_result.valid,
+            "errors": [],
+            "warnings": [],
+            "metadata": validation_result.metadata or {},
+        }
+
+        # Convert validation result to detailed report
+        if validation_result.error:
+            validation_report["errors"].append(
+                {"type": "tracklist_error", "message": validation_result.error, "severity": "error"}
+            )
+
+        validation_report["warnings"].extend(
+            [
+                {"type": "tracklist_warning", "message": warning, "severity": "warning"}
+                for warning in validation_result.warnings
+            ]
+        )
+
+        # Validate against audio file if provided
+        if audio_file_path and validation_result.valid:
+            try:
+                audio_validation = await audio_validation_service.validate_tracklist_timing(
+                    tracklist, audio_file_path, validation_options or {}
+                )
+
+                if not audio_validation.valid:
+                    validation_report["valid"] = False
+                    validation_report["errors"].append(
+                        {
+                            "type": "audio_timing_error",
+                            "message": audio_validation.error or "Audio timing validation failed",
+                            "severity": "error",
+                        }
+                    )
+
+                validation_report["warnings"].extend(
+                    [
+                        {"type": "audio_timing_warning", "message": warning, "severity": "warning"}
+                        for warning in audio_validation.warnings
+                    ]
+                )
+
+                # Add audio validation metadata
+                validation_report["metadata"]["audio_duration"] = audio_validation.audio_duration
+                validation_report["metadata"]["tracklist_duration"] = audio_validation.tracklist_duration
+
+            except Exception as e:
+                validation_report["warnings"].append(
+                    {
+                        "type": "audio_validation_warning",
+                        "message": f"Audio validation failed: {str(e)}",
+                        "severity": "warning",
+                    }
+                )
+
+        # Add processing time
+        processing_time = (time.time() - start_time) * 1000
+        validation_report["processing_time_ms"] = round(processing_time, 2)
+
+        # Add actionable recommendations
+        recommendations = []
+        if not validation_report["valid"]:
+            if any(err["type"] == "tracklist_error" for err in validation_report["errors"]):
+                recommendations.append("Fix tracklist data issues before CUE generation")
+            if any(err["type"] == "audio_timing_error" for err in validation_report["errors"]):
+                recommendations.append("Verify tracklist timing matches audio file duration")
+        else:
+            recommendations.append(f"Tracklist is ready for {format} CUE file generation")
+
+        if validation_report["warnings"]:
+            recommendations.append("Review warnings for optimal CUE file quality")
+
+        validation_report["recommendations"] = recommendations
+
+        logger.info(
+            f"Validated tracklist {tracklist_id} for {format}: "
+            f"{'valid' if validation_report['valid'] else 'invalid'} "
+            f"({len(validation_report['errors'])} errors, {len(validation_report['warnings'])} warnings)"
+        )
+
+        return validation_report
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to validate tracklist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to validate tracklist {tracklist_id}: {str(e)}")
+
+
+# Format Conversion Endpoints
+
+
+@router.post("/files/{cue_file_id}/convert")
+async def convert_cue_file(
+    cue_file_id: UUID = Path(description="CUE file ID"),
+    target_format: str = Query(description="Target CUE format for conversion"),
+    preserve_metadata: bool = Query(True, description="Whether to preserve metadata during conversion"),
+    conversion_options: Optional[Dict[str, Any]] = None,
+    repository: CueFileRepository = Depends(get_cue_file_repository),
+) -> Dict[str, Any]:
+    """
+    Convert a CUE file to a different format.
+
+    Args:
+        cue_file_id: Source CUE file ID
+        target_format: Target CUE format (standard, cdj, traktor, serato, rekordbox, kodi)
+        preserve_metadata: Whether to preserve metadata during conversion
+        conversion_options: Optional conversion configuration
+        repository: CUE file repository
+
+    Returns:
+        Conversion response with new CUE file information and conversion warnings
+    """
+    try:
+        start_time = time.time()
+
+        # Validate target format
+        try:
+            target_cue_format = CueFormat(target_format)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Unsupported target CUE format: {target_format}")
+
+        # Get source CUE file from database
+        source_cue_file = await repository.get_cue_file_by_id(cue_file_id)
+        if not source_cue_file:
+            raise HTTPException(status_code=404, detail=f"CUE file {cue_file_id} not found")
+
+        # Check if conversion is needed
+        if source_cue_file.format == target_format:
+            return {
+                "success": True,
+                "message": f"CUE file is already in {target_format} format",
+                "cue_file_id": str(cue_file_id),
+                "source_format": source_cue_file.format,
+                "target_format": target_format,
+                "conversion_needed": False,
+                "warnings": [],
+                "processing_time_ms": 0,
+            }
+
+        # Retrieve source CUE file content
+        success, content, error = storage_service.retrieve_cue_file(source_cue_file.file_path)
+        if not success:
+            logger.error(f"Failed to retrieve source CUE file content: {error}")
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve source file: {error}")
+
+        # Get conversion preview warnings
+        conversion_warnings = cue_generation_service.get_conversion_preview(
+            CueFormat(source_cue_file.format), target_cue_format
+        )
+
+        # Initialize conversion report
+        conversion_report = {
+            "success": True,
+            "cue_file_id": None,
+            "source_cue_file_id": str(cue_file_id),
+            "source_format": source_cue_file.format,
+            "target_format": target_format,
+            "conversion_needed": True,
+            "warnings": [],
+            "errors": [],
+            "metadata": {
+                "preserve_metadata": preserve_metadata,
+                "conversion_options": conversion_options or {},
+            },
+        }
+
+        # Add conversion preview warnings
+        conversion_report["warnings"].extend(
+            [
+                {"type": "conversion_warning", "message": warning, "severity": "warning"}
+                for warning in conversion_warnings
+            ]
+        )
+
+        try:
+            # Perform conversion using CUE integration service
+            conversion_result = cue_generation_service.cue_integration.convert_cue_format(
+                content,
+                CueFormat(source_cue_file.format),
+                target_cue_format,
+                preserve_metadata,
+                conversion_options or {},
+            )
+
+            if not conversion_result.success:
+                conversion_report["success"] = False
+                conversion_report["errors"].append(
+                    {
+                        "type": "conversion_error",
+                        "message": conversion_result.error or "Conversion failed",
+                        "severity": "error",
+                    }
+                )
+
+                processing_time = (time.time() - start_time) * 1000
+                conversion_report["processing_time_ms"] = round(processing_time, 2)
+
+                return conversion_report
+
+            # Store converted CUE file
+            converted_content = conversion_result.converted_content
+
+            # Generate file path for converted file
+            audio_file_id = source_cue_file.tracklist_id  # Use tracklist_id as audio_file_id
+            storage_result = await storage_service.store_cue_file(
+                converted_content,
+                audio_file_id,
+                target_format,
+                {
+                    "converted_from": source_cue_file.format,
+                    "original_cue_file_id": str(cue_file_id),
+                    "preserve_metadata": preserve_metadata,
+                },
+            )
+
+            if not storage_result.success:
+                conversion_report["success"] = False
+                conversion_report["errors"].append(
+                    {
+                        "type": "storage_error",
+                        "message": f"Failed to store converted file: {storage_result.error}",
+                        "severity": "error",
+                    }
+                )
+
+                processing_time = (time.time() - start_time) * 1000
+                conversion_report["processing_time_ms"] = round(processing_time, 2)
+
+                return conversion_report
+
+            # Create database record for converted CUE file
+            converted_cue_file = CueFileDB(
+                tracklist_id=source_cue_file.tracklist_id,
+                file_path=storage_result.file_path,
+                format=target_format,
+                file_size=storage_result.file_size,
+                checksum=storage_result.checksum,
+                version=storage_result.version,
+                is_active=True,
+                format_metadata={
+                    "converted_from": source_cue_file.format,
+                    "original_cue_file_id": str(cue_file_id),
+                    "preserve_metadata": preserve_metadata,
+                    "conversion_timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+
+            # Save to database
+            created_cue_file = await repository.create_cue_file(converted_cue_file)
+
+            conversion_report["cue_file_id"] = str(created_cue_file.id)
+            conversion_report["file_path"] = created_cue_file.file_path
+            conversion_report["file_size"] = created_cue_file.file_size
+            conversion_report["checksum"] = created_cue_file.checksum
+            conversion_report["version"] = created_cue_file.version
+
+            # Add conversion-specific warnings from the result
+            if conversion_result.warnings:
+                conversion_report["warnings"].extend(
+                    [
+                        {"type": "format_conversion_warning", "message": warning, "severity": "warning"}
+                        for warning in conversion_result.warnings
+                    ]
+                )
+
+        except Exception as e:
+            conversion_report["success"] = False
+            conversion_report["errors"].append(
+                {"type": "conversion_error", "message": f"Conversion failed: {str(e)}", "severity": "error"}
+            )
+
+        # Add processing time
+        processing_time = (time.time() - start_time) * 1000
+        conversion_report["processing_time_ms"] = round(processing_time, 2)
+
+        # Add recommendations
+        recommendations = []
+        if conversion_report["success"]:
+            recommendations.append(f"Successfully converted from {source_cue_file.format} to {target_format}")
+            if conversion_report["warnings"]:
+                recommendations.append("Review warnings for potential data loss during conversion")
+        else:
+            recommendations.append("Fix conversion errors before retrying")
+
+        conversion_report["recommendations"] = recommendations
+
+        logger.info(
+            f"Converted CUE file {cue_file_id} from {source_cue_file.format} to {target_format}: "
+            f"{'success' if conversion_report['success'] else 'failed'} "
+            f"({len(conversion_report.get('warnings', []))} warnings)"
+        )
+
+        return conversion_report
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to convert CUE file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to convert CUE file {cue_file_id}: {str(e)}")
+
+
+# Cache Management Endpoints
+
+
+@router.get("/cache/stats")
+async def get_cache_stats() -> Dict[str, Any]:
+    """
+    Get cache statistics and performance metrics.
+
+    Returns:
+        Cache statistics including hit rates, sizes, and configuration
+    """
+    try:
+        stats = await cache_service.get_cache_stats()
+        return stats
+
+    except Exception as e:
+        logger.error(f"Failed to get cache stats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve cache statistics: {str(e)}")
+
+
+@router.post("/cache/warm")
+async def warm_cache(
+    tracklist_ids: List[UUID] = Query(description="List of tracklist IDs to warm"),
+    formats: Optional[List[str]] = Query(None, description="List of formats to warm (defaults to popular formats)"),
+) -> Dict[str, Any]:
+    """
+    Warm cache for specified tracklist/format combinations.
+
+    Args:
+        tracklist_ids: List of tracklist IDs to pre-generate and cache
+        formats: List of CUE formats to cache (defaults to popular formats)
+
+    Returns:
+        Cache warming results and statistics
+    """
+    try:
+        # Validate formats if provided
+        if formats:
+            valid_formats = ["standard", "cdj", "traktor", "serato", "rekordbox", "kodi"]
+            for fmt in formats:
+                if fmt not in valid_formats:
+                    raise HTTPException(status_code=400, detail=f"Invalid format: {fmt}")
+
+        results = await cache_service.warm_cache(tracklist_ids, formats)
+        return results
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Cache warming failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to warm cache: {str(e)}")
+
+
+@router.delete("/cache/invalidate/{tracklist_id}")
+async def invalidate_tracklist_cache(
+    tracklist_id: UUID = Path(description="Tracklist ID to invalidate"),
+) -> Dict[str, Any]:
+    """
+    Invalidate all cached CUE content for a specific tracklist.
+
+    Args:
+        tracklist_id: Tracklist ID to invalidate from cache
+
+    Returns:
+        Invalidation results
+    """
+    try:
+        invalidated_count = await cue_generation_service.invalidate_tracklist_cache(tracklist_id)
+
+        return {
+            "success": True,
+            "tracklist_id": str(tracklist_id),
+            "invalidated_entries": invalidated_count,
+            "message": f"Invalidated {invalidated_count} cache entries for tracklist {tracklist_id}",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Cache invalidation failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to invalidate cache for tracklist {tracklist_id}: {str(e)}"
+        )
+
+
+@router.delete("/cache/clear")
+async def clear_cache(
+    pattern: Optional[str] = Query(None, description="Optional pattern to match keys for selective clearing"),
+) -> Dict[str, Any]:
+    """
+    Clear cache entries, optionally matching a specific pattern.
+
+    Args:
+        pattern: Optional pattern to match keys (Redis patterns supported)
+
+    Returns:
+        Cache clearing results
+    """
+    try:
+        cleared_count = await cache_service.clear_cache(pattern)
+
+        return {
+            "success": True,
+            "cleared_entries": cleared_count,
+            "pattern": pattern or "all",
+            "message": f"Cleared {cleared_count} cache entries",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Cache clearing failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
 
 
 @router.get("/health")

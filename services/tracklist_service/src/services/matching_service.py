@@ -267,13 +267,13 @@ class MatchingService:
         if isinstance(tracklist_date, str):
             try:
                 tracklist_date = datetime.fromisoformat(tracklist_date).date()
-            except:
+            except (ValueError, AttributeError):
                 return 0.5
 
         if isinstance(audio_date, str):
             try:
                 audio_date = datetime.fromisoformat(audio_date).date()
-            except:
+            except (ValueError, AttributeError):
                 return 0.5
 
         # Calculate day difference
