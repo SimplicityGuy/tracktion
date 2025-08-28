@@ -405,11 +405,29 @@ class TestManualTracklistEndpoints:
         """Test publishing a draft."""
         tracklist_id = uuid4()
 
-        published = Tracklist(
+        # Mock the draft that will be validated
+        draft = Tracklist(
             id=tracklist_id,
             audio_file_id=uuid4(),
             source="manual",
+            is_draft=True,
+            tracks=[
+                TrackEntry(
+                    position=1,
+                    start_time=timedelta(0),
+                    artist="Artist1",
+                    title="Title1",
+                )
+            ],
+        )
+        mock_draft_service.get_draft.return_value = draft
+
+        published = Tracklist(
+            id=tracklist_id,
+            audio_file_id=draft.audio_file_id,
+            source="manual",
             is_draft=False,
+            tracks=draft.tracks,
         )
         mock_draft_service.publish_draft.return_value = published
 
@@ -417,12 +435,29 @@ class TestManualTracklistEndpoints:
 
         assert result == published
         assert result.is_draft is False
+        mock_draft_service.get_draft.assert_called_once_with(tracklist_id)
         mock_draft_service.publish_draft.assert_called_once_with(tracklist_id)
 
     def test_publish_draft_error(self, mock_db_session, mock_draft_service):
         """Test publishing error handling."""
         tracklist_id = uuid4()
 
+        # Mock the draft that will be validated
+        draft = Tracklist(
+            id=tracklist_id,
+            audio_file_id=uuid4(),
+            source="manual",
+            is_draft=True,
+            tracks=[
+                TrackEntry(
+                    position=1,
+                    start_time=timedelta(0),
+                    artist="Artist1",
+                    title="Title1",
+                )
+            ],
+        )
+        mock_draft_service.get_draft.return_value = draft
         mock_draft_service.publish_draft.side_effect = ValueError("Already published")
 
         with pytest.raises(HTTPException) as exc_info:

@@ -32,6 +32,7 @@ class DraftService:
         self.db = db_session
         self.redis = redis_client
         self.cache_ttl = 3600  # 1 hour cache TTL
+        self.batch_size = 100  # For batch operations
 
     def create_draft(
         self,
@@ -274,6 +275,76 @@ class DraftService:
             self._invalidate_cache(draft_id)
 
         return True
+
+    def batch_update_tracks(
+        self,
+        draft_id: UUID,
+        track_updates: List[dict],
+    ) -> Tracklist:
+        """Batch update multiple tracks efficiently.
+
+        Args:
+            draft_id: ID of the draft.
+            track_updates: List of track update dictionaries.
+
+        Returns:
+            Updated tracklist.
+
+        Raises:
+            ValueError: If draft not found.
+        """
+        # Get current draft
+        draft_db = self.db.query(TracklistDB).filter_by(id=draft_id).first()
+        if not draft_db:
+            raise ValueError(f"Draft with ID {draft_id} not found")
+
+        draft = draft_db.to_model()
+
+        # Apply updates in batches
+        tracks_dict = {track.position: track for track in draft.tracks}
+
+        for update in track_updates:
+            position = update.get("position")
+            if position in tracks_dict:
+                track = tracks_dict[position]
+                # Update only provided fields
+                for field, value in update.items():
+                    if field != "position" and hasattr(track, field):
+                        setattr(track, field, value)
+
+        # Convert back to list and save
+        updated_tracks = list(tracks_dict.values())
+        return self.save_draft(draft_id, updated_tracks, auto_version=False)
+
+    def bulk_create_drafts(
+        self,
+        draft_data: List[dict],
+    ) -> List[Tracklist]:
+        """Create multiple drafts efficiently in batch.
+
+        Args:
+            draft_data: List of draft creation data.
+
+        Returns:
+            List of created drafts.
+        """
+        created_drafts = []
+
+        # Process in batches to avoid memory issues
+        for i in range(0, len(draft_data), self.batch_size):
+            batch = draft_data[i : i + self.batch_size]
+
+            for data in batch:
+                draft = self.create_draft(
+                    audio_file_id=data["audio_file_id"],
+                    tracks=data.get("tracks", []),
+                )
+                created_drafts.append(draft)
+
+            # Commit batch
+            self.db.commit()
+
+        return created_drafts
 
     def _get_latest_draft_version(self, audio_file_id: UUID) -> Optional[int]:
         """Get the latest draft version number for an audio file.

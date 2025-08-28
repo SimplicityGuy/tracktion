@@ -21,6 +21,7 @@ class TimingService:
         """Initialize the timing service."""
         self.min_track_duration = timedelta(seconds=30)  # Minimum 30 seconds per track
         self.max_track_duration = timedelta(minutes=20)  # Maximum 20 minutes per track
+        self._calculation_cache: Dict[str, Any] = {}  # Cache for expensive calculations
 
     def adjust_track_timings(
         self, tracks: List[TrackEntry], audio_duration: Optional[timedelta] = None, offset: Optional[timedelta] = None
@@ -336,6 +337,38 @@ class TimingService:
 
         return conflicts
 
+    def detect_all_timing_conflicts(
+        self,
+        tracks: List[TrackEntry],
+    ) -> List[Tuple[TrackEntry, TrackEntry, str]]:
+        """
+        Detect all timing conflicts across a list of tracks.
+
+        Args:
+            tracks: List of tracks to check.
+
+        Returns:
+            List of tuples containing (track1, track2, reason).
+        """
+        conflicts = []
+
+        for i, track1 in enumerate(tracks):
+            track1_end = track1.end_time if track1.end_time else track1.start_time + timedelta(seconds=1)
+
+            for track2 in tracks[i + 1 :]:
+                track2_end = track2.end_time if track2.end_time else track2.start_time + timedelta(seconds=1)
+
+                # Check for overlap
+                if track1.start_time < track2_end and track2.start_time < track1_end:
+                    overlap_start = max(track1.start_time, track2.start_time)
+                    overlap_end = min(track1_end, track2_end)
+                    overlap_duration = (overlap_end - overlap_start).total_seconds()
+
+                    reason = f"Tracks overlap for {overlap_duration:.1f} seconds"
+                    conflicts.append((track1, track2, reason))
+
+        return conflicts
+
     def auto_calculate_end_times(
         self,
         tracks: List[TrackEntry],
@@ -535,3 +568,88 @@ class TimingService:
                 suggestions.append(suggestion)
 
         return suggestions
+
+    def batch_validate_timings(
+        self,
+        tracklists: List[List[TrackEntry]],
+        audio_durations: Optional[List[timedelta]] = None,
+    ) -> List[Tuple[bool, List[str]]]:
+        """Validate timings for multiple tracklists efficiently.
+
+        Args:
+            tracklists: List of track lists to validate.
+            audio_durations: Optional list of corresponding audio durations.
+
+        Returns:
+            List of validation results (is_valid, issues) for each tracklist.
+        """
+        results = []
+        durations: List[Optional[timedelta]] = list(audio_durations) if audio_durations is not None else []
+        # Extend with None values if needed
+        while len(durations) < len(tracklists):
+            durations.append(None)
+
+        for tracks, duration in zip(tracklists, durations):
+            # Use cached validation if available
+            cache_key = f"validate_{len(tracks)}_{duration}"
+            if cache_key in self._calculation_cache:
+                results.append(self._calculation_cache[cache_key])
+            else:
+                if duration:
+                    result = self.validate_timing_consistency(tracks, duration)
+                else:
+                    # Basic validation without duration
+                    issues = []
+                    for i in range(len(tracks) - 1):
+                        end_time = tracks[i].end_time
+                        start_time = tracks[i + 1].start_time
+                        if end_time is not None and start_time is not None:
+                            if end_time > start_time:
+                                issues.append(f"Track {i + 1} overlaps with track {i + 2}")
+                    result = (len(issues) == 0, issues)
+
+                self._calculation_cache[cache_key] = result
+                results.append(result)
+
+        return results
+
+    def optimize_timing_layout(
+        self,
+        tracks: List[TrackEntry],
+        target_duration: timedelta,
+    ) -> List[TrackEntry]:
+        """Optimize track timing layout for smooth transitions.
+
+        Args:
+            tracks: List of tracks to optimize.
+            target_duration: Target total duration.
+
+        Returns:
+            Optimized track list with adjusted timings.
+        """
+        if not tracks:
+            return tracks
+
+        # Calculate optimal track duration
+        avg_duration = target_duration / len(tracks)
+
+        # Adjust each track proportionally
+        optimized = []
+        current_time = timedelta(0)
+
+        for i, track in enumerate(tracks):
+            # Set start time
+            track.start_time = current_time
+
+            # Calculate end time based on optimal duration
+            if i < len(tracks) - 1:
+                # Not the last track
+                track.end_time = current_time + avg_duration
+                current_time = track.end_time
+            else:
+                # Last track fills remaining time
+                track.end_time = target_duration
+
+            optimized.append(track)
+
+        return optimized

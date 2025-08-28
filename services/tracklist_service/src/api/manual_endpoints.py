@@ -356,9 +356,12 @@ def update_track_timing(
         Updated track.
 
     Raises:
-        HTTPException: If tracklist or track not found.
+        HTTPException: If tracklist or track not found or timing conflict.
     """
+    from datetime import timedelta
+
     draft_service = DraftService(db)
+    timing_service = TimingService()
 
     # Get the draft
     draft = draft_service.get_draft(tracklist_id)
@@ -368,12 +371,9 @@ def update_track_timing(
             detail=f"Draft tracklist {tracklist_id} not found",
         )
 
-    # Find the track
-    track = None
-    for t in draft.tracks:
-        if t.position == position:
-            track = t
-            break
+    # Find the track using dict comprehension for efficiency
+    tracks_by_position = {t.position: t for t in draft.tracks}
+    track = tracks_by_position.get(position)
 
     if not track:
         raise HTTPException(
@@ -382,28 +382,21 @@ def update_track_timing(
         )
 
     # Update timing
-    from datetime import timedelta
-
     track.start_time = timedelta(seconds=parse_time_string(request.start_time))
     if request.end_time:
         track.end_time = timedelta(seconds=parse_time_string(request.end_time))
 
-    # Validate no overlaps
-    for other in draft.tracks:
-        if other.position == position:
-            continue
-
-        # Calculate end times (default to start + 1 second if no end time)
-        from datetime import timedelta as td
-
-        other_end = other.end_time if other.end_time else (other.start_time + td(seconds=1))
-        track_end = track.end_time if track.end_time else (track.start_time + td(seconds=1))
-
-        # Check for overlap: start1 < end2 AND start2 < end1
-        if track.start_time < other_end and other.start_time < track_end:
+    # Use TimingService for validation
+    conflicts = timing_service.detect_all_timing_conflicts(draft.tracks)
+    if conflicts:
+        # Find conflicts involving our track
+        track_conflicts = [c for c in conflicts if position in [c[0].position, c[1].position]]
+        if track_conflicts:
+            conflict = track_conflicts[0]
+            other_pos = conflict[0].position if conflict[0].position != position else conflict[1].position
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Timing conflict with track at position {other.position}",
+                detail=f"Timing conflict with track at position {other_pos}: {conflict[2]}",
             )
 
     # Save updated draft
@@ -583,16 +576,15 @@ def publish_draft(
                         status_code=status.HTTP_400_BAD_REQUEST, detail=f"Track {track.position} is missing start time"
                     )
 
-            # Check for timing conflicts
-            for i, track in enumerate(draft.tracks):
-                conflicts = timing_service.detect_timing_conflicts(track, draft.tracks)
-                if conflicts:
-                    severe_conflicts = [c for c in conflicts if c.get("severity") == "high"]
-                    if severe_conflicts:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Track {track.position} has timing conflicts: {severe_conflicts[0]}",
-                        )
+            # Check for timing conflicts across all tracks
+            conflicts = timing_service.detect_all_timing_conflicts(draft.tracks)
+            if conflicts:
+                # Report the first conflict found
+                track1, track2, reason = conflicts[0]
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Timing conflict between tracks {track1.position} and {track2.position}: {reason}",
+                )
 
     try:
         published = draft_service.publish_draft(tracklist_id)
