@@ -12,15 +12,21 @@ import pytest
 
 from services.tracklist_service.src.exceptions import (
     AudioFileError,
+    ConcurrentEditError,
     CueGenerationError,
     DatabaseError,
+    DraftNotFoundError,
+    DuplicatePositionError,
     ImportError,
+    InvalidTrackPositionError,
     MatchingError,
+    PublishValidationError,
     RateLimitError,
     ScrapingError,
     ServiceUnavailableError,
     TimeoutError,
     TimingError,
+    ValidationError,
 )
 from services.tracklist_service.src.retry.retry_manager import FailureType, RetryManager, RetryPolicy
 
@@ -244,7 +250,7 @@ class TestErrorRecovery:
             # Should handle cache failure gracefully
             try:
                 await cache.get("test_key")
-                assert False, "Should have raised exception"
+                raise AssertionError("Should have raised exception")
             except Exception as e:
                 assert "Redis unavailable" in str(e)
 
@@ -287,16 +293,10 @@ class TestStructuredLogging:
         error = ImportError("Test import failed", url="https://1001tracklists.com/test", tracklist_id="test-123")
 
         # Simulate logging the error
-        correlation_id = str(uuid4())
+        str(uuid4())
         mock_logger.error.assert_not_called()  # Not called yet
 
         # In actual code, this would be logged with extra fields
-        expected_extra = {
-            "correlation_id": correlation_id,
-            "error_code": error.error_code,
-            "error_type": "ImportError",
-            "error_details": error.details,
-        }
 
         # Verify the structure we expect
         assert error.error_code == "IMPORT_ERROR"
@@ -320,6 +320,111 @@ class TestStructuredLogging:
         assert log_context["correlation_id"] == correlation_id
         assert log_context["error_code"] == "IMPORT_ERROR"
         assert log_context["url"] == "https://1001tracklists.com/test"
+
+
+class TestManualTracklistExceptions:
+    """Test exceptions for manual tracklist creation."""
+
+    def test_draft_not_found_error(self):
+        """Test draft not found error."""
+        draft_id = str(uuid4())
+        error = DraftNotFoundError(draft_id)
+
+        assert error.error_code == "DRAFT_NOT_FOUND"
+        assert error.draft_id == draft_id
+        assert f"Draft with ID {draft_id} not found" in error.message
+        assert error.details["draft_id"] == draft_id
+
+    def test_concurrent_edit_error(self):
+        """Test concurrent edit detection."""
+        tracklist_id = str(uuid4())
+        error = ConcurrentEditError(
+            tracklist_id=tracklist_id,
+            expected_version=1,
+            actual_version=3,
+        )
+
+        assert error.error_code == "CONCURRENT_EDIT"
+        assert error.tracklist_id == tracklist_id
+        assert error.expected_version == 1
+        assert error.actual_version == 3
+        assert "Expected version 1" in error.message
+        assert "current version is 3" in error.message
+
+    def test_duplicate_position_error(self):
+        """Test duplicate position error."""
+        positions = [1, 3, 5, 3, 7, 5]
+        error = DuplicatePositionError(positions)
+
+        assert error.error_code == "VALIDATION_ERROR"
+        assert error.positions == positions
+        assert "Duplicate track positions detected" in error.message
+        assert error.details["duplicate_positions"] == positions
+
+    def test_publish_validation_error(self):
+        """Test publish validation error with issues."""
+        tracklist_id = str(uuid4())
+        issues = [
+            "Track 3 missing artist",
+            "Track 5 has invalid timing",
+            "Track 7 overlaps with track 8",
+        ]
+
+        error = PublishValidationError(
+            message="Draft cannot be published",
+            issues=issues,
+            tracklist_id=tracklist_id,
+        )
+
+        assert error.error_code == "VALIDATION_ERROR"
+        assert error.issues == issues
+        assert error.tracklist_id == tracklist_id
+        assert len(error.details["validation_issues"]) == 3
+        assert error.details["tracklist_id"] == tracklist_id
+
+    def test_invalid_track_position_error(self):
+        """Test invalid track position error."""
+        error = InvalidTrackPositionError(
+            position=25,
+            max_position=20,
+        )
+
+        assert error.error_code == "VALIDATION_ERROR"
+        assert error.position == 25
+        assert error.max_position == 20
+        assert "Invalid track position 25" in error.message
+        assert "Must be between 1 and 20" in error.message
+        assert error.details["position"] == 25
+        assert error.details["max_position"] == 20
+
+    def test_validation_error_with_field(self):
+        """Test validation error with field and value."""
+        error = ValidationError(
+            message="BPM must be between 60 and 200",
+            field="bpm",
+            value=250,
+        )
+
+        assert error.error_code == "VALIDATION_ERROR"
+        assert error.field == "bpm"
+        assert error.value == 250
+        assert error.details["field"] == "bpm"
+        assert error.details["value"] == "250"
+
+    def test_timing_error_with_overlap(self):
+        """Test timing error for track overlap."""
+        error = TimingError(
+            message="Tracks overlap by 15 seconds",
+            track_position=5,
+            timing_issue="overlap",
+            details={"overlap_duration": 15.0, "conflicting_track": 6},
+        )
+
+        assert error.error_code == "TIMING_ERROR"
+        assert error.track_position == 5
+        assert error.timing_issue == "overlap"
+        assert error.details["overlap_duration"] == 15.0
+        assert error.details["conflicting_track"] == 6
 
 
 if __name__ == "__main__":

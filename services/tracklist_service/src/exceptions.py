@@ -445,3 +445,142 @@ class TimeoutError(TracklistServiceError):
         super().__init__(message, "TIMEOUT_ERROR", error_details)
         self.operation = operation
         self.timeout_seconds = timeout_seconds
+
+
+class DraftNotFoundError(TracklistServiceError):
+    """Raised when a draft tracklist is not found."""
+
+    def __init__(
+        self,
+        draft_id: str,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize draft not found error.
+
+        Args:
+            draft_id: ID of the missing draft
+            details: Additional error details
+        """
+        message = f"Draft with ID {draft_id} not found"
+        error_details = details or {}
+        error_details["draft_id"] = draft_id
+
+        super().__init__(message, "DRAFT_NOT_FOUND", error_details)
+        self.draft_id = draft_id
+
+
+class ConcurrentEditError(TracklistServiceError):
+    """Raised when concurrent edits are detected."""
+
+    def __init__(
+        self,
+        tracklist_id: str,
+        expected_version: int,
+        actual_version: int,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize concurrent edit error.
+
+        Args:
+            tracklist_id: ID of the tracklist
+            expected_version: Version that was expected
+            actual_version: Actual current version
+            details: Additional error details
+        """
+        message = f"Concurrent edit detected for tracklist {tracklist_id}. Expected version {expected_version}, but current version is {actual_version}"
+        error_details = details or {}
+        error_details.update(
+            {
+                "tracklist_id": tracklist_id,
+                "expected_version": expected_version,
+                "actual_version": actual_version,
+            }
+        )
+
+        super().__init__(message, "CONCURRENT_EDIT", error_details)
+        self.tracklist_id = tracklist_id
+        self.expected_version = expected_version
+        self.actual_version = actual_version
+
+
+class DuplicatePositionError(ValidationError):
+    """Raised when duplicate track positions are detected."""
+
+    def __init__(
+        self,
+        positions: list,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize duplicate position error.
+
+        Args:
+            positions: List of duplicate positions
+            details: Additional error details
+        """
+        message = f"Duplicate track positions detected: {positions}"
+        error_details = details or {}
+        error_details["duplicate_positions"] = positions
+
+        super().__init__(message, field="position")
+        self.details.update(error_details)
+        self.positions = positions
+
+
+class PublishValidationError(ValidationError):
+    """Raised when a draft fails publishing validation."""
+
+    def __init__(
+        self,
+        message: str,
+        issues: list,
+        tracklist_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize publish validation error.
+
+        Args:
+            message: Error message
+            issues: List of validation issues
+            tracklist_id: ID of the tracklist
+            details: Additional error details
+        """
+        error_details = details or {}
+        error_details["validation_issues"] = issues
+        if tracklist_id:
+            error_details["tracklist_id"] = tracklist_id
+
+        super().__init__(message)
+        self.details.update(error_details)
+        self.issues = issues
+        self.tracklist_id = tracklist_id
+
+
+class InvalidTrackPositionError(ValidationError):
+    """Raised when an invalid track position is provided."""
+
+    def __init__(
+        self,
+        position: int,
+        max_position: int,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize invalid track position error.
+
+        Args:
+            position: Invalid position
+            max_position: Maximum valid position
+            details: Additional error details
+        """
+        message = f"Invalid track position {position}. Must be between 1 and {max_position}"
+        error_details = details or {}
+        error_details.update(
+            {
+                "position": position,
+                "max_position": max_position,
+            }
+        )
+
+        super().__init__(message, field="position", value=position)
+        self.details.update(error_details)
+        self.position = position
+        self.max_position = max_position

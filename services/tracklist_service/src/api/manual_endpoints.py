@@ -4,6 +4,7 @@ This module provides REST endpoints for creating and managing
 manual tracklists including track CRUD operations and draft management.
 """
 
+import logging
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
@@ -12,10 +13,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
-from services.tracklist_service.src.services.draft_service import DraftService
 from services.tracklist_service.src.services.catalog_search_service import CatalogSearchService
+from services.tracklist_service.src.services.cue_integration import CueIntegrationService
+from services.tracklist_service.src.services.draft_service import DraftService
 from services.tracklist_service.src.services.timing_service import TimingService
 from shared.core_types.src.database import get_db_session
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/v1/tracklists", tags=["manual-tracklist"])
@@ -537,26 +541,79 @@ def match_tracks_to_catalog(
 @router.post("/{tracklist_id}/publish", response_model=Tracklist)
 def publish_draft(
     tracklist_id: UUID,
+    validate_before_publish: bool = True,
     db: Session = Depends(get_db_session),
 ) -> Tracklist:
     """Publish a draft as final version.
 
     Args:
         tracklist_id: ID of the draft to publish.
+        validate_before_publish: Whether to validate draft before publishing.
         db: Database session.
 
     Returns:
         Published tracklist.
 
     Raises:
-        HTTPException: If draft not found or already published.
+        HTTPException: If draft not found, already published, or validation fails.
     """
     draft_service = DraftService(db)
+
+    # Get the draft first to validate it
+    draft = draft_service.get_draft(tracklist_id)
+    if not draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Draft with ID {tracklist_id} not found")
+
+    # Validate before publishing if requested
+    if validate_before_publish:
+        # Check minimum requirements
+        if not draft.tracks or len(draft.tracks) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot publish draft without any tracks"
+            )
+
+        # Validate timing consistency if we have an audio file
+        if draft.audio_file_id:
+            # Get audio duration from database (would need AudioFile model)
+            # For now, we'll just validate that tracks have proper timing
+            timing_service = TimingService()
+            for track in draft.tracks:
+                if track.start_time is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST, detail=f"Track {track.position} is missing start time"
+                    )
+
+            # Check for timing conflicts
+            for i, track in enumerate(draft.tracks):
+                conflicts = timing_service.detect_timing_conflicts(track, draft.tracks)
+                if conflicts:
+                    severe_conflicts = [c for c in conflicts if c.get("severity") == "high"]
+                    if severe_conflicts:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Track {track.position} has timing conflicts: {severe_conflicts[0]}",
+                        )
 
     try:
         published = draft_service.publish_draft(tracklist_id)
 
-        # TODO: Trigger CUE generation via RabbitMQ message
+        # Automatically generate CUE file for published tracklist
+        # In production, this would be done async via message queue
+        cue_service = CueIntegrationService()
+
+        # For now, use a placeholder audio file path
+        # In real implementation, this would come from the AudioFile table
+        audio_file_path = f"/tmp/audio_{published.audio_file_id}.wav"
+
+        cue_result = cue_service.generate_cue_file(published, audio_file_path, cue_format="standard")
+
+        if not cue_result.success:
+            logger.warning(f"CUE generation failed: {cue_result.error}")
+        else:
+            logger.info(f"CUE file generated: {cue_result.cue_file_path}")
+            # Store the reference in the database
+            if cue_result.cue_file_path:
+                cue_service.store_cue_file_reference(published.id, cue_result.cue_file_path)
 
         return published
     except ValueError as e:
@@ -564,6 +621,68 @@ def publish_draft(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+
+class CueGenerateRequest(BaseModel):
+    """Request for CUE file generation."""
+
+    audio_file_path: str = Field(description="Path to the audio file")
+    cue_format: str = Field(default="standard", description="CUE format (standard, cdj, traktor)")
+
+
+@router.post("/{tracklist_id}/generate-cue")
+def generate_cue_file(
+    tracklist_id: UUID,
+    request: CueGenerateRequest,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Generate a CUE file for a tracklist.
+
+    Args:
+        tracklist_id: ID of the tracklist.
+        request: CUE generation request.
+        db: Database session.
+
+    Returns:
+        CUE generation result.
+
+    Raises:
+        HTTPException: If tracklist not found or generation fails.
+    """
+    draft_service = DraftService(db)
+
+    # Get the tracklist (draft or published)
+    tracklist = draft_service.get_draft(tracklist_id)
+    if not tracklist:
+        # Try getting a published version
+        from services.tracklist_service.src.models.db.tracklist import Tracklist as TracklistDB
+
+        tracklist_db = db.query(TracklistDB).filter_by(id=tracklist_id).first()
+        if not tracklist_db:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Tracklist with ID {tracklist_id} not found"
+            )
+        tracklist = tracklist_db.to_model()
+
+    # Generate CUE file
+    cue_service = CueIntegrationService()
+    cue_result = cue_service.generate_cue_file(tracklist, request.audio_file_path, request.cue_format)
+
+    if not cue_result.success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"CUE generation failed: {cue_result.error}"
+        )
+
+    # Store reference
+    if cue_result.cue_file_path:
+        cue_service.store_cue_file_reference(tracklist_id, cue_result.cue_file_path)
+
+    return {
+        "success": True,
+        "cue_file_path": cue_result.cue_file_path,
+        "cue_file_id": str(cue_result.cue_file_id),
+        "format": request.cue_format,
+    }
 
 
 class BulkTrackUpdateRequest(BaseModel):
