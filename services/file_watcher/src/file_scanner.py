@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 
 import structlog
+import xxhash
 
 logger = structlog.get_logger()
 
@@ -104,6 +105,7 @@ class FileScanner:
             Dictionary containing file information
         """
         stat = file_path.stat()
+        sha256_hash, xxh128_hash = self._calculate_dual_hashes(file_path)
 
         return {
             "path": str(file_path.absolute()),
@@ -111,46 +113,69 @@ class FileScanner:
             "extension": file_path.suffix.lower(),
             "size_bytes": str(stat.st_size),
             "modified_time": str(stat.st_mtime),
-            "hash": self._calculate_file_hash(file_path),
+            "sha256_hash": sha256_hash,
+            "xxh128_hash": xxh128_hash,
         }
 
-    def _calculate_file_hash(self, file_path: Path, chunk_size: int = 8192) -> str:
-        """Calculate SHA256 hash of a file.
+    def _calculate_dual_hashes(self, file_path: Path, chunk_size: int = 8192) -> tuple[str, str]:
+        """Calculate both SHA256 and XXH128 hashes for a file.
 
         Args:
             file_path: Path to the file
             chunk_size: Size of chunks to read
 
         Returns:
-            Hexadecimal hash string
+            Tuple of (sha256_hash, xxh128_hash) as hexadecimal strings
         """
-        sha256 = hashlib.sha256()
+        sha256_hasher = hashlib.sha256()
+        xxh128_hasher = xxhash.xxh128()
 
         try:
             with open(file_path, "rb") as f:
-                # Read only first and last chunks for performance
-                # This is sufficient for duplicate detection
-                f.seek(0)
-                first_chunk = f.read(chunk_size)
-                sha256.update(first_chunk)
-
-                # Get file size and read last chunk if file is large enough
-                f.seek(0, 2)  # Seek to end
-                file_size = f.tell()
-                if file_size > chunk_size * 2:
-                    f.seek(-chunk_size, 2)
-                    last_chunk = f.read(chunk_size)
-                    sha256.update(last_chunk)
-
-                # Include file size in hash
-                sha256.update(str(file_size).encode())
+                # Single pass through file for both hashes
+                while chunk := f.read(chunk_size):
+                    sha256_hasher.update(chunk)
+                    xxh128_hasher.update(chunk)
 
         except Exception as e:
-            logger.warning("Failed to calculate file hash", path=str(file_path), error=str(e))
-            # Fallback to simple hash based on path and size
-            return hashlib.sha256(f"{file_path}{file_path.stat().st_size}".encode()).hexdigest()
+            logger.warning("Failed to calculate file hashes", path=str(file_path), error=str(e))
+            # Fallback to simple hash based on path and size if available
+            try:
+                file_size = file_path.stat().st_size
+                fallback_data = f"{file_path}{file_size}".encode()
+            except Exception:
+                # If we can't even stat the file, use just the path
+                fallback_data = str(file_path).encode()
 
-        return sha256.hexdigest()
+            sha256_fallback = hashlib.sha256(fallback_data).hexdigest()
+            xxh128_fallback = xxhash.xxh128(fallback_data).hexdigest()
+            return sha256_fallback, xxh128_fallback
+
+        return sha256_hasher.hexdigest(), xxh128_hasher.hexdigest()
+
+    def _calculate_sha256_hash(self, file_path: Path) -> str:
+        """Calculate SHA256 hash of a file.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            Hexadecimal SHA256 hash string
+        """
+        sha256_hash, _ = self._calculate_dual_hashes(file_path)
+        return sha256_hash
+
+    def _calculate_xxh128_hash(self, file_path: Path) -> str:
+        """Calculate XXH128 hash of a file.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            Hexadecimal XXH128 hash string
+        """
+        _, xxh128_hash = self._calculate_dual_hashes(file_path)
+        return xxh128_hash
 
     def is_audio_file(self, file_path: Path) -> bool:
         """Check if a file is a supported audio file.

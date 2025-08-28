@@ -83,7 +83,8 @@ class TestFileScanner:
                 assert "extension" in result
                 assert "size_bytes" in result
                 assert "modified_time" in result
-                assert "hash" in result
+                assert "sha256_hash" in result
+                assert "xxh128_hash" in result
 
     def test_scan_directory_tracks_files(self):
         """Test that scanner tracks already seen files."""
@@ -187,7 +188,8 @@ class TestFileScanner:
             assert file_info["extension"] == ".ogg"
             assert int(file_info["size_bytes"]) > 0
             assert file_info["modified_time"]
-            assert file_info["hash"]  # Should have a hash
+            assert file_info["sha256_hash"]  # Should have SHA256 hash
+            assert file_info["xxh128_hash"]  # Should have XXH128 hash
 
     def test_hash_calculation(self):
         """Test file hash calculation."""
@@ -208,11 +210,13 @@ class TestFileScanner:
             scanner = FileScanner()
 
             # Get hashes
-            hash1 = scanner._calculate_file_hash(ogg1)
-            hash2 = scanner._calculate_file_hash(ogg2)
-            hash3 = scanner._calculate_file_hash(ogg3)
+            sha256_1, xxh128_1 = scanner._calculate_dual_hashes(ogg1)
+            sha256_2, xxh128_2 = scanner._calculate_dual_hashes(ogg2)
+            sha256_3, xxh128_3 = scanner._calculate_dual_hashes(ogg3)
 
-            # Same content should have same hash
-            assert hash1 == hash2
-            # Different content should have different hash
-            assert hash1 != hash3
+            # Same content should have same hashes
+            assert sha256_1 == sha256_2
+            assert xxh128_1 == xxh128_2
+            # Different content should have different hashes
+            assert sha256_1 != sha256_3
+            assert xxh128_1 != xxh128_3

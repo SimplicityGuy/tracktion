@@ -9,6 +9,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "pydantic>=2.10.4",
     "structlog>=24.5.0",
+    "xxhash>=3.5.0",
 ]
 
 [build-system]
