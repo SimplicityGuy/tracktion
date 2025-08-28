@@ -1,0 +1,177 @@
+# Multi-Instance File Watcher Test Configuration
+# This configuration runs multiple file_watcher instances monitoring different directories
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:17-alpine
+    container_name: tracktion-postgres-multi
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tracktion}
+      POSTGRES_USER: ${POSTGRES_USER:-tracktion_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data_multi:/var/lib/postgresql/data
+    networks:
+      - tracktion-multi-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tracktion_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    container_name: tracktion-rabbitmq-multi
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-tracktion}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data_multi:/var/lib/rabbitmq
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    networks:
+      - tracktion-multi-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # File Watcher Instance 1 - Music Directory
+  file_watcher_music:
+    build:
+      context: ../services/file_watcher
+      dockerfile: Dockerfile
+    container_name: tracktion-file-watcher-music
+    environment:
+      INSTANCE_ID: watcher-music
+      DATA_DIR: /data/music
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER:-tracktion}
+      RABBITMQ_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # Map host directory to container directory
+      - ${MUSIC_DIR:-./test-data/music}:/data/music:ro
+    networks:
+      - tracktion-multi-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # File Watcher Instance 2 - Downloads Directory
+  file_watcher_downloads:
+    build:
+      context: ../services/file_watcher
+      dockerfile: Dockerfile
+    container_name: tracktion-file-watcher-downloads
+    environment:
+      INSTANCE_ID: watcher-downloads
+      DATA_DIR: /data/downloads
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER:-tracktion}
+      RABBITMQ_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # Map host directory to container directory
+      - ${DOWNLOADS_DIR:-./test-data/downloads}:/data/downloads:ro
+    networks:
+      - tracktion-multi-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # File Watcher Instance 3 - Imports Directory
+  file_watcher_imports:
+    build:
+      context: ../services/file_watcher
+      dockerfile: Dockerfile
+    container_name: tracktion-file-watcher-imports
+    environment:
+      INSTANCE_ID: watcher-imports
+      DATA_DIR: /data/imports
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER:-tracktion}
+      RABBITMQ_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # Map host directory to container directory
+      - ${IMPORTS_DIR:-./test-data/imports}:/data/imports:ro
+    networks:
+      - tracktion-multi-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Optional: File Watcher Instance 4 - Podcasts Directory
+  file_watcher_podcasts:
+    build:
+      context: ../services/file_watcher
+      dockerfile: Dockerfile
+    container_name: tracktion-file-watcher-podcasts
+    environment:
+      INSTANCE_ID: watcher-podcasts
+      DATA_DIR: /data/podcasts
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER:-tracktion}
+      RABBITMQ_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # Map host directory to container directory
+      - ${PODCASTS_DIR:-./test-data/podcasts}:/data/podcasts:ro
+    networks:
+      - tracktion-multi-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - extended  # Only starts with --profile extended
+
+  # Optional: File Watcher Instance 5 - Audiobooks Directory
+  file_watcher_audiobooks:
+    build:
+      context: ../services/file_watcher
+      dockerfile: Dockerfile
+    container_name: tracktion-file-watcher-audiobooks
+    environment:
+      INSTANCE_ID: watcher-audiobooks
+      DATA_DIR: /data/audiobooks
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER:-tracktion}
+      RABBITMQ_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # Map host directory to container directory
+      - ${AUDIOBOOKS_DIR:-./test-data/audiobooks}:/data/audiobooks:ro
+    networks:
+      - tracktion-multi-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - extended  # Only starts with --profile extended
+
+networks:
+  tracktion-multi-network:
+    driver: bridge
+
+volumes:
+  postgres_data_multi:
+  rabbitmq_data_multi:

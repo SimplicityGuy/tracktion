@@ -22,6 +22,8 @@ class MessagePublisher:
         password: str = "guest",
         exchange: str = "file_events",
         routing_key: str = "file.discovered",
+        instance_id: str | None = None,
+        watched_directory: str | None = None,
     ) -> None:
         """Initialize the message publisher.
 
@@ -32,22 +34,35 @@ class MessagePublisher:
             password: RabbitMQ password
             exchange: Exchange name for publishing
             routing_key: Routing key for messages
+            instance_id: Unique identifier for this file watcher instance
+            watched_directory: Directory being watched by this instance
         """
         self.host = host
         self.port = port
         self.exchange = exchange
         self.routing_key = routing_key
+        self.instance_id = instance_id or "default"
+        self.watched_directory = watched_directory or "/data/music"
         self.connection: pika.BlockingConnection | None = None
         self.channel: pika.channel.Channel | None = None
 
         # Setup credentials
         self.credentials = pika.PlainCredentials(username, password)
+
+        # Include instance ID in connection name for RabbitMQ management visibility
+        client_properties = {
+            "connection_name": f"file_watcher_{self.instance_id}",
+            "instance_id": self.instance_id,
+            "watched_directory": self.watched_directory,
+        }
+
         self.connection_params = pika.ConnectionParameters(
             host=self.host,
             port=self.port,
             credentials=self.credentials,
             heartbeat=30,
             blocked_connection_timeout=300,
+            client_properties=client_properties,
         )
 
     def connect(self) -> None:
@@ -92,13 +107,15 @@ class MessagePublisher:
         # Generate correlation ID for tracing
         correlation_id = str(uuid.uuid4())
 
-        # Build message payload
+        # Build message payload with instance metadata
         message = {
             "correlation_id": correlation_id,
             "timestamp": datetime.now(UTC).isoformat(),
             "event_type": "file_discovered",
             "file_info": file_info,
             "file_type": self._determine_file_type(file_info.get("extension", "")),
+            "instance_id": self.instance_id,
+            "watched_directory": self.watched_directory,
         }
 
         # Special handling for OGG files
@@ -185,13 +202,15 @@ class MessagePublisher:
         # Generate correlation ID for tracing
         correlation_id = str(uuid.uuid4())
 
-        # Build message payload
+        # Build message payload with instance metadata
         message = {
             "correlation_id": correlation_id,
             "timestamp": datetime.now(UTC).isoformat(),
             "event_type": event_type,
             "file_info": file_info,
             "file_type": self._determine_file_type(file_info.get("extension", "")),
+            "instance_id": self.instance_id,
+            "watched_directory": self.watched_directory,
         }
 
         # Special handling for OGG files

@@ -4,6 +4,7 @@ import os
 import signal
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,17 @@ except ImportError:
 
 load_dotenv()
 
-# Configure structured logging
+# Generate unique instance ID for this service instance
+INSTANCE_ID = os.environ.get("INSTANCE_ID") or str(uuid.uuid4())[:8]
+
+
+# Configure structured logging with instance ID
+def add_instance_id(logger: Any, method_name: str, event_dict: dict) -> dict:
+    """Add instance ID to all log messages."""
+    event_dict["instance_id"] = INSTANCE_ID
+    return event_dict
+
+
 structlog.configure(
     processors=[
         structlog.stdlib.filter_by_level,
@@ -32,6 +43,7 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
+        add_instance_id,
         structlog.dev.ConsoleRenderer(),
     ],
     context_class=dict,
@@ -50,6 +62,7 @@ class FileWatcherService:
         # Get data directory from environment variable with fallback to old env var for compatibility
         data_dir = os.getenv("DATA_DIR", os.getenv("FILE_WATCHER_SCAN_PATH", "/data/music"))
         self.scan_path = Path(data_dir)
+        self.instance_id = INSTANCE_ID
         self.running = False
         self.observer: Observer | None = None
         self.publisher: MessagePublisher | None = None
@@ -63,6 +76,7 @@ class FileWatcherService:
 
         logger.info(
             "File Watcher initialized",
+            instance_id=self.instance_id,
             scan_path=str(self.scan_path),
             supported_formats=list(TracktionEventHandler.SUPPORTED_EXTENSIONS),
         )
@@ -70,10 +84,10 @@ class FileWatcherService:
     def start(self) -> None:
         """Start the file watching service."""
         self.running = True
-        logger.info("File Watcher service starting...")
+        logger.info("File Watcher service starting...", watched_directory=str(self.scan_path))
 
         # Log the directory being watched
-        logger.info(f"Monitoring directory: {self.scan_path}")
+        logger.info("Monitoring directory", path=str(self.scan_path), instance=self.instance_id)
 
         # Validate directory exists and is readable
         if not self.scan_path.exists():
@@ -88,13 +102,15 @@ class FileWatcherService:
         signal.signal(signal.SIGTERM, self._handle_shutdown)
         signal.signal(signal.SIGINT, self._handle_shutdown)
 
-        # Initialize message publisher
+        # Initialize message publisher with instance ID and watched directory
         try:
             self.publisher = MessagePublisher(
                 host=self.rabbitmq_host,
                 port=self.rabbitmq_port,
                 username=self.rabbitmq_user,
                 password=self.rabbitmq_pass,
+                instance_id=self.instance_id,
+                watched_directory=str(self.scan_path),
             )
             self.publisher.connect()
         except Exception as e:
