@@ -2,17 +2,19 @@
 
 ## Epic Overview
 **Epic ID:** EPIC-7
-**Epic Name:** File Watcher Fixes
+**Epic Name:** File Watcher Fixes and Lifecycle Management
 **Priority:** Critical
 **Dependencies:** None (foundational fixes)
-**Estimated Effort:** 1 week
+**Estimated Effort:** 1.5 weeks (expanded scope for lifecycle handling)
 
 ## Business Value
 Fixing the file_watcher service ensures:
 - Proper file system monitoring using industry-standard watchdog library
+- Complete lifecycle tracking (creation, modification, deletion, moves)
 - Configurable data directory support for flexible deployment
-- Correct file hashing implementation for duplicate detection
+- Dual hashing implementation (SHA256 + XXH128) for integrity and performance
 - Support for multiple concurrent instances monitoring different directories
+- Proper handling of file removals and moves throughout the system
 - Stable foundation before async refactoring (Epic 8)
 
 ## Technical Scope
@@ -21,8 +23,14 @@ Fixing the file_watcher service ensures:
 1. **Watchdog Implementation**
    - MUST properly implement watchdog library (currently imported but unused)
    - Replace any custom file watching logic with watchdog observers
-   - Configure appropriate event handlers for file creation, modification, deletion
+   - Configure appropriate event handlers for ALL file events:
+     - File creation (new files added)
+     - File modification (existing files changed)
+     - File deletion (files removed)
+     - File moves (files relocated to different directory)
+     - File renames (files renamed in same directory)
    - Implement proper observer lifecycle management
+   - Ensure all events are propagated through the system with proper event type
 
 2. **Docker Configuration**
    - Add environment variable or volume mount for data directory specification
@@ -31,16 +39,33 @@ Fixing the file_watcher service ensures:
    - Document deployment configuration options
 
 3. **Hashing Implementation**
-   - Replace SHA256 with XXH128 using xxhash Python library
-   - Implement proper XXH128 hash calculation for files
-   - Update database schema if needed for hash storage
-   - Maintain backward compatibility or provide migration path
+   - Add XXH128 using xxhash Python library alongside SHA256
+   - Calculate BOTH SHA256 and XXH128 hashes for all files
+   - Store both hash values in database
+   - SHA256 for integrity verification, XXH128 for fast lookups
+   - No hash calculation for deleted files (cleanup only)
 
 4. **Multi-Instance Support**
    - Ensure multiple file_watcher services can run simultaneously
    - Each instance monitors different data directories
    - Proper instance identification in logs and messages
    - No conflicts in message queue or database operations
+
+5. **Downstream System Updates**
+   - Update message queue events to include event type:
+     - created: new file to process
+     - modified: re-process existing file
+     - deleted: remove file and all related data
+     - moved: update file path in all records
+     - renamed: update filename in all records
+   - Modify cataloging_service to handle all lifecycle events:
+     - Deletions: remove from database
+     - Moves/Renames: update file path/name
+   - Update analysis_service to cleanup analysis data for deleted files
+   - Ensure tracklist_service handles removed/renamed recordings
+   - Add cascade deletion logic where appropriate
+   - Implement soft-delete option for recovery scenarios
+   - Maintain referential integrity across all services
 
 ### Technical Considerations
 
@@ -82,17 +107,17 @@ Fixing the file_watcher service ensures:
 - Clear documentation of configuration options
 - Container starts successfully with custom directories
 
-#### Story 7.3: Implement XXH128 Hashing
+#### Story 7.3: Implement Dual Hashing (SHA256 + XXH128)
 **As a** system processing large files
-**I want** fast XXH128 hashing instead of SHA256
-**So that** file processing is more efficient
+**I want** both SHA256 and fast XXH128 hashing
+**So that** I have cryptographic integrity AND efficient duplicate detection
 
 **Acceptance Criteria:**
 - xxhash Python library is properly integrated
-- XXH128 hashes are calculated correctly
-- Database schema updated if needed
-- Performance improvement measurable
-- Backward compatibility handled
+- Both SHA256 and XXH128 hashes are calculated correctly
+- Database stores both hash values
+- Performance impact is acceptable
+- Both hashes are used appropriately
 
 #### Story 7.4: Validate Multi-Instance Support
 **As a** system architect
@@ -106,12 +131,27 @@ Fixing the file_watcher service ensures:
 - No database conflicts
 - Proper logging identifies instance source
 
+#### Story 7.5: Handle File Lifecycle Events System-Wide
+**As a** system maintaining data consistency
+**I want** file deletions, moves, and renames to be handled throughout the system
+**So that** the database stays in sync with the file system
+
+**Acceptance Criteria:**
+- File deletion events trigger database cleanup
+- File move events update file paths in database
+- File rename events update filenames in database
+- Cascading deletes remove related metadata and analysis
+- Soft-delete option available for recovery
+- All downstream services handle lifecycle events properly
+- No orphaned data remains after file removal
+- Referential integrity maintained across all services
+
 ## Implementation Approach
 
 ### Phase 1: Watchdog Implementation (Days 1-2)
 1. Review current file watching implementation
 2. Properly integrate watchdog library
-3. Implement event handlers
+3. Implement ALL event handlers (create, modify, delete, move)
 4. Add comprehensive tests
 5. Validate with various file operations
 
@@ -122,19 +162,26 @@ Fixing the file_watcher service ensures:
 4. Test various mount configurations
 5. Document deployment options
 
-### Phase 3: Hashing Upgrade (Days 4-5)
+### Phase 3: Dual Hashing Implementation (Day 4)
 1. Integrate xxhash library
-2. Implement XXH128 calculation
-3. Update any affected schemas
+2. Implement dual hash calculation (SHA256 + XXH128)
+3. Verify database schema supports both
 4. Performance benchmarking
-5. Migration strategy if needed
+5. Update all hash-related code
 
-### Phase 4: Multi-Instance Validation (Day 6)
+### Phase 4: Multi-Instance Validation (Day 5)
 1. Deploy multiple instances
 2. Test concurrent operations
 3. Verify no conflicts
 4. Performance testing
 5. Documentation updates
+
+### Phase 5: Downstream System Updates (Days 6-7)
+1. Update message queue event structure
+2. Modify cataloging_service for deletions
+3. Update analysis_service for cleanup
+4. Implement cascade deletion logic
+5. Test end-to-end file lifecycle
 
 ## Success Metrics
 - Watchdog library actively monitoring files
