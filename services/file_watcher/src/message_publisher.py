@@ -165,6 +165,75 @@ class MessagePublisher:
         else:
             return "unknown"
 
+    def publish_file_event(self, file_info: dict[str, str], event_type: str) -> bool:
+        """Publish a file event with specific event type.
+
+        Args:
+            file_info: Dictionary containing file information
+            event_type: Type of event (created, modified, deleted, moved, renamed)
+
+        Returns:
+            True if message was published successfully
+        """
+        if not self.channel or (self.connection and self.connection.is_closed):
+            logger.warning("Not connected to RabbitMQ, attempting to reconnect")
+            try:
+                self.connect()
+            except Exception:
+                return False
+
+        # Generate correlation ID for tracing
+        correlation_id = str(uuid.uuid4())
+
+        # Build message payload
+        message = {
+            "correlation_id": correlation_id,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "event_type": event_type,
+            "file_info": file_info,
+            "file_type": self._determine_file_type(file_info.get("extension", "")),
+        }
+
+        # Special handling for OGG files
+        if file_info.get("extension", "").lower() in [".ogg", ".oga"]:
+            message["format_family"] = "ogg_vorbis"
+
+        # Determine routing key based on event type
+        routing_key = f"file.{event_type}"
+
+        try:
+            assert self.channel is not None  # For mypy
+            self.channel.basic_publish(
+                exchange=self.exchange,
+                routing_key=routing_key,
+                body=json.dumps(message),
+                properties=pika.BasicProperties(
+                    delivery_mode=2,  # Persistent message
+                    correlation_id=correlation_id,
+                    content_type="application/json",
+                ),
+            )
+
+            logger.debug(
+                "File event published",
+                event_type=event_type,
+                correlation_id=correlation_id,
+                file_path=file_info.get("path"),
+                routing_key=routing_key,
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(
+                "Failed to publish message",
+                correlation_id=correlation_id,
+                event_type=event_type,
+                error=str(e),
+                file_path=file_info.get("path"),
+            )
+            return False
+
     def __enter__(self) -> "MessagePublisher":
         """Context manager entry."""
         self.connect()

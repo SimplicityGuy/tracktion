@@ -9,14 +9,15 @@ from typing import Any
 
 import structlog
 from dotenv import load_dotenv
+from watchdog.observers import Observer
 
 try:
-    from .file_scanner import FileScanner
     from .message_publisher import MessagePublisher
+    from .watchdog_handler import TracktionEventHandler
 except ImportError:
     # For direct execution
-    from file_scanner import FileScanner  # type: ignore[no-redef]
     from message_publisher import MessagePublisher  # type: ignore[no-redef]
+    from watchdog_handler import TracktionEventHandler  # type: ignore[no-redef]
 
 load_dotenv()
 
@@ -47,12 +48,10 @@ class FileWatcherService:
     def __init__(self) -> None:
         """Initialize the File Watcher service."""
         self.scan_path = Path(os.getenv("FILE_WATCHER_SCAN_PATH", "/data/music"))
-        self.scan_interval = int(os.getenv("FILE_WATCHER_SCAN_INTERVAL", "60"))
         self.running = False
-
-        # Initialize components
-        self.scanner = FileScanner()
+        self.observer: Observer | None = None
         self.publisher: MessagePublisher | None = None
+        self.shutdown_timeout = 10  # seconds to wait for graceful shutdown
 
         # RabbitMQ configuration
         self.rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
@@ -63,8 +62,7 @@ class FileWatcherService:
         logger.info(
             "File Watcher initialized",
             scan_path=str(self.scan_path),
-            scan_interval=self.scan_interval,
-            supported_formats=list(FileScanner.SUPPORTED_EXTENSIONS),
+            supported_formats=list(TracktionEventHandler.SUPPORTED_EXTENSIONS),
         )
 
     def start(self) -> None:
@@ -90,29 +88,45 @@ class FileWatcherService:
             # Continue without publishing for local testing
             self.publisher = None
 
-        # Main service loop
-        while self.running:
-            try:
-                logger.debug("Scanning for new files", path=str(self.scan_path))
+        # Create event handler and observer
+        event_handler = TracktionEventHandler(self.publisher)
+        self.observer = Observer()
 
-                # Scan for new audio files
-                new_files = self.scanner.scan_directory(self.scan_path)
+        # Schedule observer for target directory (recursive)
+        try:
+            if not self.scan_path.exists():
+                logger.warning("Scan path does not exist, creating it", path=str(self.scan_path))
+                self.scan_path.mkdir(parents=True, exist_ok=True)
 
-                # Publish discovery events for new files
-                if new_files and self.publisher:
-                    for file_info in new_files:
-                        success = self.publisher.publish_file_discovered(file_info)
-                        if not success:
-                            logger.warning("Failed to publish file discovery", file_path=file_info.get("path"))
+            self.observer.schedule(event_handler, str(self.scan_path), recursive=True)
+            self.observer.start()
+            logger.info("Watchdog observer started", path=str(self.scan_path), recursive=True)
+        except Exception as e:
+            logger.error("Failed to start watchdog observer", error=str(e), exc_info=True)
+            self.running = False
+            return
 
-                time.sleep(self.scan_interval)
-            except Exception as e:
-                logger.error("Error during file scan", error=str(e), exc_info=True)
-                time.sleep(5)  # Wait before retrying
-
-        # Cleanup
-        if self.publisher:
-            self.publisher.disconnect()
+        # Keep service running while observer watches
+        try:
+            while self.running:
+                time.sleep(1)
+                # Check observer health
+                if not self.observer.is_alive():
+                    logger.error("Observer thread died unexpectedly")
+                    # Attempt to restart observer
+                    try:
+                        self.observer = Observer()
+                        self.observer.schedule(event_handler, str(self.scan_path), recursive=True)
+                        self.observer.start()
+                        logger.info("Observer restarted successfully")
+                    except Exception as restart_error:
+                        logger.error("Failed to restart observer", error=str(restart_error))
+                        self.running = False
+        except Exception as e:
+            logger.error("Error in main service loop", error=str(e), exc_info=True)
+        finally:
+            # Cleanup
+            self._cleanup()
 
         logger.info("File Watcher service stopped")
 
@@ -120,6 +134,22 @@ class FileWatcherService:
         """Handle shutdown signals gracefully."""
         logger.info("Shutdown signal received", signal=signum)
         self.running = False
+
+    def _cleanup(self) -> None:
+        """Cleanup resources on shutdown."""
+        # Stop and join observer if it exists
+        if self.observer and self.observer.is_alive():
+            logger.info("Stopping watchdog observer...")
+            self.observer.stop()
+            self.observer.join(timeout=self.shutdown_timeout)
+            if self.observer.is_alive():
+                logger.warning("Observer did not stop within timeout", timeout=self.shutdown_timeout)
+            else:
+                logger.info("Watchdog observer stopped successfully")
+
+        # Disconnect from RabbitMQ
+        if self.publisher:
+            self.publisher.disconnect()
 
 
 def main() -> None:
