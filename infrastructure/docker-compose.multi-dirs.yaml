@@ -1,0 +1,104 @@
+# Example docker-compose configuration for monitoring multiple directories
+# This demonstrates how to set up multiple file_watcher instances
+# to monitor different directories simultaneously
+
+services:
+  # File Watcher for main music library
+  file_watcher_main:
+    build:
+      context: ../services/file_watcher
+      dockerfile: Dockerfile
+    container_name: tracktion-file-watcher-main
+    environment:
+      DATA_DIR: /data/music
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-tracktion}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # Mount main music library
+      - /home/user/Music:/data/music:ro
+    networks:
+      - tracktion-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # File Watcher for downloads directory
+  file_watcher_downloads:
+    build:
+      context: ../services/file_watcher
+      dockerfile: Dockerfile
+    container_name: tracktion-file-watcher-downloads
+    environment:
+      DATA_DIR: /data/downloads
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-tracktion}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # Mount downloads directory
+      - /home/user/Downloads/Music:/data/downloads:ro
+    networks:
+      - tracktion-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # File Watcher for external drive
+  file_watcher_external:
+    build:
+      context: ../services/file_watcher
+      dockerfile: Dockerfile
+    container_name: tracktion-file-watcher-external
+    environment:
+      DATA_DIR: /data/external
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-tracktion}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # Mount external drive
+      - /mnt/external/Music:/data/external:ro
+    networks:
+      - tracktion-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Include other required services...
+  postgres:
+    extends:
+      file: docker-compose.yaml
+      service: postgres
+
+  neo4j:
+    extends:
+      file: docker-compose.yaml
+      service: neo4j
+
+  redis:
+    extends:
+      file: docker-compose.yaml
+      service: redis
+
+  rabbitmq:
+    extends:
+      file: docker-compose.yaml
+      service: rabbitmq
+
+networks:
+  tracktion-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  redis_data:
+  rabbitmq_data:

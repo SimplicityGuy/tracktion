@@ -87,6 +87,9 @@ services:
       dockerfile: Dockerfile
     container_name: tracktion-file-watcher
     environment:
+      # Set the directory to monitor inside the container
+      DATA_DIR: ${DATA_DIR:-/data/music}
+      # Legacy support - will be deprecated
       FILE_WATCHER_SCAN_PATH: ${FILE_WATCHER_SCAN_PATH:-/data/music}
       FILE_WATCHER_SCAN_INTERVAL: ${FILE_WATCHER_SCAN_INTERVAL:-60}
       RABBITMQ_HOST: rabbitmq
@@ -95,7 +98,12 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
-      - ${FILE_WATCHER_SCAN_PATH:-./data/music}:/data/music:ro
+      # Mount host directory to container directory
+      # Examples:
+      # - ./data/music:/data/music:ro  # Monitor local ./data/music directory
+      # - /home/user/Music:/data/music:ro  # Monitor user's Music directory
+      # - ${HOST_MUSIC_DIR}:/data/music:ro  # Use environment variable
+      - ${HOST_MUSIC_DIR:-./data/music}:/data/music:ro
     networks:
       - tracktion-network
     depends_on:

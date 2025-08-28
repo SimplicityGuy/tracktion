@@ -47,7 +47,9 @@ class FileWatcherService:
 
     def __init__(self) -> None:
         """Initialize the File Watcher service."""
-        self.scan_path = Path(os.getenv("FILE_WATCHER_SCAN_PATH", "/data/music"))
+        # Get data directory from environment variable with fallback to old env var for compatibility
+        data_dir = os.getenv("DATA_DIR", os.getenv("FILE_WATCHER_SCAN_PATH", "/data/music"))
+        self.scan_path = Path(data_dir)
         self.running = False
         self.observer: Observer | None = None
         self.publisher: MessagePublisher | None = None
@@ -69,6 +71,18 @@ class FileWatcherService:
         """Start the file watching service."""
         self.running = True
         logger.info("File Watcher service starting...")
+
+        # Log the directory being watched
+        logger.info(f"Monitoring directory: {self.scan_path}")
+
+        # Validate directory exists and is readable
+        if not self.scan_path.exists():
+            logger.error(f"ERROR: Data directory {self.scan_path} does not exist")
+            sys.exit(1)
+
+        if not os.access(self.scan_path, os.R_OK):
+            logger.error(f"ERROR: No read permission for {self.scan_path}")
+            sys.exit(1)
 
         # Register signal handlers
         signal.signal(signal.SIGTERM, self._handle_shutdown)
@@ -94,10 +108,6 @@ class FileWatcherService:
 
         # Schedule observer for target directory (recursive)
         try:
-            if not self.scan_path.exists():
-                logger.warning("Scan path does not exist, creating it", path=str(self.scan_path))
-                self.scan_path.mkdir(parents=True, exist_ok=True)
-
             self.observer.schedule(event_handler, str(self.scan_path), recursive=True)
             self.observer.start()
             logger.info("Watchdog observer started", path=str(self.scan_path), recursive=True)

@@ -18,9 +18,20 @@ RUN pip install --no-cache-dir uv && \
 # Copy application code
 COPY src/ ./src/
 
-# Create non-root user
+# Set default data directory environment variable
+ENV DATA_DIR=/data/music
+
+# Create data directory with appropriate permissions
+RUN mkdir -p ${DATA_DIR} && \
+    chmod 755 ${DATA_DIR}
+
+# Declare volume for data directory (optional, for clarity)
+VOLUME ["${DATA_DIR}"]
+
+# Create non-root user and set permissions
 RUN useradd -m -r appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    chown -R appuser:appuser ${DATA_DIR}
 
 USER appuser
 

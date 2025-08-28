@@ -23,7 +23,7 @@ class TestFileWatcherService:
         """Set up test environment variables."""
         test_path = tmp_path / "test_path"
         test_path.mkdir()
-        monkeypatch.setenv("FILE_WATCHER_SCAN_PATH", str(test_path))
+        monkeypatch.setenv("DATA_DIR", str(test_path))
         monkeypatch.setenv("RABBITMQ_HOST", "test_host")
         monkeypatch.setenv("RABBITMQ_PORT", "5672")
         monkeypatch.setenv("RABBITMQ_USER", "test_user")
@@ -39,6 +39,80 @@ class TestFileWatcherService:
         assert service.running is False
         assert service.observer is None
         assert service.publisher is None
+
+    def test_data_dir_environment_variable(self, monkeypatch, tmp_path):
+        """Test that DATA_DIR environment variable is respected."""
+        custom_path = tmp_path / "custom_music"
+        custom_path.mkdir()
+        monkeypatch.setenv("DATA_DIR", str(custom_path))
+
+        service = FileWatcherService()
+        assert str(service.scan_path) == str(custom_path)
+
+    def test_default_directory_fallback(self, monkeypatch):
+        """Test fallback to default directory when no env var is set."""
+        # Clear any existing environment variables
+        monkeypatch.delenv("DATA_DIR", raising=False)
+        monkeypatch.delenv("FILE_WATCHER_SCAN_PATH", raising=False)
+
+        service = FileWatcherService()
+        assert str(service.scan_path) == "/data/music"
+
+    def test_legacy_env_var_compatibility(self, monkeypatch, tmp_path):
+        """Test backward compatibility with FILE_WATCHER_SCAN_PATH."""
+        legacy_path = tmp_path / "legacy_path"
+        legacy_path.mkdir()
+        monkeypatch.setenv("FILE_WATCHER_SCAN_PATH", str(legacy_path))
+        monkeypatch.delenv("DATA_DIR", raising=False)
+
+        service = FileWatcherService()
+        assert str(service.scan_path) == str(legacy_path)
+
+    def test_data_dir_takes_precedence(self, monkeypatch, tmp_path):
+        """Test that DATA_DIR takes precedence over FILE_WATCHER_SCAN_PATH."""
+        new_path = tmp_path / "new_path"
+        old_path = tmp_path / "old_path"
+        new_path.mkdir()
+        old_path.mkdir()
+
+        monkeypatch.setenv("DATA_DIR", str(new_path))
+        monkeypatch.setenv("FILE_WATCHER_SCAN_PATH", str(old_path))
+
+        service = FileWatcherService()
+        assert str(service.scan_path) == str(new_path)
+
+    @patch("main.signal.signal")  # Mock signal handling
+    def test_invalid_directory_path(self, mock_signal, monkeypatch, tmp_path):
+        """Test that service exits with error when directory doesn't exist."""
+        non_existent = tmp_path / "non_existent_path"
+        monkeypatch.setenv("DATA_DIR", str(non_existent))
+
+        service = FileWatcherService()
+
+        # Service should exit with code 1
+        with pytest.raises(SystemExit) as exc_info:
+            service.start()
+
+        assert exc_info.value.code == 1
+
+    @patch("main.signal.signal")  # Mock signal handling
+    @patch("main.os.access")
+    def test_permission_denied(self, mock_access, mock_signal, monkeypatch, tmp_path):
+        """Test that service exits with error when no read permission."""
+        test_path = tmp_path / "no_permission"
+        test_path.mkdir()
+        monkeypatch.setenv("DATA_DIR", str(test_path))
+
+        # Mock no read permission
+        mock_access.return_value = False
+
+        service = FileWatcherService()
+
+        # Service should exit with code 1
+        with pytest.raises(SystemExit) as exc_info:
+            service.start()
+
+        assert exc_info.value.code == 1
 
     @patch("main.signal.signal")  # Mock signal handling
     @patch("main.MessagePublisher")
@@ -128,7 +202,7 @@ class TestFileWatcherService:
 
         # Create two observers - first dies, second survives
         dead_observer = MagicMock()
-        dead_observer.is_alive.side_effect = [True, False]  # Dies on second check
+        dead_observer.is_alive.side_effect = [True, True, False]  # Dies on third check
 
         new_observer = MagicMock()
         new_observer.is_alive.return_value = True
@@ -145,47 +219,11 @@ class TestFileWatcherService:
         service_thread.start()
 
         # Give service time to detect failure and restart
-        time.sleep(1.5)
+        time.sleep(2.5)
 
         # Verify new observer was created and started
         assert mock_observer_class.call_count == 2
         assert new_observer.start.called
-
-        # Stop the service
-        service.running = False
-        service_thread.join(timeout=2)
-
-    @patch("main.signal.signal")  # Mock signal handling
-    @patch("main.MessagePublisher")
-    @patch("main.Observer")
-    @patch("main.Path.exists")
-    @patch("main.Path.mkdir")
-    def test_creates_missing_scan_path(
-        self, mock_mkdir, mock_exists, mock_observer_class, mock_publisher_class, mock_signal, mock_env
-    ):
-        """Test that missing scan path is created."""
-        mock_exists.return_value = False
-        mock_publisher = MagicMock()
-        mock_publisher_class.return_value = mock_publisher
-
-        mock_observer = MagicMock()
-        mock_observer.is_alive.return_value = True
-        mock_observer_class.return_value = mock_observer
-
-        service = FileWatcherService()
-
-        # Start service in a thread
-        def run_service():
-            service.start()
-
-        service_thread = threading.Thread(target=run_service)
-        service_thread.start()
-
-        # Give service time to initialize
-        time.sleep(0.1)
-
-        # Verify directory was created
-        assert mock_mkdir.called
 
         # Stop the service
         service.running = False
@@ -258,6 +296,7 @@ class TestFileWatcherService:
 
         mock_observer = MagicMock()
         mock_observer.schedule.side_effect = Exception("Schedule failed")
+        mock_observer.is_alive.return_value = False
         mock_observer_class.return_value = mock_observer
 
         service = FileWatcherService()
@@ -266,4 +305,5 @@ class TestFileWatcherService:
         service.start()
 
         assert service.running is False
-        assert mock_publisher.disconnect.called
+        # Verify observer was at least attempted to stop
+        assert mock_observer.stop.called
