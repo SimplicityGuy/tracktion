@@ -201,6 +201,50 @@ class Neo4jRepository:
             record = result.single()
             return record["deleted"] > 0 if record else False
 
+    def delete_recording_by_filepath(self, file_path: str) -> bool:
+        """Delete a recording node by file path and all its relationships.
+
+        Args:
+            file_path: Full path to the file
+
+        Returns:
+            True if deleted, False if not found
+        """
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (r:Recording {file_path: $file_path})
+                OPTIONAL MATCH (r)-[rel]->(n)
+                DETACH DELETE r, rel, n
+                RETURN count(r) as deleted
+                """,
+                file_path=file_path,
+            )
+            record = result.single()
+            return record["deleted"] > 0 if record else False
+
+    def delete_recording_by_filename(self, file_name: str) -> bool:
+        """Delete a recording node by file name and all its relationships.
+
+        Args:
+            file_name: Name of the file
+
+        Returns:
+            True if deleted, False if not found
+        """
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (r:Recording {file_name: $file_name})
+                OPTIONAL MATCH (r)-[rel]->(n)
+                DETACH DELETE r, rel, n
+                RETURN count(r) as deleted
+                """,
+                file_name=file_name,
+            )
+            record = result.single()
+            return record["deleted"] > 0 if record else False
+
     def create_constraints(self) -> None:
         """Create database constraints and indexes for optimal performance."""
         with self.driver.session() as session:
