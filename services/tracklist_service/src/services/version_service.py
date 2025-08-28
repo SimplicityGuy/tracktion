@@ -1,6 +1,6 @@
 """Version management service for tracklist versioning."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
@@ -62,12 +62,12 @@ class VersionService:
         version = TracklistVersion(
             tracklist_id=tracklist_id,
             version_number=new_version_number,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             created_by=created_by or "system",
             change_type=change_type,
             change_summary=change_summary,
             tracks_snapshot=tracks_snapshot,
-            version_metadata={"timestamp": datetime.utcnow().isoformat()},
+            version_metadata={"timestamp": datetime.now(timezone.utc).isoformat()},
             is_current=True,
         )
 
@@ -159,7 +159,7 @@ class VersionService:
 
         # Update the tracklist with the rolled back tracks
         tracklist.tracks = version.tracks_snapshot
-        tracklist.updated_at = datetime.utcnow()
+        tracklist.updated_at = datetime.now(timezone.utc)
 
         self.session.add(tracklist)
         await self.session.commit()
@@ -230,7 +230,7 @@ class VersionService:
         """
         from datetime import timedelta
 
-        cutoff_date = datetime.utcnow() - timedelta(days=keep_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=keep_days)
 
         # Get versions to keep by count
         keep_versions_query = (

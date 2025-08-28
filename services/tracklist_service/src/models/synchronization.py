@@ -1,6 +1,6 @@
 """Synchronization models for tracklist version management and sync operations."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 from uuid import uuid4
 
@@ -19,7 +19,7 @@ class TracklistVersion(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     tracklist_id = Column(PG_UUID(as_uuid=True), ForeignKey("tracklists.id"), nullable=False)
     version_number = Column(Integer, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     created_by = Column(String(255))  # User or system identifier
     change_type = Column(String(50), nullable=False)  # manual_edit, import_update, auto_sync
     change_summary = Column(Text, nullable=False)
@@ -89,7 +89,7 @@ class SyncEvent(Base):
     event_type = Column(String(20), nullable=False)  # check, update, conflict, resolved
     source = Column(String(50), nullable=False)  # 1001tracklists, manual, auto
     status = Column(String(20), nullable=False)  # pending, processing, completed, failed
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     completed_at = Column(DateTime)
     changes = Column(JSONB)  # Detailed change information
     conflict_data = Column(JSONB)  # Conflict details if any
@@ -123,7 +123,7 @@ class AuditLog(Base):
     entity_type = Column(String(50), nullable=False)  # tracklist, cue_file
     entity_id = Column(PG_UUID(as_uuid=True), nullable=False)
     action = Column(String(50), nullable=False)  # created, updated, deleted, synced
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     actor = Column(String(255), nullable=False)  # User or system identifier
     changes = Column(JSONB, nullable=False)  # Detailed change data
     audit_metadata = Column(JSONB, default=dict)
