@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -305,7 +305,7 @@ class FileLifecycleService:
             await self.session.rollback()
             return 0
 
-    async def get_active_recordings_query(self):
+    async def get_active_recordings_query(self) -> Any:
         """Get query for active (non-deleted) recordings.
 
         Returns:
