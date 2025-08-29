@@ -255,7 +255,7 @@ async def get_async_db_session() -> AsyncSession:
         await async_db_manager.initialize()
         if not async_db_manager.AsyncSessionLocal:
             raise RuntimeError("Async database not initialized")
-    return async_db_manager.AsyncSessionLocal()
+    return async_db_manager.AsyncSessionLocal()  # type: ignore[no-any-return]
 
 
 async def get_async_neo4j_driver() -> AsyncDriver:

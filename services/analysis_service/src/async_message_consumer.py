@@ -8,6 +8,7 @@ from uuid import UUID
 
 import aio_pika
 from aio_pika import ExchangeType, IncomingMessage
+from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractQueue
 
 from .async_storage_handler import AsyncStorageHandler
 from .async_config import get_config
@@ -119,9 +120,9 @@ class AsyncAnalysisMessageConsumer:
     def __init__(self) -> None:
         """Initialize the async message consumer."""
         self.config = get_config()
-        self.connection: Optional[aio_pika.Connection] = None
-        self.channel: Optional[aio_pika.Channel] = None
-        self.queue: Optional[aio_pika.Queue] = None
+        self.connection: Optional[AbstractConnection] = None
+        self.channel: Optional[AbstractChannel] = None
+        self.queue: Optional[AbstractQueue] = None
 
         # Initialize storage handler
         self.storage = AsyncStorageHandler(
@@ -201,7 +202,7 @@ class AsyncAnalysisMessageConsumer:
 
                 async for message in queue_iter:
                     async with message.process():
-                        await self.process_message(message)
+                        await self.process_message(message)  # type: ignore[arg-type]
 
         except asyncio.CancelledError:
             logger.info("Analysis consumer cancelled")

@@ -400,7 +400,7 @@ class ParallelFFTOptimizer:
 
         # Combine results
         combined = np.concatenate(results, axis=0)
-        return combined
+        return combined  # type: ignore[no-any-return]
 
     async def _compute_stft_chunk(
         self,
@@ -484,7 +484,7 @@ class ParallelFFTOptimizer:
         # Ensure it's in reasonable range
         fft_size = max(512, min(16384, fft_size))
 
-        return fft_size
+        return int(fft_size)
 
     async def benchmark_fft_performance(self, test_duration_seconds: float = 1.0) -> Dict[str, float]:
         """

@@ -93,7 +93,7 @@ class AsyncCatalogService:
 
                 if existing:
                     # Update existing metadata
-                    updated = await self.metadata_repo.update(existing.id, value)
+                    updated = await self.metadata_repo.update(int(existing.id), value)
                     if updated:
                         updated_metadata.append(updated)
                 else:
@@ -128,7 +128,7 @@ class AsyncCatalogService:
             if existing:
                 logger.info(f"Updating existing tracklist for recording {recording_id}")
                 updated = await self.tracklist_repo.update(
-                    tracklist_id=existing.id, source=source, tracks=tracks, cue_file_path=cue_file_path
+                    tracklist_id=int(existing.id), source=source, tracks=tracks, cue_file_path=cue_file_path
                 )
                 return updated or existing
 

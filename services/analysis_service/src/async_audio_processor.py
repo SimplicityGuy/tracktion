@@ -123,10 +123,10 @@ class AsyncAudioProcessor:
         self,
         audio_file: str,
         processing_func: Callable,
-        *args,
+        *args: Any,
         priority: TaskPriority = TaskPriority.NORMAL,
         task_id: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Any:
         """
         Process an audio file asynchronously with resource management.
@@ -248,7 +248,7 @@ class AsyncAudioProcessor:
         audio_files: list[str],
         processing_func: Callable[..., Any],
         max_batch_size: Optional[int] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """
         Process multiple audio files in parallel batches.
@@ -347,7 +347,7 @@ class AudioAnalysisScheduler:
         processing_func: Callable[..., Any],
         priority: TaskPriority = TaskPriority.NORMAL,
         callback: Optional[Callable] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """
         Schedule an audio analysis task.

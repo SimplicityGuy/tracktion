@@ -19,7 +19,7 @@ try:
 except ImportError:
     try:
         # Fallback to aioredis if available
-        import aioredis
+        import aioredis  # type: ignore[no-redef]
     except ImportError:
         # No redis support available
         aioredis = None  # type: ignore
@@ -407,18 +407,18 @@ class AsyncProgressTracker:
         try:
             key = f"progress:{task_id}"
             data = {
-                "task_id": progress.task_id,
-                "total_stages": progress.total_stages,
-                "current_stage": progress.current_stage,
-                "stage_name": progress.stage_name,
-                "stage_progress": progress.stage_progress,
-                "overall_progress": progress.overall_progress,
-                "start_time": progress.start_time,
-                "last_update": progress.last_update,
+                "task_id": str(progress.task_id),
+                "total_stages": int(progress.total_stages),
+                "current_stage": int(progress.current_stage),
+                "stage_name": str(progress.stage_name),
+                "stage_progress": float(progress.stage_progress),
+                "overall_progress": float(progress.overall_progress),
+                "start_time": float(progress.start_time),
+                "last_update": float(progress.last_update),
                 "metadata": json.dumps(progress.metadata),
             }
 
-            await self.redis.hset(key, mapping=data)
+            await self.redis.hset(key, mapping=data)  # type: ignore[arg-type]
             await self.redis.expire(key, 3600)  # Expire after 1 hour
 
         except Exception as e:

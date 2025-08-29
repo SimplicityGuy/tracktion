@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import aio_pika
 from aio_pika import ExchangeType, IncomingMessage
+from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractExchange, AbstractQueue, AbstractIncomingMessage
 
 from services.analysis_service.src.async_audio_analysis import (
     AsyncAudioAnalyzer,
@@ -95,14 +96,14 @@ class AsyncMessageQueueIntegration:
         self.batch_timeout = batch_timeout_seconds
 
         # Connection state
-        self.connection: Optional[aio_pika.Connection] = None
-        self.channel: Optional[aio_pika.Channel] = None
-        self.queue: Optional[aio_pika.Queue] = None
-        self.exchange: Optional[aio_pika.Exchange] = None
+        self.connection: Optional[AbstractConnection] = None
+        self.channel: Optional[AbstractChannel] = None
+        self.queue: Optional[AbstractQueue] = None
+        self.exchange: Optional[AbstractExchange] = None
 
         # Batch processing
         self.batch_buffer: List[AnalysisRequest] = []
-        self.batch_messages: List[IncomingMessage] = []
+        self.batch_messages: List[AbstractIncomingMessage] = []
         self.batch_lock = asyncio.Lock()
         self.batch_timer_task: Optional[asyncio.Task] = None
 
@@ -150,6 +151,8 @@ class AsyncMessageQueueIntegration:
         await self.scheduler.start()
 
         # Start consuming
+        if not self.queue:
+            raise RuntimeError("Queue not initialized")
         async with self.queue.iterator() as queue_iter:
             async for message in queue_iter:
                 try:
@@ -158,7 +161,7 @@ class AsyncMessageQueueIntegration:
                     logger.error(f"Error handling message: {str(e)}")
                     await message.nack(requeue=True)
 
-    async def _handle_message(self, message: IncomingMessage) -> None:
+    async def _handle_message(self, message: AbstractIncomingMessage) -> None:
         """
         Handle incoming message.
 
@@ -167,14 +170,14 @@ class AsyncMessageQueueIntegration:
         """
         try:
             # Parse message
-            request = await self._parse_message(message)
+            request = await self._parse_message(message)  # type: ignore[arg-type]
 
             if self.enable_batch_processing:
                 # Add to batch
-                await self._add_to_batch(request, message)
+                await self._add_to_batch(request, message)  # type: ignore[arg-type]
             else:
                 # Process immediately
-                await self._process_single_request(request, message)
+                await self._process_single_request(request, message)  # type: ignore[arg-type]
 
         except Exception as e:
             logger.error(f"Failed to handle message: {str(e)}")
@@ -267,7 +270,7 @@ class AsyncMessageQueueIntegration:
         # Process requests in parallel
         tasks = []
         for i, request in enumerate(requests):
-            task = asyncio.create_task(self._process_request_with_tracking(request, messages[i], aggregator, batch_id))
+            task = asyncio.create_task(self._process_request_with_tracking(request, messages[i], aggregator, batch_id))  # type: ignore[arg-type]
             tasks.append(task)
 
         # Wait for all to complete
@@ -355,7 +358,7 @@ class AsyncMessageQueueIntegration:
             priority=request.priority,
         )
 
-        return result
+        return result  # type: ignore[no-any-return]
 
     async def _analysis_complete_callback(
         self,

@@ -293,7 +293,8 @@ class AsyncResourceManager:
             )
 
             if not acquired:
-                task.future.set_exception(RuntimeError(f"Failed to acquire resources for {task.task_id}"))
+                if task.future is not None:
+                    task.future.set_exception(RuntimeError(f"Failed to acquire resources for {task.task_id}"))
                 return
 
             # Execute function with timeout
@@ -302,19 +303,22 @@ class AsyncResourceManager:
                     self._run_task_async(task.func, *task.args, **task.kwargs),
                     timeout=self.limits.task_timeout_seconds,
                 )
-                task.future.set_result(result)
+                if task.future is not None:
+                    task.future.set_result(result)
             except asyncio.TimeoutError:
-                task.future.set_exception(
-                    asyncio.TimeoutError(f"Task {task.task_id} timed out after {self.limits.task_timeout_seconds}s")
-                )
+                if task.future is not None:
+                    task.future.set_exception(
+                        asyncio.TimeoutError(f"Task {task.task_id} timed out after {self.limits.task_timeout_seconds}s")
+                    )
             except Exception as e:
-                task.future.set_exception(e)
+                if task.future is not None:
+                    task.future.set_exception(e)
 
         finally:
             # Release resources
             await self.release_resources(task.task_id)
 
-    async def _run_task_async(self, func: Callable, *args, **kwargs) -> Any:
+    async def _run_task_async(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
         """
         Run a task asynchronously.
 

@@ -94,7 +94,7 @@ class AsyncAudioAnalyzer:
                 priority=priority,
                 task_id=f"bpm_{Path(audio_file).stem}",
             )
-            return result
+            return result  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"Async BPM detection failed for {audio_file}: {str(e)}")
             raise
@@ -136,7 +136,7 @@ class AsyncAudioAnalyzer:
                 priority=priority,
                 task_id=f"key_{Path(audio_file).stem}",
             )
-            return result
+            return result  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"Async key detection failed for {audio_file}: {str(e)}")
             raise
@@ -183,7 +183,7 @@ class AsyncAudioAnalyzer:
                 priority=priority,
                 task_id=f"mood_{Path(audio_file).stem}",
             )
-            return result
+            return result  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"Async mood analysis failed for {audio_file}: {str(e)}")
             raise
@@ -216,16 +216,16 @@ class AsyncAudioAnalyzer:
         errors = {}
 
         # Create tasks for parallel execution
-        tasks = []
+        tasks: list[tuple[str, asyncio.Task[Dict[str, Any] | None]]] = []
 
         if enable_bpm:
-            tasks.append(("bpm", self.analyze_bpm_async(audio_file, priority)))
+            tasks.append(("bpm", asyncio.create_task(self.analyze_bpm_async(audio_file, priority))))
 
         if enable_key:
-            tasks.append(("key", self.analyze_key_async(audio_file, priority)))
+            tasks.append(("key", asyncio.create_task(self.analyze_key_async(audio_file, priority))))
 
         if enable_mood:
-            tasks.append(("mood", self.analyze_mood_async(audio_file, priority)))
+            tasks.append(("mood", asyncio.create_task(self.analyze_mood_async(audio_file, priority))))
 
         # Execute all tasks in parallel
         if tasks:
@@ -240,11 +240,11 @@ class AsyncAudioAnalyzer:
                     logger.error(f"{task_name} analysis failed: {task_result}")
                 else:
                     if task_name == "bpm":
-                        result.bpm = task_result
+                        result.bpm = task_result  # type: ignore[assignment]
                     elif task_name == "key":
-                        result.key = task_result
+                        result.key = task_result  # type: ignore[assignment]
                     elif task_name == "mood":
-                        result.mood = task_result
+                        result.mood = task_result  # type: ignore[assignment]
 
         # Calculate processing time
         result.processing_time_ms = (time.time() - start_time) * 1000
@@ -323,9 +323,9 @@ class AsyncAudioAnalyzer:
 
             def load_audio() -> np.ndarray:
                 loader = es.MonoLoader(filename=audio_file)
-                return loader()
+                return loader()  # type: ignore[no-any-return]
 
-            return await self.processor._run_in_executor(load_audio)
+            return await self.processor._run_in_executor(load_audio)  # type: ignore[no-any-return]
 
         # Async buffered reading implementation
         # This is a simplified version - in production, you'd want
@@ -351,9 +351,9 @@ class AsyncAudioAnalyzer:
             # This would need a proper implementation to decode from bytes
             # For now, falling back to file path loading
             loader = es.MonoLoader(filename=audio_file)
-            return loader()
+            return loader()  # type: ignore[no-any-return]
 
-        return await self.processor._run_in_executor(decode_audio, audio_data)
+        return await self.processor._run_in_executor(decode_audio, audio_data)  # type: ignore[no-any-return]
 
 
 class AsyncFFTProcessor:
@@ -426,7 +426,7 @@ class AsyncFFTProcessor:
 
         # Run FFT computation in thread pool
         result = await self.processor._run_in_executor(compute_stft, audio_data)
-        return result
+        return result  # type: ignore[no-any-return]
 
     async def compute_parallel_ffts(self, audio_segments: list[np.ndarray], fft_size: int = 2048) -> list[np.ndarray]:
         """

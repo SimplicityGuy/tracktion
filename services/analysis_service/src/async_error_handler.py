@@ -93,11 +93,11 @@ class AsyncErrorHandler:
     async def handle_with_retry(
         self,
         func: Callable,
-        *args,
+        *args: Any,
         task_id: str,
         audio_file: Optional[str] = None,
         timeout: Optional[float] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Any:
         """
         Execute function with retry logic.
@@ -337,7 +337,7 @@ class AudioFallbackHandler:
     Provides fallback strategies for corrupted or problematic audio files.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize fallback handler."""
         self.fallback_attempts = 0
         self.successful_fallbacks = 0
@@ -347,7 +347,7 @@ class AudioFallbackHandler:
         audio_file: str,
         primary_func: Callable,
         fallback_funcs: List[Callable],
-        **kwargs,
+        **kwargs: Any,
     ) -> Any:
         """
         Process audio with fallback strategies.
@@ -387,7 +387,7 @@ class AudioFallbackHandler:
         # All strategies failed
         raise RuntimeError(f"All processing strategies failed for {audio_file}")
 
-    async def _execute_strategy(self, func: Callable, audio_file: str, **kwargs) -> Any:
+    async def _execute_strategy(self, func: Callable, audio_file: str, **kwargs: Any) -> Any:
         """
         Execute a processing strategy.
 
@@ -433,7 +433,7 @@ class ResourceCleanupManager:
     Manages cleanup of resources after processing.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize cleanup manager."""
         self.cleanup_tasks: List[asyncio.Task] = []
         self.resources_to_cleanup: Dict[str, Any] = {}
