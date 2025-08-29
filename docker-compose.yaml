@@ -98,6 +98,63 @@ services:
       - tracktion-network
     restart: unless-stopped
 
+  # File Rename Service
+  file-rename-service:
+    build:
+      context: .
+      dockerfile: services/file_rename_service/Dockerfile
+    container_name: tracktion-file-rename
+    environment:
+      DATABASE_URL: postgresql://tracktion_user:${POSTGRES_PASSWORD:-changeme}@postgres:5432/file_rename_service
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-tracktion}:${RABBITMQ_PASSWORD:-changeme}@rabbitmq:5672/
+      RABBITMQ_EXCHANGE: file_rename
+      SERVICE_NAME: file-rename-service
+      SERVICE_ID: file-rename-service-1
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-false}
+      SECRET_KEY: ${SECRET_KEY:-development-secret-key-change-in-production}
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/file_rename_service:/app
+      - ./shared:/app/shared:ro
+      - ${MUSIC_DIRECTORY:-./test_music}:/music:ro
+    networks:
+      - tracktion-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; response = httpx.get('http://localhost:8000/health'); exit(0 if response.status_code == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 5s
+      retries: 3
+
+  # Redis Cache
+  redis:
+    image: redis:7.4-alpine
+    container_name: tracktion-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - tracktion-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 networks:
   tracktion-network:
     driver: bridge
@@ -107,3 +164,4 @@ volumes:
   neo4j_data:
   neo4j_logs:
   rabbitmq_data:
+  redis_data:
