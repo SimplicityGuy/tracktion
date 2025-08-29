@@ -60,14 +60,16 @@ async def stream_audio(
     # Add range headers if partial content requested
     if start_byte is not None or end_byte is not None:
         headers["Accept-Ranges"] = "bytes"
-        if start_byte and end_byte:
+        if start_byte is not None and end_byte is not None:
             headers["Content-Range"] = f"bytes {start_byte}-{end_byte}/*"
+        elif start_byte is not None:
+            headers["Content-Range"] = f"bytes {start_byte}-/*"
 
     return StreamingResponse(
         generate_audio_chunks(file_path, chunk_size),
         media_type="audio/wav",
         headers=headers,
-        status_code=status.HTTP_206_PARTIAL_CONTENT if start_byte else status.HTTP_200_OK,
+        status_code=status.HTTP_206_PARTIAL_CONTENT if start_byte is not None else status.HTTP_200_OK,
     )
 
 
