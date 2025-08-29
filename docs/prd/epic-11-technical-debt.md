@@ -35,7 +35,7 @@ Addressing technical debt ensures:
    - Ensure all tests are passing
    - Add missing test coverage
    - Fix flaky or skipped tests
-   - Achieve 80% coverage across all services
+   - Achieve 80%+ coverage across all services
 
 4. **Static Analysis Compliance**
    - Fix all mypy type checking errors
@@ -53,7 +53,7 @@ Addressing technical debt ensures:
 
 #### Quality Standards
 - Zero pragma directives (except documented necessities)
-- 100% story task completion
+- 100% story task completion, except deferred tasks
 - All tests passing consistently
 - Full mypy and ruff compliance
 
