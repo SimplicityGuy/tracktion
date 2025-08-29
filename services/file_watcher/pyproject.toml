@@ -13,6 +13,7 @@ dependencies = [
     "structlog>=24.5.0",
     "xxhash>=3.5.0",
     "asyncio>=3.4.3",
+    "mutagen>=1.47.0",
 ]
 
 [project.optional-dependencies]
@@ -53,3 +54,8 @@ line-length = 120
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "B", "C90", "UP"]
 ignore = ["E501", "C901"]
+
+[dependency-groups]
+dev = [
+    "aiofiles>=24.1.0",
+]

@@ -18,6 +18,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from .async_message_publisher import AsyncMessagePublisher
+from .async_metadata_extractor import AsyncMetadataExtractor
 
 load_dotenv()
 
@@ -38,6 +39,7 @@ class AsyncFileEventHandler(FileSystemEventHandler):
         instance_id: str,
         loop: asyncio.AbstractEventLoop,
         semaphore: asyncio.Semaphore,
+        metadata_extractor: AsyncMetadataExtractor | None = None,
     ) -> None:
         """Initialize the async event handler.
 
@@ -46,6 +48,7 @@ class AsyncFileEventHandler(FileSystemEventHandler):
             instance_id: Unique identifier for this watcher instance
             loop: Event loop for async operations
             semaphore: Semaphore for limiting concurrent operations
+            metadata_extractor: Optional async metadata extractor
         """
         super().__init__()
         self.publisher = publisher
@@ -53,6 +56,7 @@ class AsyncFileEventHandler(FileSystemEventHandler):
         self.loop = loop
         self.semaphore = semaphore
         self.processing_tasks: set[Future[Any]] = set()
+        self.metadata_extractor = metadata_extractor
 
     def is_audio_file(self, path: str) -> bool:
         """Check if the file has a supported audio extension."""
@@ -106,9 +110,17 @@ class AsyncFileEventHandler(FileSystemEventHandler):
                 # Calculate hashes for non-deleted files
                 sha256_hash = None
                 xxh128_hash = None
+                metadata = None
 
                 if event_type != "deleted" and os.path.exists(file_path):
                     sha256_hash, xxh128_hash = await self._calculate_hashes_async(file_path)
+
+                    # Extract metadata if extractor is available
+                    if self.metadata_extractor:
+                        try:
+                            metadata = await self.metadata_extractor.extract_metadata(file_path)
+                        except Exception as e:
+                            logger.warning("Failed to extract metadata", file_path=file_path, error=str(e))
 
                 # Publish event to message queue
                 await self.publisher.publish_file_event(
@@ -117,6 +129,7 @@ class AsyncFileEventHandler(FileSystemEventHandler):
                     instance_id=self.instance_id,
                     sha256_hash=sha256_hash,
                     xxh128_hash=xxh128_hash,
+                    metadata=metadata,
                 )
 
                 logger.info(
@@ -226,6 +239,7 @@ class AsyncFileWatcherService:
         self.observer: Any = None  # Type: Observer | None
         self.publisher: AsyncMessagePublisher | None = None
         self.event_handler: AsyncFileEventHandler | None = None
+        self.metadata_extractor: AsyncMetadataExtractor | None = None
         self.loop = loop or asyncio.get_event_loop()
 
         # Semaphore for limiting concurrent operations (default: 100)
@@ -270,8 +284,13 @@ class AsyncFileWatcherService:
         self.publisher = AsyncMessagePublisher(self.rabbitmq_url, self.instance_id)
         await self.publisher.connect()
 
+        # Initialize metadata extractor
+        self.metadata_extractor = AsyncMetadataExtractor(max_workers=4)
+
         # Initialize event handler with async support
-        self.event_handler = AsyncFileEventHandler(self.publisher, self.instance_id, self.loop, self.semaphore)
+        self.event_handler = AsyncFileEventHandler(
+            self.publisher, self.instance_id, self.loop, self.semaphore, self.metadata_extractor
+        )
 
         # Set up file system observer (still uses watchdog for events)
         self.observer = Observer()
@@ -341,6 +360,10 @@ class AsyncFileWatcherService:
         # Wait for pending tasks
         if self.event_handler:
             await self.event_handler.wait_for_tasks()
+
+        # Shutdown metadata extractor
+        if self.metadata_extractor:
+            self.metadata_extractor.shutdown()
 
         # Disconnect from RabbitMQ
         if self.publisher:

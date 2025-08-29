@@ -6,10 +6,9 @@ import logging
 
 import aio_pika
 from aio_pika import ExchangeType, IncomingMessage
-from services.tracklist_service.src.services.file_lifecycle_service import FileLifecycleService
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from shared.core_types.src.async_database import AsyncDatabaseManager
 
+from .async_catalog_service import AsyncCatalogService
 from .config import get_config
 
 logger = logging.getLogger(__name__)
@@ -26,12 +25,8 @@ class CatalogingMessageConsumer:
         self.queue: aio_pika.Queue | None = None
 
         # Database setup
-        self.engine = create_async_engine(self.config.database.url, echo=False)
-        self.SessionLocal = sessionmaker(
-            self.engine,
-            class_=AsyncSession,
-            expire_on_commit=False,
-        )
+        self.db_manager = AsyncDatabaseManager(database_url=self.config.database.url)
+        self.catalog_service = AsyncCatalogService(self.db_manager)
 
     async def connect(self) -> None:
         """Connect to RabbitMQ and setup consumer."""
@@ -139,61 +134,64 @@ class CatalogingMessageConsumer:
                 f"Cataloging: Processing {event_type} event for {file_path}", extra={"correlation_id": correlation_id}
             )
 
-            # Use the shared FileLifecycleService to handle database operations
-            async with self.SessionLocal() as session:
-                lifecycle_service = FileLifecycleService(session)
-
-                # Handle event based on type
-                success = False
-                error = None
-
+            # Handle event based on type using async catalog service
+            try:
                 if event_type == "created":
-                    success, error = await lifecycle_service.handle_file_created(
-                        file_path, sha256_hash, xxh128_hash, file_size
+                    # Extract file name from path
+                    file_name = file_path.split("/")[-1] if "/" in file_path else file_path
+
+                    # Get metadata from message if available
+                    metadata = body.get("metadata", {})
+
+                    await self.catalog_service.catalog_file(
+                        file_path=file_path,
+                        file_name=file_name,
+                        sha256_hash=sha256_hash,
+                        xxh128_hash=xxh128_hash,
+                        metadata=metadata,
                     )
 
                 elif event_type == "modified":
-                    success, error = await lifecycle_service.handle_file_modified(
-                        file_path, sha256_hash, xxh128_hash, file_size
+                    # For modified, update the hashes
+                    file_name = file_path.split("/")[-1] if "/" in file_path else file_path
+                    metadata = body.get("metadata", {})
+
+                    # This will update existing or create new
+                    await self.catalog_service.catalog_file(
+                        file_path=file_path,
+                        file_name=file_name,
+                        sha256_hash=sha256_hash,
+                        xxh128_hash=xxh128_hash,
+                        metadata=metadata,
                     )
 
                 elif event_type == "deleted":
-                    success, error = await lifecycle_service.handle_file_deleted(
-                        file_path, soft_delete=self.config.service.soft_delete_enabled
-                    )
+                    await self.catalog_service.handle_file_deleted(file_path)
 
-                elif event_type == "moved":
+                elif event_type in ["moved", "renamed"]:
                     if old_path:
-                        success, error = await lifecycle_service.handle_file_moved(
-                            old_path, file_path, sha256_hash, xxh128_hash
+                        new_name = file_path.split("/")[-1] if "/" in file_path else file_path
+                        await self.catalog_service.handle_file_moved(
+                            old_path=old_path, new_path=file_path, new_name=new_name
                         )
                     else:
-                        logger.error(f"Move event missing old_path: {file_path}")
-                        error = "Missing old_path for move event"
-
-                elif event_type == "renamed":
-                    if old_path:
-                        success, error = await lifecycle_service.handle_file_renamed(
-                            old_path, file_path, sha256_hash, xxh128_hash
-                        )
-                    else:
-                        logger.error(f"Rename event missing old_path: {file_path}")
-                        error = "Missing old_path for rename event"
+                        logger.error(f"{event_type} event missing old_path: {file_path}")
+                        raise ValueError(f"Missing old_path for {event_type} event")
 
                 else:
                     logger.warning(f"Unknown event type: {event_type}")
-                    success = True  # Don't requeue unknown events
 
-                if success:
-                    logger.info(
-                        f"Cataloging: Successfully processed {event_type} event for {file_path}",
-                        extra={"correlation_id": correlation_id},
-                    )
-                else:
-                    logger.error(
-                        f"Cataloging: Failed to process {event_type} event for {file_path}: {error}",
-                        extra={"correlation_id": correlation_id},
-                    )
+                logger.info(
+                    f"Cataloging: Successfully processed {event_type} event for {file_path}",
+                    extra={"correlation_id": correlation_id},
+                )
+
+            except Exception as e:
+                logger.error(
+                    f"Cataloging: Failed to process {event_type} event for {file_path}: {e}",
+                    extra={"correlation_id": correlation_id},
+                )
+                raise
 
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in message: {e}")
@@ -205,10 +203,8 @@ class CatalogingMessageConsumer:
     async def cleanup_old_deletes(self) -> None:
         """Periodic task to cleanup old soft-deleted records."""
         try:
-            async with self.SessionLocal() as session:
-                lifecycle_service = FileLifecycleService(session)
-                count = await lifecycle_service.cleanup_old_soft_deletes(self.config.service.cleanup_interval_days)
-                logger.info(f"Cataloging: Cleaned up {count} old soft-deleted records")
+            # TODO: Implement FileLifecycleService for cleanup
+            logger.info("Cataloging: Soft delete cleanup not yet implemented")
         except Exception as e:
             logger.error(f"Error during cleanup of old soft-deletes: {e}")
 

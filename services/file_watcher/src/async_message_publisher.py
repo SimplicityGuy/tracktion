@@ -80,6 +80,7 @@ class AsyncMessagePublisher:
         sha256_hash: str | None = None,
         xxh128_hash: str | None = None,
         old_path: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Publish a file event message asynchronously.
 
@@ -90,6 +91,7 @@ class AsyncMessagePublisher:
             sha256_hash: SHA256 hash of the file (None for deleted files)
             xxh128_hash: XXH128 hash of the file (None for deleted files)
             old_path: Previous path (for moved/renamed events)
+            metadata: Optional metadata dictionary
 
         Returns:
             True if message was published successfully
@@ -117,6 +119,10 @@ class AsyncMessagePublisher:
             # Add old path for move/rename events
             if old_path and event_type in ["moved", "renamed"]:
                 message["old_path"] = old_path
+
+            # Add metadata if available
+            if metadata:
+                message["metadata"] = metadata
 
             # Determine routing key based on event type
             routing_key = f"file.{event_type}"
