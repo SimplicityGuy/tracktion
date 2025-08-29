@@ -28,8 +28,6 @@ from services.analysis_service.src.async_error_handler import (
 from services.analysis_service.src.async_message_integration import (
     AnalysisRequest,
     AsyncMessageQueueIntegration,
-    AudioAnalysisTask,
-    AudioAnalysisResult,
     TaskPriority,
 )
 
