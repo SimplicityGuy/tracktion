@@ -383,32 +383,47 @@ class TestAsyncResourceManager:
     @pytest.mark.asyncio
     async def test_acquire_release_resources(self, manager):
         """Test resource acquisition and release."""
-        # Acquire resources
-        acquired = await manager.acquire_resources("task1", estimated_memory_mb=50, priority=TaskPriority.NORMAL)
-        assert acquired
-        assert "task1" in manager.task_start_times
-        assert manager.total_tasks_processed == 1
+        # Mock system memory and CPU to be within acceptable limits
+        with patch("psutil.virtual_memory") as mock_vm:
+            # Set system memory usage to 50% (below the threshold)
+            mock_vm.return_value = MagicMock(percent=50.0)
 
-        # Release resources
-        await manager.release_resources("task1")
-        assert "task1" not in manager.task_start_times
+            # Mock the process CPU percent to be within limits
+            with patch.object(manager.process, "cpu_percent", return_value=30.0):
+                # Acquire resources
+                acquired = await manager.acquire_resources(
+                    "task1", estimated_memory_mb=50, priority=TaskPriority.NORMAL
+                )
+                assert acquired
+                assert "task1" in manager.task_start_times
+                assert manager.total_tasks_processed == 1
+
+                # Release resources
+                await manager.release_resources("task1")
+                assert "task1" not in manager.task_start_times
 
     @pytest.mark.asyncio
     async def test_resource_limits(self, manager):
         """Test concurrent resource limits."""
-        # Acquire max concurrent tasks
-        acquired1 = await manager.acquire_resources("task1")
-        acquired2 = await manager.acquire_resources("task2")
-        assert acquired1 and acquired2
+        # Mock system memory and CPU to be within acceptable limits
+        with patch("psutil.virtual_memory") as mock_vm:
+            mock_vm.return_value = MagicMock(percent=50.0)
 
-        # Third task should fail with timeout
-        acquired3 = await manager.acquire_resources("task3", timeout=0.1)
-        assert not acquired3
+            # Mock the process CPU percent to be within limits
+            with patch.object(manager.process, "cpu_percent", return_value=30.0):
+                # Acquire max concurrent tasks
+                acquired1 = await manager.acquire_resources("task1")
+                acquired2 = await manager.acquire_resources("task2")
+                assert acquired1 and acquired2
 
-        # Release one and try again
-        await manager.release_resources("task1")
-        acquired3 = await manager.acquire_resources("task3")
-        assert acquired3
+                # Third task should fail with timeout
+                acquired3 = await manager.acquire_resources("task3", timeout=0.1)
+                assert not acquired3
+
+                # Release one and try again
+                await manager.release_resources("task1")
+                acquired3 = await manager.acquire_resources("task3")
+                assert acquired3
 
     @pytest.mark.asyncio
     async def test_task_queue(self, manager):
@@ -419,17 +434,22 @@ class TestAsyncResourceManager:
             executed.append(task_id)
             return f"result_{task_id}"
 
-        # Queue tasks
-        await manager.queue_task("task1", mock_task, args=("task1",))
-        await manager.queue_task("task2", mock_task, args=("task2",), priority=TaskPriority.HIGH)
-        await manager.queue_task("task3", mock_task, args=("task3",), priority=TaskPriority.LOW)
+        # Mock system resources to be within acceptable limits
+        with patch("psutil.virtual_memory") as mock_vm:
+            mock_vm.return_value = MagicMock(percent=50.0)
 
-        # Wait for completion
-        await asyncio.sleep(0.5)
+            with patch.object(manager.process, "cpu_percent", return_value=30.0):
+                # Queue tasks
+                await manager.queue_task("task1", mock_task, args=("task1",))
+                await manager.queue_task("task2", mock_task, args=("task2",), priority=TaskPriority.HIGH)
+                await manager.queue_task("task3", mock_task, args=("task3",), priority=TaskPriority.LOW)
 
-        # High priority should execute first
-        assert len(executed) > 0
-        # Note: Due to async nature, exact order might vary
+                # Wait for completion
+                await asyncio.sleep(0.5)
+
+                # High priority should execute first
+                assert len(executed) > 0
+                # Note: Due to async nature, exact order might vary
 
     @pytest.mark.asyncio
     async def test_resource_monitoring(self, manager):
@@ -471,17 +491,19 @@ class TestAsyncFFTProcessor:
         # Create test audio data
         audio_data = np.random.randn(44100)  # 1 second at 44.1kHz
 
-        with patch("essentia.standard.Windowing") as mock_windowing:
-            with patch("essentia.standard.FFT") as mock_fft:
-                # Mock Essentia functions
-                mock_windowing.return_value = lambda x: x
-                mock_fft.return_value = lambda x: np.fft.fft(x)
+        # Mock the essentia import and its functions
+        mock_es = MagicMock()
+        mock_windowing = MagicMock(return_value=lambda x: x)
+        mock_fft = MagicMock(return_value=lambda x: np.fft.fft(x)[:1024])  # Return first half of FFT
+        mock_es.Windowing = MagicMock(return_value=mock_windowing)
+        mock_es.FFT = MagicMock(return_value=mock_fft)
 
-                # Compute FFT
-                result = await fft_processor.compute_fft_async(audio_data, fft_size=2048)
+        with patch.dict("sys.modules", {"essentia": MagicMock(), "essentia.standard": mock_es}):
+            # Compute FFT
+            result = await fft_processor.compute_fft_async(audio_data, fft_size=2048)
 
-                assert result is not None
-                assert len(result.shape) == 2  # Should be 2D array of frames
+            assert result is not None
+            assert len(result.shape) == 2  # Should be 2D array of frames
 
     @pytest.mark.asyncio
     async def test_compute_parallel_ffts(self, fft_processor):
@@ -489,15 +511,17 @@ class TestAsyncFFTProcessor:
         # Create test segments
         segments = [np.random.randn(4096) for _ in range(3)]
 
-        with patch("essentia.standard.Windowing") as mock_windowing:
-            with patch("essentia.standard.FFT") as mock_fft:
-                # Mock Essentia functions
-                mock_windowing.return_value = lambda x: x
-                mock_fft.return_value = lambda x: np.fft.fft(x)
+        # Mock the essentia import and its functions
+        mock_es = MagicMock()
+        mock_windowing = MagicMock(return_value=lambda x: x)
+        mock_fft = MagicMock(return_value=lambda x: np.fft.fft(x)[:2048])  # Return first half of FFT
+        mock_es.Windowing = MagicMock(return_value=mock_windowing)
+        mock_es.FFT = MagicMock(return_value=mock_fft)
 
-                # Compute FFTs in parallel
-                results = await fft_processor.compute_parallel_ffts(segments)
+        with patch.dict("sys.modules", {"essentia": MagicMock(), "essentia.standard": mock_es}):
+            # Compute FFTs in parallel
+            results = await fft_processor.compute_parallel_ffts(segments)
 
-                assert len(results) == 3
-                for result in results:
-                    assert result is not None
+            assert len(results) == 3
+            for result in results:
+                assert result is not None

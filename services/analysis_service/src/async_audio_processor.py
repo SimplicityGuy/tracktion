@@ -307,10 +307,16 @@ class AsyncAudioProcessor:
         """Shutdown the processor and clean up resources."""
         logger.info("Shutting down AsyncAudioProcessor")
 
-        # Cancel active tasks
-        for task_id, task in self.active_tasks.items():
+        # Cancel active tasks and wait for them to complete cancellation
+        for task_id, task in list(self.active_tasks.items()):
             if not task.done():
                 task.cancel()
+                logger.debug(f"Cancelling task {task_id}")
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    # Expected when task is cancelled
+                    pass
                 logger.debug(f"Cancelled task {task_id}")
 
         # Shutdown thread pool

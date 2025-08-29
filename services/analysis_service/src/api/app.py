@@ -18,6 +18,7 @@ from .endpoints import (
 )
 from .errors import register_error_handlers
 from .middleware import ErrorHandlingMiddleware, RequestIDMiddleware, TimingMiddleware
+from .rate_limiter import RateLimitConfig, RateLimitMiddleware
 from .timeout import RequestCancellationMiddleware, TimeoutMiddleware
 
 logger = get_logger(__name__)
@@ -52,10 +53,23 @@ app = FastAPI(
     openapi_url="/v1/openapi.json",
 )
 
+# Configure rate limiting
+rate_limit_config = RateLimitConfig(
+    requests_per_second=10,
+    requests_per_minute=100,
+    requests_per_hour=1000,
+    burst_size=20,
+    max_concurrent_connections=1000,
+    max_connections_per_ip=10,
+    enable_backpressure=True,
+    max_queue_size=100,
+)
+
 # Configure middleware pipeline (order matters - reverse execution)
 app.add_middleware(ErrorHandlingMiddleware)
 app.add_middleware(TimeoutMiddleware, default_timeout=30.0)
 app.add_middleware(RequestCancellationMiddleware)
+app.add_middleware(RateLimitMiddleware, config=rate_limit_config)
 app.add_middleware(TimingMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
@@ -66,7 +80,14 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Request-ID", "X-Rate-Limit-Remaining", "X-Process-Time"],
+    expose_headers=[
+        "X-Request-ID",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+        "X-Process-Time",
+        "Retry-After",
+    ],
 )
 
 # Register API routers

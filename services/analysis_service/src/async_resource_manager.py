@@ -43,7 +43,8 @@ class QueuedTask:
     def __lt__(self, other: "QueuedTask") -> bool:
         """Compare tasks for priority queue ordering."""
         if self.priority != other.priority:
-            return self.priority < other.priority
+            # Higher priority values should come first (reverse ordering)
+            return self.priority.value > other.priority.value
         # If same priority, use FIFO based on timestamp
         return self.timestamp < other.timestamp
 
