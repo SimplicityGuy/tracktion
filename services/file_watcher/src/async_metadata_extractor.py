@@ -139,13 +139,16 @@ class AsyncMetadataExtractor:
         tasks = [self.extract_metadata(path) for path in file_paths]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        metadata_dict = {}
+        metadata_dict: dict[str, dict[str, Any]] = {}
         for path, result in zip(file_paths, results, strict=False):
             if isinstance(result, Exception):
                 logger.error("Batch extraction error", file_path=path, error=str(result))
                 metadata_dict[path] = {"error": str(result)}
-            else:
+            elif isinstance(result, dict):
                 metadata_dict[path] = result
+            else:
+                # Shouldn't happen, but handle it gracefully
+                metadata_dict[path] = {"error": "Unexpected result type"}
 
         return metadata_dict
 
@@ -166,6 +169,14 @@ class AsyncMetadataExtractor:
         """Shutdown the thread pool executor."""
         self.executor.shutdown(wait=True)
         logger.info("Metadata extractor shutdown")
+
+    async def __aenter__(self) -> "AsyncMetadataExtractor":
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Async context manager exit - ensures proper cleanup."""
+        self.shutdown()
 
 
 class AsyncMetadataProgressTracker:

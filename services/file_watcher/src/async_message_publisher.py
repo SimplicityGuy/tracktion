@@ -96,6 +96,14 @@ class AsyncMessagePublisher:
         Returns:
             True if message was published successfully
         """
+        if not self.channel or self.channel.is_closed:
+            logger.warning("Channel not available, attempting to reconnect...")
+            try:
+                await self.connect()
+            except Exception as e:
+                logger.error(f"Failed to reconnect: {e}")
+                return False
+
         if not self.channel:
             logger.error("Cannot publish - not connected to RabbitMQ")
             return False

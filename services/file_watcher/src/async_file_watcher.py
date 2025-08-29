@@ -195,24 +195,28 @@ class AsyncFileEventHandler(FileSystemEventHandler):
                     exc_info=True,
                 )
 
-    async def _calculate_hashes_async(self, file_path: str) -> tuple[str, str]:
+    async def _calculate_hashes_async(self, file_path: str) -> tuple[str | None, str | None]:
         """Calculate SHA256 and XXH128 hashes asynchronously.
 
         Args:
             file_path: Path to the file
 
         Returns:
-            Tuple of (sha256_hash, xxh128_hash)
+            Tuple of (sha256_hash, xxh128_hash), or (None, None) on error
         """
-        sha256 = hashlib.sha256()
-        xxh128 = xxhash.xxh128()
+        try:
+            sha256 = hashlib.sha256()
+            xxh128 = xxhash.xxh128()
 
-        async with aiofiles.open(file_path, "rb") as f:
-            while chunk := await f.read(8192):  # Read in 8KB chunks
-                sha256.update(chunk)
-                xxh128.update(chunk)
+            async with aiofiles.open(file_path, "rb") as f:
+                while chunk := await f.read(8192):  # Read in 8KB chunks
+                    sha256.update(chunk)
+                    xxh128.update(chunk)
 
-        return sha256.hexdigest(), xxh128.hexdigest()
+            return sha256.hexdigest(), xxh128.hexdigest()
+        except OSError as e:
+            logger.warning(f"Failed to calculate hashes for {file_path}: {e}")
+            return None, None
 
     async def wait_for_tasks(self) -> None:
         """Wait for all processing tasks to complete."""
