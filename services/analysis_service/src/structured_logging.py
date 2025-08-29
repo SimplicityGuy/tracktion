@@ -327,3 +327,15 @@ def get_performance_metrics() -> Dict[str, Any]:
         Dictionary with performance metrics
     """
     return LOG_PERFORMANCE_METRICS.copy()
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Get a logger instance with the given name.
+
+    Args:
+        name: Name of the logger (typically __name__)
+
+    Returns:
+        Configured logger instance
+    """
+    return logging.getLogger(name)
