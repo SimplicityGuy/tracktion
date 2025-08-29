@@ -152,7 +152,7 @@ class AsyncNeo4jRepository:
             """
             result = await session.run(query, uuid=str(recording_id), depth=depth)
 
-            graph = {"recording": {}, "relationships": [], "nodes": []}
+            graph: dict[str, Any] = {"recording": {}, "relationships": [], "nodes": []}
 
             async for record in result:
                 if not graph["recording"]:
@@ -260,7 +260,7 @@ class AsyncStorageHandler:
             redis_url: Redis connection URL
         """
         # PostgreSQL repositories
-        self.db_manager = AsyncDatabaseManager(database_url=postgres_url)
+        self.db_manager = AsyncDatabaseManager()
         self.recording_repo = AsyncRecordingRepository(self.db_manager)
         self.metadata_repo = AsyncMetadataRepository(self.db_manager)
         self.tracklist_repo = AsyncTracklistRepository(self.db_manager)

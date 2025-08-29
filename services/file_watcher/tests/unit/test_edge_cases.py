@@ -17,7 +17,7 @@ from src.async_metadata_extractor import AsyncMetadataExtractor
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
-    async def test_file_permissions_error(self):
+    async def test_file_permissions_error(self) -> None:
         """Test handling of files with permission errors."""
         mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
         mock_publisher.publish_file_event = AsyncMock(return_value=True)
@@ -37,7 +37,7 @@ class TestEdgeCases:
         # Should still publish event even if hash calculation fails
         mock_publisher.publish_file_event.assert_called_once()
 
-    async def test_large_file_handling(self):
+    async def test_large_file_handling(self) -> None:
         """Test handling of very large files."""
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             # Create a 100MB file
@@ -67,7 +67,7 @@ class TestEdgeCases:
         finally:
             os.unlink(large_file)
 
-    async def test_concurrent_same_file_access(self):
+    async def test_concurrent_same_file_access(self) -> None:
         """Test multiple events for the same file."""
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             f.write(b"test data")
@@ -108,7 +108,7 @@ class TestEdgeCases:
         finally:
             os.unlink(test_file)
 
-    async def test_rabbitmq_connection_failure(self):
+    async def test_rabbitmq_connection_failure(self) -> None:
         """Test handling of RabbitMQ connection failures."""
         publisher = AsyncMessagePublisher("amqp://invalid:5672/", "test")
 
@@ -125,7 +125,7 @@ class TestEdgeCases:
             result = await publisher.publish_file_event("created", "/test.mp3", "test")
             assert result is False
 
-    async def test_metadata_extraction_timeout(self):
+    async def test_metadata_extraction_timeout(self) -> None:
         """Test timeout handling in metadata extraction."""
         extractor = AsyncMetadataExtractor(max_workers=1)
 
@@ -140,7 +140,7 @@ class TestEdgeCases:
         finally:
             extractor.shutdown()
 
-    async def test_file_deleted_during_processing(self):
+    async def test_file_deleted_during_processing(self) -> None:
         """Test handling when file is deleted during processing."""
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             f.write(b"test")
@@ -174,7 +174,7 @@ class TestEdgeCases:
         assert len(published_events) == 1
         assert published_events[0]["event_type"] == "modified"
 
-    async def test_invalid_file_extensions(self):
+    async def test_invalid_file_extensions(self) -> None:
         """Test that non-audio files are ignored."""
         mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
         mock_publisher.publish_file_event = AsyncMock()
@@ -199,7 +199,7 @@ class TestEdgeCases:
         await asyncio.sleep(0.1)  # Give time for async processing
         mock_publisher.publish_file_event.assert_not_called()
 
-    async def test_directory_with_many_files(self):
+    async def test_directory_with_many_files(self) -> None:
         """Test scanning directory with many nested files."""
         with tempfile.TemporaryDirectory() as tmpdir:
             base_dir = Path(tmpdir)
@@ -237,7 +237,7 @@ class TestEdgeCases:
 
             assert event_count == 250, f"Expected 250 events, got {event_count}"
 
-    async def test_unicode_filenames(self):
+    async def test_unicode_filenames(self) -> None:
         """Test handling of files with unicode characters."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create files with unicode names

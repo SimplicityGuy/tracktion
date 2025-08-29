@@ -86,7 +86,7 @@ class DatabaseCompatibilityLayer:
             return asyncio.run(self.get_async_session())
         return self.get_sync_session()
 
-    async def execute_async(self, func: Callable, *args, **kwargs) -> Any:
+    async def execute_async(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute an async function.
 
         Args:
@@ -104,7 +104,7 @@ class DatabaseCompatibilityLayer:
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, func, *args, **kwargs)
 
-    def execute_sync(self, func: Callable, *args, **kwargs) -> Any:
+    def execute_sync(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute a sync function.
 
         Args:
@@ -121,7 +121,7 @@ class DatabaseCompatibilityLayer:
         else:
             return func(*args, **kwargs)
 
-    def execute(self, func: Callable, *args, **kwargs) -> Any:
+    def execute(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute function in appropriate mode.
 
         Args:
@@ -137,7 +137,7 @@ class DatabaseCompatibilityLayer:
                 return asyncio.run(func(*args, **kwargs))
             else:
                 # Wrap sync function for async execution
-                async def wrapper():
+                async def wrapper() -> Any:
                     loop = asyncio.get_event_loop()
                     return await loop.run_in_executor(None, func, *args, **kwargs)
 
@@ -151,7 +151,7 @@ class DatabaseCompatibilityLayer:
         asyncio.run(self.async_engine.dispose())
 
 
-def compatibility_wrapper(use_async: bool = True):
+def compatibility_wrapper(use_async: bool = True) -> Callable[..., Any]:
     """Decorator to make functions compatible with both sync and async modes.
 
     Args:
@@ -161,12 +161,12 @@ def compatibility_wrapper(use_async: bool = True):
         Decorator function
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             if use_async and not inspect.iscoroutinefunction(func):
                 # Convert sync function to async
-                async def async_wrapper():
+                async def async_wrapper() -> Any:
                     loop = asyncio.get_event_loop()
                     return await loop.run_in_executor(None, func, *args, **kwargs)
 
@@ -182,7 +182,7 @@ def compatibility_wrapper(use_async: bool = True):
         if inspect.iscoroutinefunction(func):
 
             @wraps(func)
-            async def async_wrapper(*args, **kwargs):
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 if use_async:
                     return await func(*args, **kwargs)
                 else:
@@ -207,7 +207,7 @@ class RepositoryCompatibilityMixin:
         """
         self.compat = compatibility_layer
 
-    async def _execute_async(self, operation: Callable, *args, **kwargs) -> Any:
+    async def _execute_async(self, operation: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute an operation asynchronously.
 
         Args:
@@ -224,7 +224,7 @@ class RepositoryCompatibilityMixin:
             await session.commit()
             return result
 
-    def _execute_sync(self, operation: Callable, *args, **kwargs) -> Any:
+    def _execute_sync(self, operation: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute an operation synchronously.
 
         Args:
@@ -241,7 +241,7 @@ class RepositoryCompatibilityMixin:
             session.commit()
             return result
 
-    def execute(self, operation: Callable, *args, **kwargs) -> Any:
+    def execute(self, operation: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute operation in appropriate mode.
 
         Args:

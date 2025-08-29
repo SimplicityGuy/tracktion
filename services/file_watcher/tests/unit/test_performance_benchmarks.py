@@ -14,7 +14,7 @@ from src.async_metadata_extractor import AsyncMetadataExtractor
 class TestPerformanceBenchmarks:
     """Performance benchmarks for async file operations."""
 
-    async def test_1000_concurrent_file_events(self):
+    async def test_1000_concurrent_file_events(self) -> None:
         """Test handling 1000+ concurrent file events."""
         # Create mock publisher that tracks timing
         mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
@@ -74,7 +74,7 @@ class TestPerformanceBenchmarks:
             print(f"  95th percentile response: {p95_response:.1f}ms")
             assert p95_response < 100, f"95th percentile {p95_response:.1f}ms exceeds 100ms target"
 
-    async def test_bulk_scan_performance(self):
+    async def test_bulk_scan_performance(self) -> None:
         """Test performance of bulk file scanning."""
         # Create temporary directory with many files
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -119,7 +119,7 @@ class TestPerformanceBenchmarks:
             print(f"  Scan time: {scan_time:.2f}s")
             print(f"  Scan rate: {scan_rate:.1f} files/second")
 
-    async def test_metadata_extraction_performance(self):
+    async def test_metadata_extraction_performance(self) -> None:
         """Test performance of concurrent metadata extraction."""
         # Create test files
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -159,7 +159,7 @@ class TestPerformanceBenchmarks:
             finally:
                 extractor.shutdown()
 
-    async def test_resource_usage_optimization(self):
+    async def test_resource_usage_optimization(self) -> None:
         """Test resource usage with concurrent operations."""
         # Track memory and CPU usage indirectly through timing
         mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
@@ -202,7 +202,7 @@ class TestPerformanceBenchmarks:
         # Verify that higher concurrency improves performance (to a point)
         assert results[1]["throughput"] > results[0]["throughput"], "Higher concurrency should improve throughput"
 
-    async def test_response_time_percentiles(self):
+    async def test_response_time_percentiles(self) -> None:
         """Test response time percentiles under load."""
         mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
         response_times = []

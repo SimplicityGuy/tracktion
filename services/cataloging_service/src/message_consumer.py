@@ -25,7 +25,7 @@ class CatalogingMessageConsumer:
         self.queue: aio_pika.Queue | None = None
 
         # Database setup
-        self.db_manager = AsyncDatabaseManager(database_url=self.config.database.url)
+        self.db_manager = AsyncDatabaseManager()
         self.catalog_service = AsyncCatalogService(self.db_manager)
 
     async def connect(self) -> None:

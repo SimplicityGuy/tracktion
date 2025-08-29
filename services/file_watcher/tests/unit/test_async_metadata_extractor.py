@@ -4,6 +4,7 @@ import asyncio
 import os
 import tempfile
 import time
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest_asyncio
@@ -20,7 +21,7 @@ async def metadata_extractor():
 
 
 @pytest_asyncio.fixture
-async def test_audio_file():
+async def test_audio_file() -> str:
     """Create a temporary test file."""
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
         f.write(b"fake audio data")
@@ -38,7 +39,7 @@ async def test_audio_file():
 class TestAsyncMetadataExtractor:
     """Test async metadata extraction."""
 
-    async def test_extract_metadata_basic(self, metadata_extractor, test_audio_file):
+    async def test_extract_metadata_basic(self, metadata_extractor: Any, test_audio_file: str) -> None:
         """Test basic metadata extraction."""
         metadata = await metadata_extractor.extract_metadata(test_audio_file)
 
@@ -50,7 +51,7 @@ class TestAsyncMetadataExtractor:
         assert metadata["file_name"].endswith(".mp3")
         assert metadata["file_size"] > 0
 
-    async def test_metadata_caching(self, metadata_extractor, test_audio_file):
+    async def test_metadata_caching(self, metadata_extractor: Any, test_audio_file: str) -> None:
         """Test that metadata is cached properly."""
         # First extraction
         metadata1 = await metadata_extractor.extract_metadata(test_audio_file)
@@ -64,7 +65,7 @@ class TestAsyncMetadataExtractor:
         assert cache_size2 == 1  # Cache size shouldn't increase
         assert metadata1 == metadata2
 
-    async def test_batch_extraction(self, metadata_extractor):
+    async def test_batch_extraction(self, metadata_extractor: Any) -> None:
         """Test batch metadata extraction."""
         # Create multiple test files
         test_files = []
@@ -91,7 +92,7 @@ class TestAsyncMetadataExtractor:
                 except Exception:
                     pass
 
-    async def test_concurrent_extraction(self, metadata_extractor):
+    async def test_concurrent_extraction(self, metadata_extractor: Any) -> None:
         """Test concurrent metadata extraction."""
         # Create test files
         test_files = []
@@ -123,7 +124,7 @@ class TestAsyncMetadataExtractor:
                 except Exception:
                     pass
 
-    async def test_error_handling(self, metadata_extractor):
+    async def test_error_handling(self, metadata_extractor: Any) -> None:
         """Test error handling for non-existent files."""
         metadata = await metadata_extractor.extract_metadata("/nonexistent/file.mp3")
 
@@ -131,7 +132,7 @@ class TestAsyncMetadataExtractor:
         assert "error" in metadata
         assert metadata["file_path"] == "/nonexistent/file.mp3"
 
-    async def test_cache_operations(self, metadata_extractor, test_audio_file):
+    async def test_cache_operations(self, metadata_extractor: Any, test_audio_file: str) -> None:
         """Test cache clear and size operations."""
         # Add to cache
         await metadata_extractor.extract_metadata(test_audio_file)
@@ -145,7 +146,9 @@ class TestAsyncMetadataExtractor:
         assert size_after == 0
 
     @patch("src.async_metadata_extractor.File")
-    async def test_mutagen_metadata_extraction(self, mock_file, metadata_extractor, test_audio_file):
+    async def test_mutagen_metadata_extraction(
+        self, mock_file: Any, metadata_extractor: Any, test_audio_file: str
+    ) -> None:
         """Test extraction with mutagen metadata."""
         # Mock mutagen File object
         mock_audio = MagicMock()
@@ -178,7 +181,7 @@ class TestAsyncMetadataExtractor:
 class TestAsyncMetadataProgressTracker:
     """Test progress tracking for bulk operations."""
 
-    async def test_progress_tracking(self):
+    async def test_progress_tracking(self) -> None:
         """Test basic progress tracking."""
         tracker = AsyncMetadataProgressTracker()
 
@@ -200,7 +203,7 @@ class TestAsyncMetadataProgressTracker:
         assert progress["failed"] == 5
         assert progress["progress_pct"] == 55.0
 
-    async def test_concurrent_progress_updates(self):
+    async def test_concurrent_progress_updates(self) -> None:
         """Test concurrent progress updates."""
         tracker = AsyncMetadataProgressTracker()
         await tracker.start_batch(200)
