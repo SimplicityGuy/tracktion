@@ -5,6 +5,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -77,7 +78,7 @@ class TestEdgeCases:
             mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
             call_count = 0
 
-            async def count_calls(*args, **kwargs):
+            async def count_calls(*args: Any, **kwargs: Any) -> bool:
                 nonlocal call_count
                 call_count += 1
                 await asyncio.sleep(0.01)
@@ -149,7 +150,7 @@ class TestEdgeCases:
         mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
         published_events = []
 
-        async def capture_event(*args, **kwargs):
+        async def capture_event(*args: Any, **kwargs: Any) -> bool:
             published_events.append(kwargs)
             # Delete file after first event
             if os.path.exists(temp_file):
@@ -220,7 +221,7 @@ class TestEdgeCases:
             mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
             event_count = 0
 
-            async def count_events(*args, **kwargs):
+            async def count_events(*args: Any, **kwargs: Any) -> bool:
                 nonlocal event_count
                 event_count += 1
                 return True
@@ -254,7 +255,7 @@ class TestEdgeCases:
             mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
             processed_files = []
 
-            async def capture_files(*args, **kwargs):
+            async def capture_files(*args: Any, **kwargs: Any) -> bool:
                 if "file_path" in kwargs:
                     processed_files.append(kwargs["file_path"])
                 return True

@@ -1,7 +1,7 @@
 """Async storage handler for analysis service metadata."""
 
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, cast
 from uuid import UUID
 
 from neo4j import AsyncGraphDatabase
@@ -205,7 +205,7 @@ class AsyncRedisCache:
         try:
             import json
 
-            return await self.redis.setex(f"analysis:{key}", ttl, json.dumps(result))
+            return cast(bool, await self.redis.setex(f"analysis:{key}", ttl, json.dumps(result)))
         except Exception as e:
             logger.error(f"Error caching analysis result: {e}")
             return False
@@ -243,7 +243,7 @@ class AsyncRedisCache:
             keys.append(key)
 
         if keys:
-            return await self.redis.delete(*keys)
+            return cast(int, await self.redis.delete(*keys))
         return 0
 
 
@@ -348,7 +348,7 @@ class AsyncStorageHandler:
         cache_key = f"{recording_id}:similar"
         cached = await self.redis_cache.get_analysis_result(cache_key)
         if cached:
-            return cached.get("recordings", [])
+            return cast(List[Dict[str, Any]], cached.get("recordings", []))
 
         # Query Neo4j for similar recordings
         similar = await self.neo4j_repo.find_similar_recordings(recording_id=recording_id, limit=limit)

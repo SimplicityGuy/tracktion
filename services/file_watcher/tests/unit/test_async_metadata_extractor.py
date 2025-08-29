@@ -4,6 +4,7 @@ import asyncio
 import os
 import tempfile
 import time
+from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -13,7 +14,7 @@ from src.async_metadata_extractor import AsyncMetadataExtractor, AsyncMetadataPr
 
 
 @pytest_asyncio.fixture
-async def metadata_extractor():
+async def metadata_extractor() -> AsyncGenerator[AsyncMetadataExtractor]:
     """Create a metadata extractor for testing."""
     extractor = AsyncMetadataExtractor(max_workers=2)
     yield extractor
@@ -21,7 +22,7 @@ async def metadata_extractor():
 
 
 @pytest_asyncio.fixture
-async def test_audio_file() -> str:
+async def test_audio_file() -> AsyncGenerator[str]:
     """Create a temporary test file."""
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
         f.write(b"fake audio data")
@@ -209,7 +210,7 @@ class TestAsyncMetadataProgressTracker:
         await tracker.start_batch(200)
 
         # Simulate concurrent updates
-        async def update_batch(count: int, success: bool):
+        async def update_batch(count: int, success: bool) -> None:
             for _ in range(count):
                 await tracker.update_progress(success=success)
 

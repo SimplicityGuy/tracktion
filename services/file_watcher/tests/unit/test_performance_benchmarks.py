@@ -4,6 +4,7 @@ import asyncio
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from src.async_file_watcher import AsyncFileEventHandler, AsyncFileWatcherService
@@ -20,7 +21,7 @@ class TestPerformanceBenchmarks:
         mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
         event_times = []
 
-        async def track_publish(*args, **kwargs):
+        async def track_publish(*args: Any, **kwargs: Any) -> bool:
             event_times.append(time.time())
             await asyncio.sleep(0.001)  # Simulate network latency
             return True
@@ -91,7 +92,7 @@ class TestPerformanceBenchmarks:
             mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
             publish_count = 0
 
-            async def count_publishes(*args, **kwargs):
+            async def count_publishes(*args: Any, **kwargs: Any) -> bool:
                 nonlocal publish_count
                 publish_count += 1
                 return True
@@ -207,7 +208,7 @@ class TestPerformanceBenchmarks:
         mock_publisher = AsyncMock(spec=AsyncMessagePublisher)
         response_times = []
 
-        async def measure_response(*args, **kwargs):
+        async def measure_response(*args: Any, **kwargs: Any) -> bool:
             start = time.time()
             await asyncio.sleep(0.005)  # Simulate processing
             response_times.append((time.time() - start) * 1000)  # ms

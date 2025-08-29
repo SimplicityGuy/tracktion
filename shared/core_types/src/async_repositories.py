@@ -1,7 +1,7 @@
 """Async repository pattern implementations for database operations."""
 
 import logging
-from typing import List, Optional, Dict, Any, AsyncGenerator
+from typing import List, Optional, Dict, Any, AsyncGenerator, cast
 from uuid import UUID
 
 from sqlalchemy import select, update, delete, String
@@ -59,7 +59,7 @@ class AsyncRecordingRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Recording).where(Recording.id == recording_id)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+            return cast(Optional[Recording], result.scalar_one_or_none())
 
     async def get_by_file_path(self, file_path: str) -> Optional[Recording]:
         """Get recording by file path.
@@ -73,7 +73,7 @@ class AsyncRecordingRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Recording).where(Recording.file_path == file_path)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+            return cast(Optional[Recording], result.scalar_one_or_none())
 
     async def get_by_hash(self, sha256_hash: str) -> Optional[Recording]:
         """Get recording by SHA256 hash.
@@ -87,7 +87,7 @@ class AsyncRecordingRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Recording).where(Recording.sha256_hash == sha256_hash)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+            return cast(Optional[Recording], result.scalar_one_or_none())
 
     async def get_all(self, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Recording]:
         """Get all recordings with optional pagination.
@@ -122,7 +122,7 @@ class AsyncRecordingRepository:
             stmt = update(Recording).where(Recording.id == recording_id).values(**kwargs).returning(Recording)
             result = await session.execute(stmt)
             await session.commit()
-            return result.scalar_one_or_none()
+            return cast(Optional[Recording], result.scalar_one_or_none())
 
     async def delete(self, recording_id: UUID) -> bool:
         """Delete a recording.
@@ -137,7 +137,7 @@ class AsyncRecordingRepository:
             stmt = delete(Recording).where(Recording.id == recording_id)
             result = await session.execute(stmt)
             await session.commit()
-            return result.rowcount > 0
+            return cast(bool, result.rowcount > 0)
 
     async def batch_create(self, recordings: List[Dict[str, Any]]) -> List[Recording]:
         """Create multiple recordings in a batch.
@@ -213,7 +213,7 @@ class AsyncMetadataRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Metadata).where(Metadata.recording_id == recording_id, Metadata.key == key)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+            return cast(Optional[Metadata], result.scalar_one_or_none())
 
     async def update(self, metadata_id: int, value: str) -> Optional[Metadata]:
         """Update a metadata value.
@@ -229,7 +229,7 @@ class AsyncMetadataRepository:
             stmt = update(Metadata).where(Metadata.id == metadata_id).values(value=value).returning(Metadata)
             result = await session.execute(stmt)
             await session.commit()
-            return result.scalar_one_or_none()
+            return cast(Optional[Metadata], result.scalar_one_or_none())
 
     async def delete(self, metadata_id: int) -> bool:
         """Delete a metadata entry.
@@ -244,7 +244,7 @@ class AsyncMetadataRepository:
             stmt = delete(Metadata).where(Metadata.id == metadata_id)
             result = await session.execute(stmt)
             await session.commit()
-            return result.rowcount > 0
+            return cast(bool, result.rowcount > 0)
 
     async def batch_create(self, recording_id: UUID, metadata_dict: Dict[str, str]) -> List[Metadata]:
         """Create multiple metadata entries for a recording.
@@ -309,7 +309,7 @@ class AsyncTracklistRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Tracklist).where(Tracklist.recording_id == recording_id)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+            return cast(Optional[Tracklist], result.scalar_one_or_none())
 
     async def get_with_recording(self, tracklist_id: int) -> Optional[Tracklist]:
         """Get tracklist with its associated recording.
@@ -323,7 +323,7 @@ class AsyncTracklistRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Tracklist).options(selectinload(Tracklist.recording)).where(Tracklist.id == tracklist_id)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+            return cast(Optional[Tracklist], result.scalar_one_or_none())
 
     async def update(self, tracklist_id: int, **kwargs: Any) -> Optional[Tracklist]:
         """Update a tracklist.
@@ -339,7 +339,7 @@ class AsyncTracklistRepository:
             stmt = update(Tracklist).where(Tracklist.id == tracklist_id).values(**kwargs).returning(Tracklist)
             result = await session.execute(stmt)
             await session.commit()
-            return result.scalar_one_or_none()
+            return cast(Optional[Tracklist], result.scalar_one_or_none())
 
     async def delete(self, tracklist_id: int) -> bool:
         """Delete a tracklist.
@@ -354,7 +354,7 @@ class AsyncTracklistRepository:
             stmt = delete(Tracklist).where(Tracklist.id == tracklist_id)
             result = await session.execute(stmt)
             await session.commit()
-            return result.rowcount > 0
+            return cast(bool, result.rowcount > 0)
 
     async def search_by_track(self, track_name: str) -> List[Tracklist]:
         """Search tracklists by track name.
