@@ -150,7 +150,7 @@ class LifecycleEventConsumer:
             message = json.loads(body.decode("utf-8"))
             event_type = message.get("event_type", "")
             file_path = message.get("file_path", "")
-            correlation_id = message.get("correlation_id", "")
+            correlation_id = message.get("correlation_id", properties.correlation_id)
 
             logger.info(
                 f"Processing lifecycle event: {event_type} for {file_path}",
@@ -160,14 +160,16 @@ class LifecycleEventConsumer:
             # Handle different event types
             if event_type == "deleted":
                 self.handle_file_deleted(file_path, correlation_id)
-            elif event_type == "moved":
+            elif event_type == "moved" or event_type == "renamed":
+                # Both moved and renamed events use old_path field
                 old_path = message.get("old_path", "")
-                new_path = message.get("new_path", "")
-                self.handle_file_moved(old_path, new_path, correlation_id)
-            elif event_type == "renamed":
-                old_path = message.get("old_path", "")
-                new_path = message.get("new_path", "")
-                self.handle_file_renamed(old_path, new_path, correlation_id)
+                if old_path:
+                    self.handle_file_moved(old_path, file_path, correlation_id)
+                else:
+                    logger.warning(
+                        f"Move/rename event missing old_path: {message}",
+                        extra={"correlation_id": correlation_id},
+                    )
 
             # Acknowledge message
             channel.basic_ack(delivery_tag=method.delivery_tag)
@@ -201,7 +203,7 @@ class LifecycleEventConsumer:
         self.remove_neo4j_data(file_path, correlation_id)
 
     def handle_file_moved(self, old_path: str, new_path: str, correlation_id: str) -> None:
-        """Handle file move event.
+        """Handle file move/rename event.
 
         Args:
             old_path: Original file path
@@ -209,7 +211,7 @@ class LifecycleEventConsumer:
             correlation_id: Correlation ID for tracking
         """
         logger.info(
-            f"Handling file move: {old_path} -> {new_path}",
+            f"Handling file move/rename: {old_path} -> {new_path}",
             extra={"correlation_id": correlation_id},
         )
 
@@ -217,28 +219,19 @@ class LifecycleEventConsumer:
         if self.cache:
             self.clear_cache_entries(old_path, correlation_id)
 
-        # Update Neo4j data with new path (if needed)
-        # For now, we'll let the next analysis handle the new path
+        # Update Neo4j data with new path
+        self.update_neo4j_path(old_path, new_path, correlation_id)
 
     def handle_file_renamed(self, old_path: str, new_path: str, correlation_id: str) -> None:
-        """Handle file rename event.
+        """Handle file rename event (legacy method for compatibility).
 
         Args:
             old_path: Original file path
             new_path: New file path
             correlation_id: Correlation ID for tracking
         """
-        logger.info(
-            f"Handling file rename: {old_path} -> {new_path}",
-            extra={"correlation_id": correlation_id},
-        )
-
-        # Clear old cache entries (new ones will be created on next analysis)
-        if self.cache:
-            self.clear_cache_entries(old_path, correlation_id)
-
-        # Update Neo4j data with new path (if needed)
-        # For now, we'll let the next analysis handle the new path
+        # Just delegate to handle_file_moved since they do the same thing
+        self.handle_file_moved(old_path, new_path, correlation_id)
 
     def clear_cache_entries(self, file_path: str, correlation_id: str) -> None:
         """Clear all cache entries for a file.
@@ -322,6 +315,45 @@ class LifecycleEventConsumer:
         except Exception as e:
             logger.error(
                 f"Failed to remove Neo4j data for {file_path}: {e}",
+                extra={"correlation_id": correlation_id},
+            )
+
+    def update_neo4j_path(self, old_path: str, new_path: str, correlation_id: str) -> None:
+        """Update Neo4j recording path after move/rename.
+
+        Args:
+            old_path: Original file path
+            new_path: New file path
+            correlation_id: Correlation ID for tracking
+        """
+        try:
+            if not self.storage_handler or not self.storage_handler.neo4j_repo:
+                logger.warning(
+                    "Neo4j repository not initialized, skipping path update",
+                    extra={"correlation_id": correlation_id},
+                )
+                return
+
+            # Update the file path in Neo4j
+            # This would require adding an update method to the Neo4j repository
+            # For now, we'll delete the old and let the next analysis recreate
+            logger.info(
+                f"Updating Neo4j path from {old_path} to {new_path}",
+                extra={"correlation_id": correlation_id},
+            )
+
+            # Remove old data (new will be created on next analysis)
+            deleted = self.storage_handler.neo4j_repo.delete_recording_by_filepath(old_path)
+
+            if deleted:
+                logger.info(
+                    f"Removed old Neo4j data for {old_path}, new data will be created on next analysis",
+                    extra={"correlation_id": correlation_id},
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to update Neo4j path from {old_path} to {new_path}: {e}",
                 extra={"correlation_id": correlation_id},
             )
 

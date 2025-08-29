@@ -181,12 +181,13 @@ class TestLifecycleEventConsumer(unittest.TestCase):
 
     @patch("services.analysis_service.src.lifecycle_consumer.pika.BlockingConnection")
     def test_process_message_moved_event(self, mock_connection: Mock) -> None:
-        """Test processing of moved event message."""
+        """Test processing of moved event message with new structure."""
         # Set up mock channel
         mock_channel = MagicMock()
         mock_method = MagicMock()
         mock_method.delivery_tag = 123
         mock_properties = MagicMock()
+        mock_properties.correlation_id = None
 
         # Mock cache
         mock_cache = MagicMock()
@@ -200,12 +201,21 @@ class TestLifecycleEventConsumer(unittest.TestCase):
         mock_cache.MOOD_PREFIX = "mood"
         self.consumer.cache = mock_cache
 
-        # Create message body
+        # Mock Neo4j for update
+        mock_neo4j_repo = MagicMock()
+        mock_neo4j_repo.delete_recording_by_filepath.return_value = True
+        assert self.consumer.storage_handler is not None
+        self.consumer.storage_handler.neo4j_repo = mock_neo4j_repo
+
+        # Create message body with new structure
         message = {
             "event_type": "moved",
-            "old_path": "/old/path/file.mp3",
-            "new_path": "/new/path/file.mp3",
-            "correlation_id": "test-correlation-id",
+            "file_path": "/new/path/file.mp3",  # New path is in file_path
+            "old_path": "/old/path/file.mp3",  # Old path is in old_path
+            "timestamp": "2025-08-28T10:00:00Z",
+            "instance_id": "watcher1",
+            "sha256_hash": "hash123",
+            "xxh128_hash": "hash456",
         }
         body = json.dumps(message).encode("utf-8")
 
@@ -217,6 +227,9 @@ class TestLifecycleEventConsumer(unittest.TestCase):
 
         # Verify cache cleanup for old path
         mock_cache._generate_file_hash.assert_called_once_with("/old/path/file.mp3")
+
+        # Verify Neo4j update (currently deletes old)
+        mock_neo4j_repo.delete_recording_by_filepath.assert_called_once_with("/old/path/file.mp3")
 
     @patch("services.analysis_service.src.lifecycle_consumer.pika.BlockingConnection")
     def test_process_message_invalid_json(self, mock_connection: Mock) -> None:
