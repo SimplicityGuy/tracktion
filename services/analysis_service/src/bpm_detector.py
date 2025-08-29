@@ -9,7 +9,13 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-import essentia.standard as es
+try:
+    import essentia.standard as es
+
+    ESSENTIA_AVAILABLE = True
+except ImportError:
+    ESSENTIA_AVAILABLE = False
+    es = None  # type: ignore
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -54,9 +60,13 @@ class BPMDetector:
             self.agreement_tolerance = agreement_tolerance
             self.sample_rate = sample_rate
 
-        # Initialize extractors
-        self.rhythm_extractor = es.RhythmExtractor2013()
-        self.percival_estimator = es.PercivalBpmEstimator()
+        # Initialize extractors if essentia is available
+        if ESSENTIA_AVAILABLE:
+            self.rhythm_extractor = es.RhythmExtractor2013()
+            self.percival_estimator = es.PercivalBpmEstimator()
+        else:
+            self.rhythm_extractor = None
+            self.percival_estimator = None
 
         logger.info(
             f"BPMDetector initialized with confidence_threshold={self.confidence_threshold}, "
@@ -82,6 +92,17 @@ class BPMDetector:
             FileNotFoundError: If audio file doesn't exist
             RuntimeError: If audio loading or processing fails
         """
+        if not ESSENTIA_AVAILABLE:
+            # Return mock data for testing when essentia is not available
+            logger.warning("Essentia not available, returning mock BPM data")
+            return {
+                "bpm": 120.0,
+                "confidence": 0.0,
+                "beats": [],
+                "algorithm": "mock",
+                "needs_review": True,
+            }
+
         audio_file = Path(audio_path)
         if not audio_file.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")

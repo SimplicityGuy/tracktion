@@ -18,6 +18,9 @@ dependencies = [
     "essentia>=2.1b6.dev1389",
     "essentia-tensorflow>=2.1b6.dev1389",
     "numpy>=2.3.2",
+    "aiofiles>=23.0.0",
+    "aiohttp>=3.9.0",
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]
