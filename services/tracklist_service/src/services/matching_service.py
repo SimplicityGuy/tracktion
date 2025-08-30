@@ -366,17 +366,32 @@ class MatchingService:
                 title=track_entry.title,
                 remix=track_entry.remix,
                 label=track_entry.label,
-                bpm=None,  # Add required bpm field
+                bpm=None,
+                key=None,
+                genre=None,
+                notes=None,
             )
             tracks.append(track)
 
         # Create metadata with valid fields
         metadata = TracklistMetadata(
-            duration_minutes=None, play_count=None, favorite_count=None, comment_count=None, tags=[]
+            recording_type=None,
+            duration_minutes=None,
+            play_count=None,
+            favorite_count=None,
+            comment_count=None,
+            tags=[],
+            download_url=None,
+            stream_url=None,
+            soundcloud_url=None,
+            mixcloud_url=None,
+            youtube_url=None,
         )
 
         return ScrapedTracklist(
             url="",
+            venue=None,
+            source_html_hash=None,
             dj_name=tracklist.tracks[0].artist if tracklist.tracks else "Unknown DJ",
             date=None,
             event_name=None,

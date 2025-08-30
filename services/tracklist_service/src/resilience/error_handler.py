@@ -9,7 +9,7 @@ import functools
 import logging
 import time
 from enum import Enum
-from typing import Any, Callable, Optional, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ T = TypeVar("T")
 class TracklistError(Exception):
     """Base exception for tracklist service errors."""
 
-    def __init__(self, message: str, error_code: Optional[str] = None, details: Optional[dict] = None):
+    def __init__(self, message: str, error_code: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         """Initialize tracklist error."""
         super().__init__(message)
         self.error_code = error_code or "TRACKLIST_ERROR"
@@ -29,7 +29,7 @@ class TracklistError(Exception):
 class TracklistNotFoundError(TracklistError):
     """Raised when a tracklist cannot be found."""
 
-    def __init__(self, url: str, details: Optional[dict] = None):
+    def __init__(self, url: str, details: Optional[Dict[str, Any]] = None):
         """Initialize not found error."""
         super().__init__(
             f"Tracklist not found at URL: {url}",
@@ -41,7 +41,7 @@ class TracklistNotFoundError(TracklistError):
 class ParseError(TracklistError):
     """Raised when tracklist parsing fails."""
 
-    def __init__(self, message: str, element: Optional[str] = None, details: Optional[dict] = None):
+    def __init__(self, message: str, element: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         """Initialize parse error."""
         error_details = details or {}
         if element:
@@ -57,7 +57,7 @@ class ParseError(TracklistError):
 class ScrapingError(TracklistError):
     """Raised when scraping fails."""
 
-    def __init__(self, message: str, url: Optional[str] = None, details: Optional[dict] = None):
+    def __init__(self, message: str, url: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         """Initialize scraping error."""
         error_details = details or {}
         if url:
@@ -73,7 +73,7 @@ class ScrapingError(TracklistError):
 class RateLimitError(TracklistError):
     """Raised when rate limit is exceeded."""
 
-    def __init__(self, retry_after: Optional[int] = None, details: Optional[dict] = None):
+    def __init__(self, retry_after: Optional[int] = None, details: Optional[Dict[str, Any]] = None):
         """Initialize rate limit error."""
         error_details = details or {}
         if retry_after:
@@ -215,8 +215,8 @@ def retry(
     max_attempts: int = 3,
     delay: float = 1.0,
     backoff: float = 2.0,
-    exceptions: tuple = (Exception,),
-) -> Callable:
+    exceptions: Tuple[Type[Exception], ...] = (Exception,),
+) -> Callable[..., Any]:
     """
     Decorator for retry logic with exponential backoff.
 
@@ -230,7 +230,7 @@ def retry(
         Decorated function
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             last_exception = None
@@ -264,8 +264,8 @@ def async_retry(
     max_attempts: int = 3,
     delay: float = 1.0,
     backoff: float = 2.0,
-    exceptions: tuple = (Exception,),
-) -> Callable:
+    exceptions: Tuple[Type[Exception], ...] = (Exception,),
+) -> Callable[..., Any]:
     """
     Decorator for async retry logic with exponential backoff.
 
@@ -279,7 +279,7 @@ def async_retry(
         Decorated function
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             last_exception = None
@@ -313,7 +313,7 @@ class PartialExtractor:
     """Helper for partial data extraction on parse errors."""
 
     @staticmethod
-    def extract_tracks_partial(soup: Any, max_errors: int = 5) -> list:
+    def extract_tracks_partial(soup: Any, max_errors: int = 5) -> List[Dict[str, Any]]:
         """
         Extract tracks with partial failure tolerance.
 
@@ -361,7 +361,7 @@ def with_correlation_id(correlation_id: Optional[str] = None) -> Callable:
         Decorated function
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             if correlation_id:
@@ -384,7 +384,7 @@ class HealthCheck:
 
     def __init__(self) -> None:
         """Initialize health check."""
-        self.checks: dict = {}
+        self.checks: Dict[str, Callable[[], bool]] = {}
 
     def register_check(self, name: str, check_func: Callable[[], bool]) -> None:
         """
@@ -396,7 +396,7 @@ class HealthCheck:
         """
         self.checks[name] = check_func
 
-    async def run_checks(self) -> dict:
+    async def run_checks(self) -> Dict[str, Any]:
         """
         Run all health checks.
 

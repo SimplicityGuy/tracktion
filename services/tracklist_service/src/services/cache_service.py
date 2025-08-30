@@ -176,7 +176,7 @@ class CacheService:
             config: Cache configuration
         """
         self.config = config
-        self.redis_client: Optional[Redis] = None
+        self.redis_client: Optional[Redis[bytes]] = None
         self.memory_cache = MemoryCache(max_size=config.memory_cache_max_size, default_ttl=config.memory_cache_ttl)
         self.metrics = CacheMetrics()
         self._redis_available = False
@@ -291,7 +291,7 @@ class CacheService:
         try:
             # Delete all variants
             deleted = await self.redis_client.delete(key, f"{key}:gz", f"{key}:meta")
-            return bool(deleted > 0)  # type: ignore[no-any-return]
+            return bool(deleted > 0)
 
         except Exception as e:
             logger.error(f"Redis delete failed for key {key}: {e}")
@@ -496,7 +496,7 @@ class CacheService:
                 deleted = await self.redis_client.delete(*keys)
                 self.metrics.deletes += deleted
                 logger.info(f"Invalidated {deleted} cache entries for tracklist {tracklist_id}")
-                return int(deleted)  # type: ignore[no-any-return]
+                return int(deleted)
 
             return 0
 

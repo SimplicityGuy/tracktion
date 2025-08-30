@@ -35,7 +35,7 @@ class ParserVersion:
     metadata: Dict[str, Any] = field(default_factory=dict)
     active: bool = True
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
             "version": self.version,
@@ -150,7 +150,7 @@ class AdaptiveParser:
                 strategies=self._config.get("strategies", {}),
             )
 
-    def _get_default_config(self) -> dict:
+    def _get_default_config(self) -> Dict[str, Any]:
         """Get default parser configuration."""
         return {
             "version": "1.0.0",
@@ -539,7 +539,7 @@ class AdaptiveParser:
 
         return strategies
 
-    def _create_strategy(self, config: dict) -> Optional[ExtractionStrategy]:
+    def _create_strategy(self, config: Dict[str, Any]) -> Optional[ExtractionStrategy]:
         """Create extraction strategy from configuration.
 
         Args:

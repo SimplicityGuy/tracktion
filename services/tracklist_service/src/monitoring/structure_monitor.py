@@ -50,7 +50,7 @@ class ChangeReport:
         """Check if any changes are breaking."""
         return any(c.impact_score > 0.7 for c in self.changes)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert report to dictionary for storage/transmission."""
         return {
             "page_type": self.page_type,
@@ -75,7 +75,7 @@ class ChangeReport:
 class StructureMonitor:
     """Monitor HTML structure changes for 1001tracklists pages."""
 
-    def __init__(self, redis_client: Optional[redis.Redis] = None, config_path: Optional[Path] = None):
+    def __init__(self, redis_client: Optional[redis.Redis[bytes]] = None, config_path: Optional[Path] = None):
         """Initialize structure monitor.
 
         Args:
@@ -95,7 +95,7 @@ class StructureMonitor:
                 return config
         return self._get_default_selectors()
 
-    def _get_default_selectors(self) -> dict:
+    def _get_default_selectors(self) -> Dict[str, Any]:
         """Get default selector configuration for 1001tracklists."""
         return {
             "search": {
@@ -115,7 +115,7 @@ class StructureMonitor:
             },
         }
 
-    def capture_structure_fingerprint(self, html: str, page_type: str) -> dict:
+    def capture_structure_fingerprint(self, html: str, page_type: str) -> Dict[str, Any]:
         """Capture structural fingerprint of HTML page.
 
         Args:
@@ -148,7 +148,7 @@ class StructureMonitor:
 
         return fingerprint
 
-    def _analyze_structure(self, soup: BeautifulSoup) -> dict:
+    def _analyze_structure(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """Analyze overall HTML structure."""
         structure: Dict[str, Any] = {
             "tag_counts": {},
@@ -192,7 +192,7 @@ class StructureMonitor:
 
         return structure
 
-    def _analyze_selectors(self, soup: BeautifulSoup, selectors: dict) -> dict:
+    def _analyze_selectors(self, soup: BeautifulSoup, selectors: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze specific selectors for a page type."""
         results: Dict[str, Dict[str, Any]] = {}
 
@@ -209,7 +209,7 @@ class StructureMonitor:
 
         return results
 
-    def _get_element_attributes(self, element: Tag) -> dict:
+    def _get_element_attributes(self, element: Tag) -> Dict[str, Any]:
         """Get relevant attributes from an element."""
         if not element:
             return {}
@@ -251,7 +251,7 @@ class StructureMonitor:
 
         return None
 
-    def compare_structures(self, current: dict, baseline: dict) -> ChangeReport:
+    def compare_structures(self, current: dict, baseline: Dict[str, Any]) -> ChangeReport:
         """Compare current structure with baseline.
 
         Args:
@@ -352,7 +352,7 @@ class StructureMonitor:
 
         return report
 
-    async def store_baseline(self, page_type: str, structure: dict) -> None:
+    async def store_baseline(self, page_type: str, structure: Dict[str, Any]) -> None:
         """Store baseline structure in Redis.
 
         Args:

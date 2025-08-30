@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class SyncCacheService:
     """Service for caching synchronization state and managing distributed locks."""
 
-    def __init__(self, redis_client: Optional[Redis] = None):
+    def __init__(self, redis_client: Optional[Redis[str]] = None):
         """Initialize sync cache service.
 
         Args:
@@ -51,7 +51,7 @@ class SyncCacheService:
 
         if not self.redis_client:
             try:
-                self.redis_client = redis.Redis(
+                self.redis_client = redis.Redis[str](
                     host=self.config.cache.redis_host,
                     port=self.config.cache.redis_port,
                     db=self.config.cache.redis_db,
@@ -167,7 +167,7 @@ class SyncCacheService:
             result = await self.redis_client.delete(key)
 
             logger.debug(f"Invalidated sync state for tracklist {tracklist_id}")
-            return result > 0
+            return bool(result > 0)
 
         except RedisError as e:
             logger.error(f"Failed to invalidate sync state: {e}")
@@ -254,7 +254,8 @@ class SyncCacheService:
 
         try:
             lock_name = f"{self.SYNC_LOCK_PREFIX}{tracklist_id}"
-            return await self.redis_client.exists(lock_name) > 0
+            result = await self.redis_client.exists(lock_name)
+            return bool(result > 0)
 
         except RedisError as e:
             logger.error(f"Failed to check lock status: {e}")

@@ -274,11 +274,15 @@ class BatchJobQueue:
                     if isinstance(job_data, dict):
                         # Handle both bytes and string keys
                         status_value = None
-                        if b"status" in job_data:
-                            status_value = job_data[b"status"]  # type: ignore[index]
+                        # Check if the keys are bytes or strings
+                        if any(isinstance(k, bytes) for k in job_data.keys()):
+                            # Keys are bytes, so check for b"status"
+                            if b"status" in job_data:  # type: ignore[comparison-overlap]
+                                status_value = job_data[b"status"]  # type: ignore[index]
                         elif "status" in job_data:
                             status_value = job_data["status"]
-                        else:
+
+                        if not status_value:
                             status_value = "pending"
 
                         if isinstance(status_value, bytes):

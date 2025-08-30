@@ -508,7 +508,7 @@ class DuplicatePositionError(ValidationError):
 
     def __init__(
         self,
-        positions: list,
+        positions: list[int],
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Initialize duplicate position error.
@@ -532,7 +532,7 @@ class PublishValidationError(ValidationError):
     def __init__(
         self,
         message: str,
-        issues: list,
+        issues: list[str],
         tracklist_id: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:

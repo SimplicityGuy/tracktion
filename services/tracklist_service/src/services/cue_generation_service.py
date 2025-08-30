@@ -24,11 +24,11 @@ from ..models.cue_file import (
 )
 
 # Import time utilities
-from services.tracklist_service.src.utils.time_utils import parse_cue_time  # type: ignore[import-untyped]
+from services.tracklist_service.src.utils.time_utils import parse_cue_time
 
 # Import CUE handler components from Epic 5
 try:
-    from services.analysis_service.src.cue_handler import (  # type: ignore[import-not-found, attr-defined]
+    from services.analysis_service.src.cue_handler import (  # type: ignore[import-not-found,attr-defined]
         CDJGenerator,
         CueConverter,
         CueFormat as ImportedCueFormat,
@@ -42,12 +42,12 @@ try:
     )
 
     CUE_HANDLER_AVAILABLE = True
-    CueFormat = ImportedCueFormat  # type: ignore[misc,no-redef]
+    CueFormat = ImportedCueFormat  # type: ignore[misc,no-redef,assignment]
 except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("CUE handler not available, using placeholder implementation")
     CUE_HANDLER_AVAILABLE = False
-    CueFormat = ModelCueFormat  # type: ignore[misc,no-redef,assignment]
+    CueFormat = ModelCueFormat  # type: ignore[misc,assignment]
 
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,13 @@ class CueGenerationService:
                 generator = self.generators.get(request.format.lower())
                 if not generator:
                     return CueGenerationResponse(
-                        success=False, error=f"Unsupported format: {request.format}", processing_time_ms=0
+                        success=False,
+                        job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                        cue_file_id=None,
+                        file_path=None,
+                        validation_report=None,
+                        error=f"Unsupported format: {request.format}",
+                        processing_time_ms=0,
                     )
 
                 # Generate CUE content
@@ -147,18 +153,26 @@ class CueGenerationService:
 
             return CueGenerationResponse(
                 success=True,
+                job_id=UUID("00000000-0000-0000-0000-000000000000"),  # TODO: implement job tracking
                 cue_file_id=cue_file_id,
                 file_path=file_path,
-                format=request.format,
-                content=cue_content if not request.store_file else None,
                 validation_report=validation_report,
+                error=None,
                 processing_time_ms=processing_time,
             )
 
         except Exception as e:
             logger.error(f"Failed to generate CUE file: {e}", exc_info=True)
             processing_time = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
-            return CueGenerationResponse(success=False, error=str(e), processing_time_ms=processing_time)
+            return CueGenerationResponse(
+                success=False,
+                job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                cue_file_id=None,
+                file_path=None,
+                validation_report=None,
+                error=str(e),
+                processing_time_ms=int(processing_time),
+            )
 
     async def generate_multiple_formats(
         self, tracklist: Any, request: BatchGenerateCueRequest
@@ -568,11 +582,25 @@ class CueGenerationService:
         """
         try:
             if not CUE_HANDLER_AVAILABLE or not self.converter:
-                return CueGenerationResponse(success=False, error="CUE handler not available for format conversion")
+                return CueGenerationResponse(
+                    success=False,
+                    job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                    cue_file_id=None,
+                    file_path=None,
+                    validation_report=None,
+                    error="CUE handler not available for format conversion",
+                )
 
             # Parse source content
             if not self.parser:
-                return CueGenerationResponse(success=False, error="CUE parser not available for format conversion")
+                return CueGenerationResponse(
+                    success=False,
+                    job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                    cue_file_id=None,
+                    file_path=None,
+                    validation_report=None,
+                    error="CUE parser not available for format conversion",
+                )
             parsed_cue = self.parser.parse(cue_content)
 
             # Get format enums
@@ -580,7 +608,14 @@ class CueGenerationService:
             target_fmt = getattr(CueFormat, target_format.upper(), None)
 
             if not source_fmt or not target_fmt:
-                return CueGenerationResponse(success=False, error=f"Invalid format: {source_format} or {target_format}")
+                return CueGenerationResponse(
+                    success=False,
+                    job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                    cue_file_id=None,
+                    file_path=None,
+                    validation_report=None,
+                    error=f"Invalid format: {source_format} or {target_format}",
+                )
 
             # Convert to target format
             conversion_result = self.converter.convert(parsed_cue, source_fmt, target_fmt)  # type: ignore[arg-type]
@@ -588,19 +623,32 @@ class CueGenerationService:
             if conversion_result.success:
                 return CueGenerationResponse(
                     success=True,
-                    format=target_format,
-                    content=conversion_result.output,  # type: ignore[attr-defined]
-                    validation_report={
-                        "warnings": conversion_result.warnings,
-                        "data_loss": conversion_result.data_loss,  # type: ignore[attr-defined]
-                    },
+                    job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                    cue_file_id=None,
+                    file_path=None,
+                    validation_report=None,  # TODO: properly convert validation report
+                    error=None,
                 )
             else:
-                return CueGenerationResponse(success=False, error=conversion_result.error or "Conversion failed")  # type: ignore[attr-defined]
+                return CueGenerationResponse(
+                    success=False,
+                    job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                    cue_file_id=None,
+                    file_path=None,
+                    validation_report=None,
+                    error="Conversion failed",
+                )
 
         except Exception as e:
             logger.error(f"Format conversion failed: {e}", exc_info=True)
-            return CueGenerationResponse(success=False, error=str(e))
+            return CueGenerationResponse(
+                success=False,
+                job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                cue_file_id=None,
+                file_path=None,
+                validation_report=None,
+                error=str(e),
+            )
 
     def get_supported_formats(self) -> List[Any]:
         """

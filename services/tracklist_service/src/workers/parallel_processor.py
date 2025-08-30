@@ -168,7 +168,7 @@ class ParallelProcessor:
         for domain, limit in self.domain_configs.items():
             self.domain_limits[domain] = Semaphore(limit)
 
-    async def process_batch(self, jobs: List[Job], processor: Callable) -> BatchResult:
+    async def process_batch(self, jobs: List[Job], processor: Callable[..., Any]) -> BatchResult:
         """Process multiple jobs in parallel with rate limiting.
 
         Args:
@@ -266,7 +266,7 @@ class ParallelProcessor:
             errors=errors,
         )
 
-    def _process_job_wrapper(self, job: Job, processor: Callable) -> Dict[str, Any]:
+    def _process_job_wrapper(self, job: Job, processor: Callable[..., Any]) -> Dict[str, Any]:
         """Wrapper to process a single job.
 
         Args:

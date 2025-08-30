@@ -56,7 +56,7 @@ class TrackEntry(BaseModel):
             raise ValueError("Field cannot be empty")
         return v.strip()
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON storage."""
         return {
             "position": self.position,
@@ -73,7 +73,7 @@ class TrackEntry(BaseModel):
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "TrackEntry":
+    def from_dict(cls, data: Dict[str, Any]) -> "TrackEntry":
         """Create from dictionary."""
         return cls(
             position=data["position"],

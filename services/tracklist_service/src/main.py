@@ -137,7 +137,7 @@ def create_app() -> FastAPI:
     # Add rate limiting middleware
     # Note: This will be initialized during lifespan startup
     @app.middleware("http")
-    async def add_rate_limiting(request: Request, call_next: Callable) -> Response:
+    async def add_rate_limiting(request: Request, call_next: Callable[..., Any]) -> Response:
         """Add rate limiting to all requests."""
         if rate_limiter is not None:
             middleware = RateLimitMiddleware(app, rate_limiter)

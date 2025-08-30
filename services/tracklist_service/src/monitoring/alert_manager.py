@@ -442,7 +442,7 @@ class AlertManager:
 
         return anomalies
 
-    def register_anomaly_detector(self, name: str, detector: Callable) -> None:
+    def register_anomaly_detector(self, name: str, detector: Callable[..., Any]) -> None:
         """Register a custom anomaly detector.
 
         Args:

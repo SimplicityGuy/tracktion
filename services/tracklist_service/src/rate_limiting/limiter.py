@@ -45,7 +45,7 @@ class RateLimitResult:
 class RateLimiter:
     """Distributed rate limiter using Redis and token bucket algorithm."""
 
-    def __init__(self, redis_client: redis.Redis):
+    def __init__(self, redis_client: redis.Redis[bytes]):
         """Initialize rate limiter.
 
         Args:
@@ -216,7 +216,7 @@ class RateLimiter:
         return {allowed, remaining, reset_time}
         """
 
-        result = await self.redis.eval(
+        result = await self.redis.eval(  # type: ignore[no-untyped-call]
             script,
             1,  # Number of keys
             key,  # The key

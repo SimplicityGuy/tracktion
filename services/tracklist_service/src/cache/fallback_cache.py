@@ -69,7 +69,7 @@ class CachedItem:
 
         return max(0.0, min(1.0, score - age_penalty))
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
         return {
             "key": self.key,
@@ -84,7 +84,7 @@ class CachedItem:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "CachedItem":
+    def from_dict(cls, data: Dict[str, Any]) -> "CachedItem":
         """Create from dictionary."""
         return cls(
             key=data["key"],
@@ -104,7 +104,7 @@ class FallbackCache:
 
     def __init__(
         self,
-        redis_client: Optional[redis.Redis] = None,
+        redis_client: Optional[redis.Redis[bytes]] = None,
         default_ttl: int = 3600,
         max_fallback_age: int = 86400 * 7,  # 7 days
     ):
@@ -173,7 +173,7 @@ class FallbackCache:
         self._cache_stats["misses"] += 1
         return None
 
-    def calculate_validity_score(self, cached_data: dict) -> float:
+    def calculate_validity_score(self, cached_data: Dict[str, Any]) -> float:
         """Calculate validity score for cached data.
 
         Args:

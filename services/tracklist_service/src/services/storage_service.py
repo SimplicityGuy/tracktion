@@ -25,14 +25,14 @@ class StorageConfig(BaseModel):
     """Storage configuration model."""
 
     primary: str = Field("filesystem", description="Primary storage type")
-    filesystem: Dict = Field(
+    filesystem: Dict[str, Any] = Field(
         default_factory=lambda: {
             "base_path": "/data/cue_files/",
             "structure": "{year}/{month}/{audio_file_id}/{format}.cue",
             "permissions": "644",
         }
     )
-    s3: Dict = Field(
+    s3: Dict[str, Any] = Field(
         default_factory=lambda: {
             "bucket": "tracktion-cue-files",
             "prefix": "cue_files/",
@@ -54,14 +54,14 @@ class StorageResult(BaseModel):
     file_size: Optional[int] = Field(None, description="File size in bytes")
     version: Optional[int] = Field(None, description="File version number")
     error: Optional[str] = Field(None, description="Error message if failed")
-    metadata: Dict = Field(default_factory=dict, description="Additional metadata")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 
 class StorageBackend(ABC):
     """Abstract base class for storage backends."""
 
     @abstractmethod
-    def store(self, content: str, file_path: str, metadata: Optional[Dict] = None) -> StorageResult:
+    def store(self, content: str, file_path: str, metadata: Optional[Dict[str, Any]] = None) -> StorageResult:
         """Store content to the specified path."""
         pass
 
@@ -89,7 +89,7 @@ class StorageBackend(ABC):
 class FilesystemBackend(StorageBackend):
     """Local filesystem storage backend."""
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict[str, Any]):
         """Initialize filesystem backend with configuration."""
         self.base_path = Path(config.get("base_path", "/data/cue_files/"))
         self.permissions = config.get("permissions", "644")
@@ -99,7 +99,7 @@ class FilesystemBackend(StorageBackend):
         self.base_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Filesystem backend initialized with base path: {self.base_path}")
 
-    def store(self, content: str, file_path: str, metadata: Optional[Dict] = None) -> StorageResult:
+    def store(self, content: str, file_path: str, metadata: Optional[Dict[str, Any]] = None) -> StorageResult:
         """
         Store content to filesystem.
 
@@ -289,7 +289,7 @@ class FilesystemBackend(StorageBackend):
 class S3Backend(StorageBackend):
     """AWS S3 storage backend."""
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict[str, Any]):
         """Initialize S3 backend with configuration."""
         self.bucket = config.get("bucket", "tracktion-cue-files")
         self.prefix = config.get("prefix", "cue_files/")
@@ -300,7 +300,7 @@ class S3Backend(StorageBackend):
         self.s3_client = None  # Placeholder
         logger.info(f"S3 backend initialized for bucket: {self.bucket}")
 
-    def store(self, content: str, file_path: str, metadata: Optional[Dict] = None) -> StorageResult:
+    def store(self, content: str, file_path: str, metadata: Optional[Dict[str, Any]] = None) -> StorageResult:
         """Store content to S3."""
         # Placeholder implementation
         logger.warning("S3 storage not implemented, using placeholder")
@@ -362,7 +362,7 @@ class StorageService:
         logger.info(f"Storage service initialized with primary backend: {self.config.primary}")
 
     def store_cue_file(
-        self, file_path: str, content: str, metadata: Optional[Dict] = None
+        self, file_path: str, content: str, metadata: Optional[Dict[str, Any]] = None
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Store CUE file content.
@@ -423,7 +423,7 @@ class StorageService:
         """
         return self.primary_backend.delete(file_path)
 
-    def get_file_info(self, file_path: str) -> Optional[Dict]:
+    def get_file_info(self, file_path: str) -> Optional[Dict[str, Any]]:
         """
         Get file information.
 
@@ -449,7 +449,7 @@ class StorageService:
             logger.error(f"Failed to get file info for {file_path}: {e}", exc_info=True)
             return None
 
-    def _store_metadata(self, file_path: str, metadata: Dict) -> None:
+    def _store_metadata(self, file_path: str, metadata: Dict[str, Any]) -> None:
         """Store metadata for a file."""
         try:
             metadata_path = f"{file_path}.metadata.json"
@@ -458,7 +458,7 @@ class StorageService:
         except Exception as e:
             logger.warning(f"Failed to store metadata for {file_path}: {e}")
 
-    def _get_metadata(self, file_path: str) -> Optional[Dict]:
+    def _get_metadata(self, file_path: str) -> Optional[Dict[str, Any]]:
         """Get metadata for a file."""
         try:
             metadata_path = f"{file_path}.metadata.json"
@@ -484,7 +484,7 @@ class StorageService:
         # For now, return empty list
         return []
 
-    def get_storage_stats(self) -> Dict:
+    def get_storage_stats(self) -> Dict[str, Any]:
         """
         Get storage statistics.
 
