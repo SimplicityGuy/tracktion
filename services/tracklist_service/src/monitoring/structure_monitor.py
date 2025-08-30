@@ -161,21 +161,24 @@ class StructureMonitor:
 
         # Count tags
         for tag in soup.find_all():
+            if not hasattr(tag, 'name'):
+                continue
             tag_name = tag.name
             structure["tag_counts"][tag_name] = structure["tag_counts"].get(tag_name, 0) + 1
 
             # Collect classes
-            if tag.get("class"):
+            if hasattr(tag, 'get') and tag.get("class"):
                 structure["class_names"].update(tag.get("class"))
 
             # Collect IDs
-            if tag.get("id"):
+            if hasattr(tag, 'get') and tag.get("id"):
                 structure["id_names"].add(tag.get("id"))
 
             # Collect data attributes
-            for attr in tag.attrs:
-                if attr.startswith("data-"):
-                    structure["data_attributes"].add(attr)
+            if hasattr(tag, 'attrs'):
+                for attr in tag.attrs:
+                    if attr.startswith("data-"):
+                        structure["data_attributes"].add(attr)
 
         # Convert sets to lists for JSON serialization
         structure["class_names"] = list(structure["class_names"])

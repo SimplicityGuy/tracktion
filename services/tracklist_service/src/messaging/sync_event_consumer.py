@@ -39,16 +39,19 @@ class SyncEventConsumer:
         Args:
             rabbitmq_client: RabbitMQ client instance
         """
-        self.rabbitmq_client = rabbitmq_client or RabbitMQClient()
-        self.channel = None
+        from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQConfig
+        self.rabbitmq_client = rabbitmq_client or RabbitMQClient(RabbitMQConfig())
+        self.channel: Any = None
         self.queue = None
         self.consumer_tag = None
 
         # Database setup
         config = get_config()
-        self.engine = create_async_engine(config.database.url, echo=False)
+        # Build database URL from config
+        db_url = f"postgresql+asyncpg://{config.database.user}:{config.database.password}@{config.database.host}:{config.database.port}/{config.database.name}"
+        self.engine = create_async_engine(db_url, echo=False)
         self.SessionLocal = sessionmaker(
-            self.engine,
+            bind=self.engine,
             class_=AsyncSession,
             expire_on_commit=False,
         )
@@ -63,7 +66,10 @@ class SyncEventConsumer:
         """Connect to RabbitMQ and setup consumer."""
         try:
             await self.rabbitmq_client.connect()
-            self.channel = await self.rabbitmq_client.connection.channel()
+            if self.rabbitmq_client.connection:
+                self.channel = await self.rabbitmq_client.connection.channel()
+            else:
+                raise RuntimeError("RabbitMQ connection not established")
 
             # Set prefetch count for load balancing
             await self.channel.set_qos(prefetch_count=10)
@@ -143,13 +149,13 @@ class SyncEventConsumer:
                 logger.info(f"Processing message with routing key: {routing_key}")
 
                 # Route message based on routing key
-                if routing_key.startswith("sync.trigger"):
+                if routing_key and routing_key.startswith("sync.trigger"):
                     await self._handle_sync_trigger(body)
                 elif routing_key == "sync.conflict.resolve":
                     await self._handle_conflict_resolution(body)
                 elif routing_key == "sync.version.rollback":
                     await self._handle_version_rollback(body)
-                elif routing_key.startswith("sync.batch"):
+                elif routing_key and routing_key.startswith("sync.batch"):
                     await self._handle_batch_sync(body)
                 elif routing_key == "sync.cue.process":
                     await self._handle_cue_regeneration(body)
@@ -164,7 +170,7 @@ class SyncEventConsumer:
                 retry_count = headers.get("retry_count", 0)
                 max_retries = headers.get("max_retries", 3)
 
-                if retry_count < max_retries:
+                if int(retry_count) < int(max_retries):
                     # Requeue with increased retry count
                     await self._requeue_message(message, retry_count + 1)
                 else:

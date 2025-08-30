@@ -155,7 +155,7 @@ class TextStrategy(ExtractionStrategy):
         """Extract using text search."""
         try:
             # Search in specific context if provided
-            search_area = soup
+            search_area: Union[BeautifulSoup, Tag] = soup
             if self.context:
                 context_elements = soup.select(self.context) or soup.find_all(class_=self.context)
                 if context_elements and isinstance(context_elements[0], Tag):
