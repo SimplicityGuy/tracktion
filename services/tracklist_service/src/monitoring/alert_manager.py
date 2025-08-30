@@ -153,7 +153,7 @@ class AlertManager:
                 if page_type:
                     failed_result = self.redis_client.lrange(failed_key, 0, 9)
                     if hasattr(failed_result, "__await__"):
-                        failed_data = await failed_result
+                        failed_data = await failed_result  # type: ignore[misc]
                     else:
                         failed_data = failed_result
                     failed_extractions = [json.loads(f) for f in failed_data if f]

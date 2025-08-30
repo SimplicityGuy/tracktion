@@ -140,8 +140,8 @@ class BatchJobQueue:
             "status": "queued",
         }
         # Convert to proper types for Redis
-        redis_data = {k: str(v) for k, v in batch_metadata.items()}
-        self.redis.hset(f"batch:{batch_id}", mapping=redis_data)
+        redis_data: Dict[str, Any] = {k: str(v) for k, v in batch_metadata.items()}
+        self.redis.hset(f"batch:{batch_id}", mapping=redis_data)  # type: ignore[arg-type]
         self.redis.expire(f"batch:{batch_id}", 86400)  # 24 hour TTL
 
         # Enqueue jobs
@@ -162,8 +162,8 @@ class BatchJobQueue:
             # Track job in Redis
             job_dict = asdict(job)
             # Convert to proper types for Redis
-            redis_job_data = {k: str(v) for k, v in job_dict.items()}
-            self.redis.hset(f"job:{job.id}", mapping=redis_job_data)
+            redis_job_data: Dict[str, Any] = {k: str(v) for k, v in job_dict.items()}
+            self.redis.hset(f"job:{job.id}", mapping=redis_job_data)  # type: ignore[arg-type]
             self.redis.sadd(f"batch:{batch_id}:jobs", job.id)
 
         logger.info(f"Batch {batch_id} enqueued with {len(deduplicated_jobs)} jobs (priority: {priority})")
@@ -241,8 +241,8 @@ class BatchJobQueue:
         }
 
         # Convert to proper types for Redis
-        redis_schedule_data = {k: str(v) for k, v in schedule_data.items()}
-        self.redis.hset(f"schedule:{schedule_id}", mapping=redis_schedule_data)
+        redis_schedule_data: Dict[str, Any] = {k: str(v) for k, v in schedule_data.items()}
+        self.redis.hset(f"schedule:{schedule_id}", mapping=redis_schedule_data)  # type: ignore[arg-type]
         self.redis.zadd("scheduled_batches", {schedule_id: next_run.timestamp()})
 
         logger.info(f"Batch scheduled with ID {schedule_id}, next run: {next_run}")
@@ -272,7 +272,15 @@ class BatchJobQueue:
                 if job_data:
                     # Convert bytes to strings if needed
                     if isinstance(job_data, dict):
-                        status_value = job_data.get(b"status", job_data.get("status", "pending"))
+                        # Handle both bytes and string keys
+                        status_value = None
+                        if b"status" in job_data:
+                            status_value = job_data[b"status"]
+                        elif "status" in job_data:
+                            status_value = job_data["status"]
+                        else:
+                            status_value = "pending"
+
                         if isinstance(status_value, bytes):
                             status_value = status_value.decode()
                         status = str(status_value)

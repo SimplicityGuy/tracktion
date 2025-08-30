@@ -214,11 +214,16 @@ class StructureMonitor:
         if not element:
             return {}
 
-        classes = element.get("class")
-        if classes is None:
+        classes_raw = element.get("class")
+        classes: List[str]
+        if classes_raw is None:
             classes = []
-        elif isinstance(classes, str):
-            classes = [classes]
+        elif isinstance(classes_raw, str):
+            classes = [classes_raw]
+        elif isinstance(classes_raw, list):
+            classes = classes_raw
+        else:
+            classes = []
 
         return {
             "tag": element.name,

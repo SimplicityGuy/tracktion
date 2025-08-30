@@ -341,7 +341,7 @@ class StorageService:
         """Initialize storage service with configuration."""
         self.config = config or StorageConfig(
             primary="filesystem",
-            backup=None,
+            backup=True,
             max_versions=5,
         )
 
