@@ -6,7 +6,7 @@ Analyzes BPM changes over time windows to detect tempo variations.
 
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import essentia.standard as es
 import librosa
@@ -76,7 +76,7 @@ class TemporalBPMAnalyzer:
             confidences.append(float(confidence))
 
         # Calculate statistics
-        tempos = np.array(tempos)
+        tempos_array = np.array(tempos)
 
         result = {
             "method": "librosa_temporal",
@@ -84,16 +84,16 @@ class TemporalBPMAnalyzer:
             "window_size": self.window_size,
             "hop_size": self.hop_size,
             "times": times,
-            "tempos": tempos.tolist(),
+            "tempos": tempos_array.tolist(),
             "confidences": confidences,
-            "start_bpm": float(tempos[0]) if len(tempos) > 0 else None,
-            "end_bpm": float(tempos[-1]) if len(tempos) > 0 else None,
-            "mean_bpm": float(np.mean(tempos)),
-            "std_bpm": float(np.std(tempos)),
-            "min_bpm": float(np.min(tempos)),
-            "max_bpm": float(np.max(tempos)),
-            "tempo_variation": float(np.max(tempos) - np.min(tempos)),
-            "is_variable": float(np.std(tempos)) > 2.0,  # Consider variable if std > 2 BPM
+            "start_bpm": float(tempos_array[0]) if len(tempos_array) > 0 else None,
+            "end_bpm": float(tempos_array[-1]) if len(tempos_array) > 0 else None,
+            "mean_bpm": float(np.mean(tempos_array)),
+            "std_bpm": float(np.std(tempos_array)),
+            "min_bpm": float(np.min(tempos_array)),
+            "max_bpm": float(np.max(tempos_array)),
+            "tempo_variation": float(np.max(tempos_array) - np.min(tempos_array)),
+            "is_variable": float(np.std(tempos_array)) > 2.0,  # Consider variable if std > 2 BPM
             "processing_time": time.time() - start_time,
         }
 
@@ -137,7 +137,7 @@ class TemporalBPMAnalyzer:
 
         # Calculate statistics
         if len(tempos) > 0:
-            tempos = np.array(tempos)
+            tempos_array = np.array(tempos)
 
             result = {
                 "method": "essentia_temporal",
@@ -145,16 +145,16 @@ class TemporalBPMAnalyzer:
                 "window_size": self.window_size,
                 "hop_size": self.hop_size,
                 "times": times,
-                "tempos": tempos.tolist(),
+                "tempos": tempos_array.tolist(),
                 "confidences": confidences,
-                "start_bpm": float(tempos[0]),
-                "end_bpm": float(tempos[-1]),
-                "mean_bpm": float(np.mean(tempos)),
-                "std_bpm": float(np.std(tempos)),
-                "min_bpm": float(np.min(tempos)),
-                "max_bpm": float(np.max(tempos)),
-                "tempo_variation": float(np.max(tempos) - np.min(tempos)),
-                "is_variable": float(np.std(tempos)) > 2.0,
+                "start_bpm": float(tempos_array[0]),
+                "end_bpm": float(tempos_array[-1]),
+                "mean_bpm": float(np.mean(tempos_array)),
+                "std_bpm": float(np.std(tempos_array)),
+                "min_bpm": float(np.min(tempos_array)),
+                "max_bpm": float(np.max(tempos_array)),
+                "tempo_variation": float(np.max(tempos_array) - np.min(tempos_array)),
+                "is_variable": float(np.std(tempos_array)) > 2.0,
                 "processing_time": time.time() - start_time,
             }
         else:
@@ -167,7 +167,7 @@ class TemporalBPMAnalyzer:
 
         return result
 
-    def plot_temporal_analysis(self, results: List[Dict], output_path: str = None):
+    def plot_temporal_analysis(self, results: List[Dict], output_path: Optional[str] = None) -> None:
         """Plot temporal BPM analysis results."""
         fig, axes = plt.subplots(len(results), 1, figsize=(12, 4 * len(results)))
 
@@ -220,10 +220,10 @@ class TemporalBPMAnalyzer:
         else:
             plt.show()
 
-        return fig
+        return None  # type: ignore[unreachable]
 
 
-def analyze_tempo_changes(audio_path: str, window_sizes: List[float] = None) -> pd.DataFrame:
+def analyze_tempo_changes(audio_path: str, window_sizes: Optional[List[float]] = None) -> pd.DataFrame:
     """
     Analyze tempo changes with different window sizes.
 
@@ -271,7 +271,7 @@ def analyze_tempo_changes(audio_path: str, window_sizes: List[float] = None) -> 
     return df[summary_cols]
 
 
-def main():
+def main() -> None:
     """Main function for temporal BPM analysis."""
     sample_dir = Path(__file__).parent.parent / "sample_data"
 

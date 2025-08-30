@@ -46,15 +46,15 @@ class Trainer:
         start_time = time.time()
 
         # Prepare data
-        X, y = self._prepare_training_data(training_data)
+        x, y = self._prepare_training_data(training_data)
 
         # Split data
-        X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_temp, y_temp, test_size=validation_size / (1 - test_size), random_state=42
+        x_temp, x_test, y_temp, y_test = train_test_split(x, y, test_size=test_size, random_state=42)
+        x_train, x_val, y_train, y_val = train_test_split(
+            x_temp, y_temp, test_size=validation_size / (1 - test_size), random_state=42
         )
 
-        logger.info(f"Data split - Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}")
+        logger.info(f"Data split - Train: {len(x_train)}, Val: {len(x_val)}, Test: {len(x_test)}")
 
         # Initialize model
         if algorithm == ModelAlgorithm.RANDOM_FOREST:
@@ -64,12 +64,12 @@ class Trainer:
 
         # Train model
         logger.info("Training model...")
-        self.model.fit(X_train, y_train)
+        self.model.fit(x_train, y_train)
 
         # Evaluate model
         logger.info("Evaluating model...")
-        self._evaluate_model(X_val, y_val, "validation")
-        test_metrics = self._evaluate_model(X_test, y_test, "test")
+        self._evaluate_model(x_val, y_val, "validation")
+        test_metrics = self._evaluate_model(x_test, y_test, "test")
 
         # Combine metrics
         combined_metrics = ModelMetrics(
@@ -79,8 +79,8 @@ class Trainer:
             f1_score=test_metrics["f1_score"],
             confusion_matrix=test_metrics["confusion_matrix"],
             per_category_metrics=test_metrics.get("per_category_metrics", {}),
-            validation_samples=len(X_val),
-            test_samples=len(X_test),
+            validation_samples=len(x_val),
+            test_samples=len(x_test),
         )
 
         training_duration = time.time() - start_time
@@ -121,12 +121,12 @@ class Trainer:
 
         # For Random Forest, we'll use statistical features
         # In production, we'd combine multiple feature types
-        X = batch_features["statistics"]
+        x = batch_features["statistics"]
 
         # Encode labels
         y = self.label_encoder.fit_transform(labels)
 
-        return X, y
+        return x, y
 
     def _create_random_forest(self, hyperparameters: dict[str, Any] | None) -> RandomForestClassifier:
         """Create Random Forest classifier with hyperparameters."""
@@ -145,9 +145,9 @@ class Trainer:
 
         return RandomForestClassifier(**default_params)
 
-    def _evaluate_model(self, X: np.ndarray, y: np.ndarray, dataset_name: str) -> dict[str, Any]:
+    def _evaluate_model(self, x: np.ndarray, y: np.ndarray, dataset_name: str) -> dict[str, Any]:
         """Evaluate model performance on dataset."""
-        y_pred = self.model.predict(X)
+        y_pred = self.model.predict(x)
 
         metrics = {
             "accuracy": accuracy_score(y, y_pred),

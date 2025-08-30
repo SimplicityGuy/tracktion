@@ -84,11 +84,11 @@ class Predictor:
             ):
                 stats.append(features[key])
 
-        X = np.array([stats])
+        x = np.array([stats])
 
         # Get predictions
         if return_probabilities:
-            probabilities = self.trainer.model.predict_proba(X)[0]
+            probabilities = self.trainer.model.predict_proba(x)[0]
             top_indices = np.argsort(probabilities)[-top_k:][::-1]
 
             predictions = []
@@ -101,11 +101,11 @@ class Predictor:
                     }
                 )
         else:
-            prediction = self.trainer.model.predict(X)[0]
+            prediction = self.trainer.model.predict(x)[0]
             suggested_name = self.trainer.label_encoder.inverse_transform([prediction])[0]
 
             # Get confidence from prediction probability
-            probabilities = self.trainer.model.predict_proba(X)[0]
+            probabilities = self.trainer.model.predict_proba(x)[0]
             confidence = float(probabilities[prediction])
 
             predictions = [
@@ -160,7 +160,7 @@ class Predictor:
             start_time = time.time()
 
             # Extract features for all samples
-            X_batch = []
+            x_batch = []
             for filename, tokens in uncached_samples:
                 features = self.trainer.feature_extractor.extract_features(tokens, filename)
                 stats = []
@@ -172,13 +172,13 @@ class Predictor:
                         or key == "avg_token_length"
                     ):
                         stats.append(features[key])
-                X_batch.append(stats)
+                x_batch.append(stats)
 
-            X_batch = np.array(X_batch)
+            x_batch = np.array(x_batch)
 
             # Get batch predictions
-            predictions = self.trainer.model.predict(X_batch)
-            probabilities = self.trainer.model.predict_proba(X_batch)
+            predictions = self.trainer.model.predict(x_batch)
+            probabilities = self.trainer.model.predict_proba(x_batch)
 
             batch_time = (time.time() - start_time) * 1000
             avg_time = batch_time / len(uncached_samples)

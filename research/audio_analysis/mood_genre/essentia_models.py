@@ -7,7 +7,7 @@ Tests mood and genre classification using Essentia's pre-trained models.
 import os
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import essentia.standard as es
 import numpy as np
@@ -75,7 +75,7 @@ class EssentiaModelEvaluator:
 
         return model_urls
 
-    def analyze_with_musicnn(self, audio_path: str, model_name: str = "musicnn_mtt") -> Dict:
+    def analyze_with_musicnn(self, audio_path: str, model_name: str = "musicnn_mtt") -> Dict[str, Any]:
         """
         Analyze audio using MusiCNN model.
 
@@ -87,7 +87,7 @@ class EssentiaModelEvaluator:
             Dictionary with predictions and metadata
         """
         start_time = time.time()
-        result = {
+        result: Dict[str, Any] = {
             "model": model_name,
             "audio_file": Path(audio_path).name,
         }
@@ -139,7 +139,7 @@ class EssentiaModelEvaluator:
 
         return result
 
-    def _extract_audio_features(self, audio: np.ndarray) -> Dict:
+    def _extract_audio_features(self, audio: np.ndarray) -> Dict[str, Any]:
         """Extract audio features for analysis."""
         features = {}
 
@@ -155,7 +155,7 @@ class EssentiaModelEvaluator:
 
             # MFCC
             mfcc = es.MFCC()(spectrum)
-            features["mfcc_mean"] = [float(x) for x in np.mean(mfcc[1], axis=0)]
+            features["mfcc_mean"] = [float(x) for x in np.mean(mfcc[1], axis=0)]  # type: ignore[assignment]
 
             # Rhythm features
             rhythm_extractor = es.RhythmExtractor2013()
@@ -168,7 +168,7 @@ class EssentiaModelEvaluator:
             features["loudness"] = float(es.Loudness()(audio))
 
         except Exception as e:
-            features["feature_extraction_error"] = str(e)
+            features["feature_extraction_error"] = str(e)  # type: ignore[assignment]
 
         return features
 
@@ -232,7 +232,7 @@ class EssentiaModelEvaluator:
 
         return pd.DataFrame(results)
 
-    def measure_model_performance(self, model_name: str, test_file: str) -> Dict:
+    def measure_model_performance(self, model_name: str, test_file: str) -> Dict[str, Any]:
         """
         Measure model loading time, memory usage, and inference speed.
 
@@ -286,7 +286,7 @@ class EssentiaModelEvaluator:
         return metrics
 
 
-def test_essentia_features():
+def test_essentia_features() -> None:
     """Test basic Essentia feature extraction."""
     print("Testing Essentia feature extraction...")
 
@@ -310,10 +310,10 @@ def test_essentia_features():
         else:
             print(f"  {key}: {value}")
 
-    return features
+    return features  # type: ignore[return-value]
 
 
-def main():
+def main() -> None:
     """Main function for testing Essentia models."""
     sample_dir = Path(__file__).parent.parent / "sample_data"
 

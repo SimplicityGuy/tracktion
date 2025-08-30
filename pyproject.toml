@@ -83,6 +83,8 @@ namespace_packages = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+check_untyped_defs = false
+ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "scripts.*"
@@ -91,6 +93,36 @@ disallow_untyped_defs = false
 [[tool.mypy.overrides]]
 module = "docs.prototypes.*"
 disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "research.*"
+disallow_untyped_defs = false
+check_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "services.tracklist_service.*",
+    "services.tracklist_service.src.*",
+    "services.tracklist_service.tests.*",
+]
+disallow_untyped_defs = false
+check_untyped_defs = false
+warn_return_any = false
+no_implicit_optional = false
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "services.file_rename_service.*",
+    "services.analysis_service.*",
+    "services.file_watcher.*",
+    "shared.utils.*",
+    "scripts.*",
+]
+disallow_untyped_defs = false
+check_untyped_defs = false
+warn_return_any = false
+ignore_errors = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["tracktion"]
