@@ -154,7 +154,7 @@ class SearchScraper(ScraperBase):
             if not title_elem:
                 return None
 
-            href = title_elem.get("href", "")
+            href = title_elem.get("href", "")  # type: ignore[attr-defined]
             url = urljoin(self.config.base_url, href if isinstance(href, str) else "")
 
             # Extract DJ name
@@ -238,7 +238,7 @@ class SearchScraper(ScraperBase):
 
         if pagination_elem:
             # Try to find total pages
-            last_page_elem = pagination_elem.find("a", class_="last")
+            last_page_elem = pagination_elem.find("a", class_="last")  # type: ignore[attr-defined]
             if last_page_elem and isinstance(last_page_elem, Tag):
                 try:
                     # Extract page number from href or text

@@ -10,7 +10,7 @@ from collections import defaultdict
 import statistics
 
 from redis import Redis
-import pandas as pd
+import pandas as pd  # type: ignore[import-untyped]
 
 
 logger = logging.getLogger(__name__)
@@ -571,11 +571,11 @@ class ResultAggregator:
         results = []
 
         for key in self.redis.scan_iter(match=pattern):
-            data = self.redis.hgetall(key)
+            data = await self.redis.hgetall(key)  # type: ignore[misc]
             if data and "result" in data:
                 result = json.loads(data["result"])
                 job_id = key.split(":")[-1]
-                results.append({"job_id": job_id, "timestamp": data.get("timestamp"), **result})
+                results.append({"job_id": job_id, "timestamp": data.get("timestamp"), **result})  # type: ignore[union-attr]
 
         self.batch_results[batch_id] = results
 

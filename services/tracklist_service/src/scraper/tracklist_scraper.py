@@ -137,10 +137,12 @@ class TracklistScraper(ScraperBase):
         if date_elem:
             datetime_attr = date_elem.get("datetime")
             if isinstance(datetime_attr, str):
-                info["date"] = self._parse_date(datetime_attr)
+                parsed_date = self._parse_date(datetime_attr)
+                info["date"] = parsed_date.isoformat() if parsed_date else ""
             else:
                 date_text = date_elem.get_text(strip=True)
-                info["date"] = self._parse_date(date_text)
+                parsed_date = self._parse_date(date_text)
+                info["date"] = parsed_date.isoformat() if parsed_date else ""
 
         return info
 

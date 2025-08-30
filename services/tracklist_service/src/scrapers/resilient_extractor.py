@@ -6,7 +6,7 @@ from enum import Enum
 from bs4 import BeautifulSoup, Tag
 import re
 import logging
-from lxml import etree
+from lxml import etree  # type: ignore[import-untyped]
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)

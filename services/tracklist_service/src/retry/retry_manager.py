@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional
 from collections import defaultdict
 
 from redis import Redis
-import pika
+import pika  # type: ignore[import-untyped]
 
 from services.tracklist_service.src.queue.batch_queue import Job
 

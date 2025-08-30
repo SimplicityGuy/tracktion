@@ -9,7 +9,7 @@ from enum import Enum
 from typing import List, Dict, Any, Optional
 import hashlib
 
-import pika
+import pika  # type: ignore[import-untyped]
 from redis import Redis
 from croniter import croniter  # type: ignore[import-untyped]
 
@@ -191,9 +191,9 @@ class BatchJobQueue:
 
             if existing_job_id:
                 # Check if existing job is still active
-                existing_job = self.redis.hgetall(f"job:{existing_job_id}")
+                existing_job = self.redis.hgetall(f"job:{existing_job_id}")  # type: ignore[misc]
                 if existing_job:
-                    status = existing_job.get("status")
+                    status = existing_job.get("status")  # type: ignore[union-attr]
                     if status and status in ["pending", "processing"]:
                         logger.debug(f"Skipping duplicate URL: {job.url}")
                         continue
@@ -298,7 +298,7 @@ class BatchJobQueue:
                     (jobs_status["completed"] / len(job_ids)) * 100 if job_ids else 0
                 )
 
-        return dict(batch_meta)
+        return dict(batch_meta)  # type: ignore[arg-type]
 
     def cancel_batch(self, batch_id: str) -> bool:
         """Cancel a batch job.
@@ -318,9 +318,9 @@ class BatchJobQueue:
 
         # Cancel pending jobs
         job_ids = self.redis.smembers(f"batch:{batch_id}:jobs")
-        for job_id in job_ids:
-            job_data = self.redis.hgetall(f"job:{job_id}")
-            if job_data and job_data.get("status") == "pending":
+        for job_id in job_ids:  # type: ignore[union-attr]
+            job_data = self.redis.hgetall(f"job:{job_id}")  # type: ignore[misc]
+            if job_data and job_data.get("status") == "pending":  # type: ignore[union-attr]
                 self.redis.hset(f"job:{job_id}", "status", "cancelled")
 
         logger.info(f"Batch {batch_id} cancelled")

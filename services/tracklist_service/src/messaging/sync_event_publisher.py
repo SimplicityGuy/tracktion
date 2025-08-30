@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from aio_pika.abc import AbstractChannel, AbstractExchange
 from uuid import UUID, uuid4
 
 import aio_pika
@@ -34,16 +35,20 @@ class SyncEventPublisher:
             rabbitmq_client: RabbitMQ client instance
         """
         from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQConfig
+
         self.rabbitmq_client = rabbitmq_client or RabbitMQClient(RabbitMQConfig())
         self.exchange_name = "tracklist.sync.events"
         self.exchange_type = ExchangeType.TOPIC
-        self.exchange = None
-        self.channel = None
+        self.exchange: Optional[AbstractExchange] = None
+        self.channel: Optional[AbstractChannel] = None
 
     async def connect(self) -> None:
         """Connect to RabbitMQ and setup exchange."""
         try:
             await self.rabbitmq_client.connect()
+            if not self.rabbitmq_client.connection:
+                raise ConnectionError("Failed to establish RabbitMQ connection")
+
             self.channel = await self.rabbitmq_client.connection.channel()
 
             # Declare the sync events exchange
@@ -71,6 +76,9 @@ class SyncEventPublisher:
 
     async def _setup_queues(self) -> None:
         """Setup queues for different event types."""
+        if not self.channel:
+            raise ConnectionError("Channel not established")
+
         queues = [
             ("sync.events.conflicts", "sync.conflict.*"),
             ("sync.events.versions", "sync.version.*"),
@@ -93,6 +101,8 @@ class SyncEventPublisher:
             )
 
             # Bind queue to exchange
+            if not self.exchange:
+                raise ConnectionError("Exchange not established")
             await queue.bind(self.exchange, routing_pattern)
 
             # Declare dead letter queue
@@ -139,6 +149,7 @@ class SyncEventPublisher:
                 tracklist_id=tracklist_id,
                 source=source,
                 actor=actor,
+                correlation_id=uuid4(),
                 metadata=metadata or {},
             )
 
@@ -187,6 +198,7 @@ class SyncEventPublisher:
                 changes_applied=changes_applied,
                 confidence=confidence,
                 duration_seconds=metadata.get("duration_seconds", 0) if metadata else 0,
+                correlation_id=uuid4(),
                 metadata=metadata or {},
             )
 
@@ -237,6 +249,7 @@ class SyncEventPublisher:
                 error_message=error_message,
                 retry_count=retry_count,
                 will_retry=will_retry,
+                correlation_id=uuid4(),
                 metadata=metadata or {},
             )
 
@@ -282,6 +295,7 @@ class SyncEventPublisher:
                 conflicts=conflicts,
                 conflict_count=len(conflicts),
                 auto_resolvable=auto_resolvable,
+                correlation_id=uuid4(),
                 metadata=metadata or {},
             )
 
@@ -325,6 +339,7 @@ class SyncEventPublisher:
                 tracklist_id=tracklist_id,
                 source="conflict_resolution",
                 actor=actor,
+                correlation_id=uuid4(),
                 metadata={
                     "resolution_count": resolution_count,
                     "resolution_strategy": resolution_strategy,
@@ -379,6 +394,7 @@ class SyncEventPublisher:
                 change_type=change_type,
                 change_summary=change_summary,
                 created_by=created_by,
+                correlation_id=uuid4(),
                 metadata=metadata or {},
             )
 
@@ -427,6 +443,7 @@ class SyncEventPublisher:
                 cue_formats=cue_formats,
                 job_count=len(cue_formats),
                 actor=actor,
+                correlation_id=uuid4(),
                 metadata=metadata or {},
             )
 
@@ -481,6 +498,8 @@ class SyncEventPublisher:
                 source=source,
                 operation=operation,
                 actor=actor,
+                correlation_id=uuid4(),
+                progress=0,
                 metadata=metadata or {},
             )
 
@@ -525,6 +544,7 @@ class SyncEventPublisher:
                 status=status,
                 progress=progress,
                 message=message,
+                correlation_id=uuid4(),
                 metadata=metadata or {},
             )
 
@@ -556,6 +576,9 @@ class SyncEventPublisher:
         """
         if not self.exchange:
             await self.connect()
+
+        if not self.exchange:
+            raise ConnectionError("Exchange not established after connection attempt")
 
         # Create AMQP message
         amqp_message = Message(

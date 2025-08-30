@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
 from threading import Lock, Semaphore
-import psutil
+import psutil  # type: ignore[import-untyped]
 
 from services.tracklist_service.src.queue.batch_queue import Job
 

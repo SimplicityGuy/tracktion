@@ -355,10 +355,14 @@ class CueRegenerationService:
                 return False
 
             # Regenerate using CueService
-            new_content = await self.cue_service.generate_cue_content(
+            from ..models.cue_file import GenerateCueRequest
+
+            request = GenerateCueRequest(format=cue_file.format)
+            result = await self.cue_service.generate_cue_file(
                 tracklist=tracklist,
-                format=cue_file.format,
+                request=request,
             )
+            new_content = result.content
 
             # Update the CUE file
             cue_file.content = new_content
@@ -375,6 +379,7 @@ class CueRegenerationService:
             await self.audit_service.log_cue_file_change(
                 cue_file_id=cue_file_id,
                 action="regenerated",
+                changes={"content": "regenerated", "format": str(cue_file.format)},
                 actor=job["actor"],
                 metadata={
                     "trigger": job["trigger"],
@@ -405,7 +410,7 @@ class CueRegenerationService:
         Returns:
             Batch regeneration status
         """
-        results = {
+        results: Dict[str, Any] = {
             "total": len(tracklist_ids),
             "queued": 0,
             "skipped": 0,

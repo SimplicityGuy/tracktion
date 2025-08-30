@@ -83,7 +83,7 @@ class RedisCache:
                 logger.debug(f"Cache hit for key: {key}")
 
                 # Parse cached response
-                cached_response = CachedSearchResponse.model_validate_json(cached_data)
+                cached_response = CachedSearchResponse.model_validate_json(cached_data)  # type: ignore[arg-type]
 
                 # Check if still valid
                 if cached_response.expires_at > datetime.now(timezone.utc).replace(tzinfo=None):
@@ -237,7 +237,7 @@ class RedisCache:
             failed_data = self.client.get(key)
 
             if failed_data:
-                data = json.loads(failed_data)
+                data = json.loads(failed_data)  # type: ignore[arg-type]
                 logger.debug(f"Found recent failed search for key: {key}")
                 return str(data.get("error", "Previous search failed"))
 
@@ -271,7 +271,7 @@ class RedisCache:
                 # Delete all matching keys
                 deleted = self.client.delete(*keys)
                 logger.info(f"Cleared {deleted} cache entries matching pattern: {pattern}")
-                return int(deleted)
+                return int(deleted)  # type: ignore[arg-type]
 
             return 0
 
@@ -301,9 +301,9 @@ class RedisCache:
                 "connected": True,
                 "total_keys": tracklist_keys,
                 "failed_keys": failed_keys,
-                "memory_used": info.get("used_memory_human", "N/A"),
-                "hit_rate": info.get("keyspace_hit_ratio", 0),
-                "evicted_keys": info.get("evicted_keys", 0),
+                "memory_used": info.get("used_memory_human", "N/A"),  # type: ignore[union-attr]
+                "hit_rate": info.get("keyspace_hit_ratio", 0),  # type: ignore[union-attr]
+                "evicted_keys": info.get("evicted_keys", 0),  # type: ignore[union-attr]
             }
 
         except Exception as e:
@@ -324,7 +324,7 @@ class RedisCache:
 
         try:
             value = self.client.get(key)
-            return value  # type: ignore[no-any-return]
+            return value  # type: ignore[return-value, no-any-return]
         except Exception as e:
             logger.error(f"Error getting value from cache: {e}")
             return None
@@ -363,7 +363,7 @@ class RedisCache:
             return 0
 
         try:
-            return int(self.client.delete(key))
+            return int(self.client.delete(key))  # type: ignore[arg-type]
         except Exception as e:
             logger.error(f"Error deleting from cache: {e}")
             return 0

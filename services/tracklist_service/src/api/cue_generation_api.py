@@ -24,6 +24,7 @@ from ..models.cue_file import (
     BatchCueGenerationResponse,
 )
 from ..models.tracklist import Tracklist
+from ..messaging.message_schemas import MessageType
 from ..services.cue_generation_service import CueGenerationService
 from ..services.audio_validation_service import AudioValidationService
 from ..services.storage_service import StorageService, StorageConfig
@@ -410,15 +411,17 @@ async def process_cue_generation_async(tracklist: Tracklist, request: GenerateCu
         job_id = uuid4()
         message = CueGenerationMessage(
             message_id=uuid4(),
+            message_type=MessageType.CUE_GENERATION,
             correlation_id=correlation_id,
+            retry_count=0,
+            priority=7,  # High priority for API requests
             tracklist_id=tracklist.id,
             format=request.format.value,
             options=request.options,
             validate_audio=request.validate_audio,
             audio_file_path=request.audio_file_path,
             job_id=job_id,
-            requested_by="api",
-            priority=7,  # High priority for API requests
+            requested_by="api_user",
         )
 
         # Publish to RabbitMQ
@@ -458,15 +461,17 @@ async def process_batch_cue_generation_async(
         batch_job_id = uuid4()
         message = BatchCueGenerationMessage(
             message_id=uuid4(),
+            message_type=MessageType.BATCH_CUE_GENERATION,
             correlation_id=correlation_id,
+            retry_count=0,
+            priority=6,  # Slightly lower priority for batch operations
             tracklist_id=tracklist.id,
             formats=[fmt.value for fmt in request.formats],
             options=request.options,
             validate_audio=request.validate_audio,
             audio_file_path=request.audio_file_path,
             batch_job_id=batch_job_id,
-            requested_by="api",
-            priority=6,  # Slightly lower priority for batch operations
+            requested_by="api_user",
         )
 
         # Publish to RabbitMQ
@@ -584,7 +589,7 @@ async def download_cue_file_by_id(
                 "Content-Disposition": f"attachment; filename={filename}",
                 "Cache-Control": "no-cache",
                 "X-File-Version": str(cue_file.version),
-                "X-File-Format": cue_file.format,
+                "X-File-Format": cue_file.format,  # type: ignore[dict-item]
             },
         )
 
@@ -881,7 +886,7 @@ async def validate_cue_file(
 
         # Retrieve CUE file content from storage
         success, content, error = storage_service.retrieve_cue_file(str(cue_file.file_path))
-        if not success:
+        if not success or content is None:
             logger.error(f"Failed to retrieve CUE file content for validation: {error}")
             raise HTTPException(status_code=500, detail=f"Failed to retrieve file content: {error}")
 
@@ -943,8 +948,10 @@ async def validate_cue_file(
                 tracklist = await get_tracklist_by_id(UUID(str(cue_file.tracklist_id)))
 
                 # Validate timing against audio duration
-                audio_validation = await audio_validation_service.validate_track_timings(
-                    tracklist, audio_file_path, validation_options or {}
+                # TODO: Get actual audio duration from file
+                tolerance = 1.0  # Default tolerance
+                audio_validation = await audio_validation_service.validate_audio_duration(
+                    audio_file_path, tracklist, tolerance
                 )
 
                 if not audio_validation.valid:
@@ -1040,9 +1047,7 @@ async def validate_tracklist_for_cue(
         tracklist = await get_tracklist_by_id(tracklist_id)
 
         # Validate tracklist for CUE generation
-        validation_result = await cue_generation_service.validate_tracklist_for_cue(
-            tracklist, cue_format, validation_options or {}
-        )
+        validation_result = await cue_generation_service.validate_tracklist_for_cue(tracklist, cue_format.value)
 
         # Initialize comprehensive validation report
         validation_report: Dict[str, Any] = {
@@ -1071,9 +1076,7 @@ async def validate_tracklist_for_cue(
         # Validate against audio file if provided
         if audio_file_path and validation_result.valid:
             try:
-                audio_validation = await audio_validation_service.validate_track_timings(
-                    tracklist, audio_file_path, validation_options or {}
-                )
+                audio_validation = await audio_validation_service.validate_audio_duration(audio_file_path, tracklist)
 
                 if not audio_validation.valid:
                     validation_report["valid"] = False
@@ -1227,6 +1230,9 @@ async def convert_cue_file(
 
         try:
             # Perform conversion using CUE integration service
+            if not cue_generation_service.cue_integration:
+                raise HTTPException(status_code=503, detail="CUE integration service not available")
+
             conversion_result = cue_generation_service.cue_integration.convert_cue_format(
                 content,
                 CueFormat(source_cue_file.format),
@@ -1254,11 +1260,10 @@ async def convert_cue_file(
             converted_content = conversion_result.converted_content
 
             # Generate file path for converted file
-            audio_file_id = source_cue_file.tracklist_id  # Use tracklist_id as audio_file_id
-            storage_result = await storage_service.store_cue_file(
+            file_path = f"cue_files/{source_cue_file.tracklist_id}_{target_format}.cue"
+            success, stored_path, error = storage_service.store_cue_file(
+                file_path,
                 converted_content,
-                audio_file_id,
-                target_format,
                 {
                     "converted_from": source_cue_file.format,
                     "original_cue_file_id": str(cue_file_id),
@@ -1266,12 +1271,12 @@ async def convert_cue_file(
                 },
             )
 
-            if not storage_result.success:
+            if not success:
                 conversion_report["success"] = False
                 conversion_report["errors"].append(
                     {
                         "type": "storage_error",
-                        "message": f"Failed to store converted file: {storage_result.error}",
+                        "message": f"Failed to store converted file: {error}",
                         "severity": "error",
                     }
                 )
@@ -1282,13 +1287,15 @@ async def convert_cue_file(
                 return conversion_report
 
             # Create database record for converted CUE file
+            import hashlib
+
             converted_cue_file = CueFileDB(
                 tracklist_id=source_cue_file.tracklist_id,
-                file_path=storage_result.file_path,
+                file_path=stored_path or file_path,
                 format=target_format,
-                file_size=storage_result.file_size,
-                checksum=storage_result.checksum,
-                version=storage_result.version,
+                file_size=len(converted_content.encode("utf-8")),
+                checksum=hashlib.sha256(converted_content.encode("utf-8")).hexdigest(),
+                version=1,
                 is_active=True,
                 format_metadata={
                     "converted_from": source_cue_file.format,

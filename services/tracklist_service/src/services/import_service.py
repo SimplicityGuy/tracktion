@@ -165,6 +165,9 @@ class ImportService:
                 tracks=track_entries,
                 cue_file_id=None,  # Will be set after CUE generation
                 confidence_score=self._calculate_confidence_score(scraped, track_entries),
+                draft_version=None,
+                parent_tracklist_id=None,
+                default_cue_format=None,
             )
 
             logger.info(f"Successfully imported tracklist with {len(track_entries)} tracks")

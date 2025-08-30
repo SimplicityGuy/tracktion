@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta, UTC
 from typing import Optional, Dict, Any
 import jwt
-from passlib.context import CryptContext
+from passlib.context import CryptContext  # type: ignore[import-untyped]
 
 from .models import User, ApiKey, TokenPair, UserTier
 

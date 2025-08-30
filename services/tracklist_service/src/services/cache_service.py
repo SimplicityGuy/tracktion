@@ -176,7 +176,7 @@ class CacheService:
             config: Cache configuration
         """
         self.config = config
-        self.redis_client: Optional[Redis[bytes]] = None
+        self.redis_client: Optional[Redis] = None  # type: ignore[type-arg]
         self.memory_cache = MemoryCache(max_size=config.memory_cache_max_size, default_ttl=config.memory_cache_ttl)
         self.metrics = CacheMetrics()
         self._redis_available = False

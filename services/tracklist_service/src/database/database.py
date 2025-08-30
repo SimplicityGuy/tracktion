@@ -7,7 +7,7 @@ using PostgreSQL as the backend database.
 
 import logging
 from contextlib import contextmanager
-from typing import Generator
+from typing import Generator, Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
@@ -19,8 +19,8 @@ from ..models.tracklist import Base
 logger = logging.getLogger(__name__)
 
 # Global variables for connection
-engine: Engine = None
-SessionLocal: sessionmaker = None
+engine: Optional[Engine] = None
+SessionLocal: Optional[sessionmaker] = None
 
 
 def init_database() -> None:
@@ -62,6 +62,9 @@ def get_db_session() -> Generator[Session, None, None]:
     if not SessionLocal:
         init_database()
 
+    if not SessionLocal:
+        raise RuntimeError("Failed to initialize database")
+
     db = SessionLocal()
     try:
         yield db
@@ -79,6 +82,9 @@ def get_db_context() -> Generator[Session, None, None]:
     """
     if not SessionLocal:
         init_database()
+
+    if not SessionLocal:
+        raise RuntimeError("Failed to initialize database")
 
     db = SessionLocal()
     try:

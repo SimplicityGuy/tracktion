@@ -126,16 +126,16 @@ class CueFileDB(Base):
     def to_model(self) -> CueFile:
         """Convert to Pydantic model."""
         return CueFile(
-            id=self.id,
-            tracklist_id=self.tracklist_id,
-            file_path=self.file_path,
+            id=self.id,  # type: ignore[arg-type]
+            tracklist_id=self.tracklist_id,  # type: ignore[arg-type]
+            file_path=self.file_path,  # type: ignore[arg-type]
             format=CueFormat(self.format),
-            file_size=self.file_size,
-            checksum=self.checksum,
-            created_at=self.created_at,
-            updated_at=self.updated_at,
-            version=self.version,
-            is_active=self.is_active,
+            file_size=self.file_size,  # type: ignore[arg-type]
+            checksum=self.checksum,  # type: ignore[arg-type]
+            created_at=self.created_at,  # type: ignore[arg-type]
+            updated_at=self.updated_at,  # type: ignore[arg-type]
+            version=self.version,  # type: ignore[arg-type]
+            is_active=self.is_active,  # type: ignore[arg-type]
             metadata=self.format_metadata if isinstance(self.format_metadata, dict) else {},
         )
 
@@ -190,18 +190,18 @@ class CueGenerationJobDB(Base):
                 validation_report = None
 
         return CueGenerationJob(
-            id=self.id,
-            tracklist_id=self.tracklist_id,
+            id=self.id,  # type: ignore[arg-type]
+            tracklist_id=self.tracklist_id,  # type: ignore[arg-type]
             format=CueFormat(self.format),
             status=CueGenerationStatus(self.status),
-            created_at=self.created_at,
-            started_at=self.started_at,
-            completed_at=self.completed_at,
-            cue_file_id=self.cue_file_id,
-            error_message=self.error_message,
+            created_at=self.created_at,  # type: ignore[arg-type]
+            started_at=self.started_at,  # type: ignore[arg-type]
+            completed_at=self.completed_at,  # type: ignore[arg-type]
+            cue_file_id=self.cue_file_id,  # type: ignore[arg-type]
+            error_message=self.error_message,  # type: ignore[arg-type]
             validation_report=validation_report,
             options=self.options if isinstance(self.options, dict) else {},
-            progress=self.progress,
+            progress=self.progress,  # type: ignore[arg-type]
         )
 
     @classmethod

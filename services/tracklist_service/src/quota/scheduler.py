@@ -1,8 +1,8 @@
 """Scheduled tasks for quota management."""
 
 import logging
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 
 from .manager import QuotaManager
 from .models import QuotaType

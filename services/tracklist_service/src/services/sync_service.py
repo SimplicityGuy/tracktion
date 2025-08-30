@@ -722,7 +722,7 @@ class SynchronizationService:
             self.session.add(config)
             await self.session.flush()
 
-        return config
+        return config  # type: ignore[no-any-return]
 
     async def _create_sync_event(
         self,

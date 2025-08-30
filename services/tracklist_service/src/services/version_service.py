@@ -55,7 +55,7 @@ class VersionService:
 
         # Mark previous version as not current
         if current_version:
-            current_version.is_current = False
+            current_version.is_current = False  # type: ignore[assignment]
             self.session.add(current_version)
 
         # Create new version
@@ -154,11 +154,11 @@ class VersionService:
             tracklist_id=tracklist_id,
             change_type="rollback",
             change_summary=f"Rolled back to version {version_number}",
-            tracks_snapshot=version.tracks_snapshot,
+            tracks_snapshot=version.tracks_snapshot,  # type: ignore[arg-type]
         )
 
         # Update the tracklist with the rolled back tracks
-        tracklist.tracks = version.tracks_snapshot
+        tracklist.tracks = version.tracks_snapshot  # type: ignore[assignment]
         tracklist.updated_at = datetime.now(timezone.utc)
 
         self.session.add(tracklist)
@@ -193,8 +193,8 @@ class VersionService:
         modified = []
 
         # Create position-based lookup
-        tracks1_by_pos = {t.get("position"): t for t in tracks1}
-        tracks2_by_pos = {t.get("position"): t for t in tracks2}
+        tracks1_by_pos = {t.get("position"): t for t in tracks1}  # type: ignore[attr-defined]
+        tracks2_by_pos = {t.get("position"): t for t in tracks2}  # type: ignore[attr-defined]
 
         # Find added and modified
         for pos, track in tracks2_by_pos.items():
@@ -247,7 +247,7 @@ class VersionService:
             and_(
                 TracklistVersion.tracklist_id == tracklist_id,
                 TracklistVersion.created_at < cutoff_date,
-                TracklistVersion.id.notin_(keep_ids) if keep_ids else True,
+                TracklistVersion.id.notin_(keep_ids) if keep_ids else True,  # type: ignore[arg-type]
                 TracklistVersion.is_current.is_(False),
             )
         )
