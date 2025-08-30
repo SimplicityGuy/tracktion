@@ -221,7 +221,7 @@ class MessageBatch(BaseModel):
 
 
 # Message routing configuration
-MESSAGE_ROUTING = {
+MESSAGE_ROUTING: Dict[MessageType, Dict[str, Any]] = {
     MessageType.CUE_GENERATION: {
         "queue": "cue.generation",
         "routing_key": "cue.generation.single",

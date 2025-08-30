@@ -13,7 +13,7 @@ import shutil
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -81,7 +81,7 @@ class StorageBackend(ABC):
         pass
 
     @abstractmethod
-    def list_versions(self, file_path: str) -> List[Dict[str, any]]:
+    def list_versions(self, file_path: str) -> List[Dict[str, Any]]:
         """List all versions of a file."""
         pass
 
@@ -214,7 +214,7 @@ class FilesystemBackend(StorageBackend):
         else:
             return (self.base_path / file_path).exists()
 
-    def list_versions(self, file_path: str) -> List[Dict[str, any]]:
+    def list_versions(self, file_path: str) -> List[Dict[str, Any]]:
         """List all versions of a file."""
         try:
             full_path = self.base_path / file_path
@@ -312,7 +312,7 @@ class S3Backend(StorageBackend):
         # Placeholder implementation
         return False
 
-    def list_versions(self, file_path: str) -> List[Dict[str, any]]:
+    def list_versions(self, file_path: str) -> List[Dict[str, Any]]:
         """List all versions of a file in S3."""
         # Placeholder implementation
         return []
@@ -326,7 +326,7 @@ class StorageService:
         self.config = config or StorageConfig()
 
         # Initialize backends
-        self.backends = {}
+        self.backends: Dict[str, StorageBackend] = {}
 
         # Initialize filesystem backend
         self.backends["filesystem"] = FilesystemBackend(self.config.filesystem)
@@ -342,7 +342,7 @@ class StorageService:
 
     def store_cue_file(
         self, file_path: str, content: str, metadata: Optional[Dict] = None
-    ) -> Tuple[bool, str, Optional[str]]:
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Store CUE file content.
 
@@ -372,11 +372,11 @@ class StorageService:
 
                 return True, result.file_path, None
             else:
-                return False, None, result.error
+                return False, "", result.error
 
         except Exception as e:
             logger.error(f"Failed to store CUE file {file_path}: {e}", exc_info=True)
-            return False, None, str(e)
+            return False, "", str(e)
 
     def retrieve_cue_file(self, file_path: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """
@@ -443,7 +443,7 @@ class StorageService:
             metadata_path = f"{file_path}.metadata.json"
             success, content, _ = self.primary_backend.retrieve(metadata_path)
             if success and content:
-                return json.loads(content)
+                return json.loads(content)  # type: ignore[no-any-return]
         except Exception as e:
             logger.debug(f"No metadata found for {file_path}: {e}")
         return None

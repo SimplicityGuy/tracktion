@@ -90,7 +90,7 @@ class VersionService:
             and_(TracklistVersion.tracklist_id == tracklist_id, TracklistVersion.is_current.is_(True))
         )
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]
 
     async def get_version(self, tracklist_id: UUID, version_number: int) -> Optional[TracklistVersion]:
         """Get a specific version of a tracklist.
@@ -106,7 +106,7 @@ class VersionService:
             and_(TracklistVersion.tracklist_id == tracklist_id, TracklistVersion.version_number == version_number)
         )
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]
 
     async def list_versions(self, tracklist_id: UUID, limit: int = 50, offset: int = 0) -> List[TracklistVersion]:
         """List versions for a tracklist.
@@ -165,7 +165,7 @@ class VersionService:
         await self.session.commit()
         await self.session.refresh(tracklist)
 
-        return tracklist
+        return tracklist  # type: ignore[no-any-return]
 
     async def get_version_diff(self, tracklist_id: UUID, version1: int, version2: int) -> dict:
         """Get differences between two versions.

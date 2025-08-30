@@ -33,7 +33,8 @@ class SyncEventPublisher:
         Args:
             rabbitmq_client: RabbitMQ client instance
         """
-        self.rabbitmq_client = rabbitmq_client or RabbitMQClient()
+        from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQConfig
+        self.rabbitmq_client = rabbitmq_client or RabbitMQClient(RabbitMQConfig())
         self.exchange_name = "tracklist.sync.events"
         self.exchange_type = ExchangeType.TOPIC
         self.exchange = None

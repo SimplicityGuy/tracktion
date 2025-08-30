@@ -282,7 +282,7 @@ class ConflictResolutionService:
         Returns:
             UI-ready conflict data
         """
-        ui_data = {
+        ui_data: Dict[str, Any] = {
             "tracklist_id": str(tracklist_id),
             "total_conflicts": len(conflicts),
             "auto_resolvable_count": sum(1 for c in conflicts if c.get("auto_resolvable", False)),
@@ -350,7 +350,7 @@ class ConflictResolutionService:
                 "recommendation": "Manual review recommended due to major structural changes",
             }
         else:
-            return details
+            return details  # type: ignore[no-any-return]
 
     async def resolve_conflicts(
         self,

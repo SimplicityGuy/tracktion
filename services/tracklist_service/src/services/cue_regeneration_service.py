@@ -461,7 +461,7 @@ class CueRegenerationService:
             }
         else:
             # Overall queue status
-            priority_counts = {}
+            priority_counts: Dict[str, int] = {}
             for job in self.regeneration_queue:
                 priority = job["priority"]
                 priority_counts[priority] = priority_counts.get(priority, 0) + 1

@@ -194,7 +194,7 @@ class RabbitMQClient:
             Batch publication results
         """
         batch_id = uuid4()
-        results = {
+        results: Dict[str, Any] = {
             "batch_id": str(batch_id),
             "total_messages": len(messages),
             "successful": 0,

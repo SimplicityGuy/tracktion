@@ -643,7 +643,7 @@ class BatchSyncService:
             Aggregated conflict information
         """
         total_conflicts = 0
-        conflict_types = {}
+        conflict_types: Dict[str, int] = {}
         affected_tracklists = []
 
         for tracklist_id in tracklist_ids:
