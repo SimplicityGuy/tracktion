@@ -21,9 +21,12 @@ Addressing technical debt ensures:
 ### Core Requirements
 1. **Pragma Review and Cleanup**
    - Review all pragma comments in codebase
-   - Remove unnecessary type: ignore, noqa, etc.
+   - Audit ALL mypy, ruff, and other linting pragmas for validity
+   - Determine if each pragma exception is truly necessary or can be fixed
+   - Fix ALL pragma issues that have a proper solution
+   - Remove unnecessary type: ignore, noqa, etc. where fixes exist
    - Fix underlying issues instead of suppressing warnings
-   - Document any pragmas that must remain
+   - Document any pragmas that must remain with clear justification
 
 2. **Incomplete Story Items**
    - Review all completed stories for unfinished tasks
@@ -65,12 +68,14 @@ Addressing technical debt ensures:
 **So that** we're fixing issues rather than hiding them
 
 **Acceptance Criteria:**
-- Complete audit of all pragma directives
-- Remove unnecessary suppressions
-- Fix underlying issues
-- Document remaining pragmas with justification
-- Create pragma usage guidelines
-- Zero pragmas in new code
+- Complete audit of ALL mypy, ruff, and linting pragma directives
+- Validate each pragma exception for necessity
+- Fix ALL issues where a proper solution exists
+- Remove unnecessary suppressions that can be properly fixed
+- Fix underlying type checking and linting issues
+- Document remaining pragmas with clear technical justification
+- Create pragma usage guidelines for exceptional cases only
+- Zero new pragmas without explicit justification
 
 #### Story 11.2: Complete Unfinished Story Tasks
 **As a** product owner
@@ -134,11 +139,13 @@ Addressing technical debt ensures:
 5. Create prioritized fix list
 
 ### Phase 2: Pragma Cleanup (Days 3-5)
-1. Fix type checking issues
-2. Resolve linting violations
-3. Remove unnecessary pragmas
-4. Document required pragmas
-5. Update coding standards
+1. Audit ALL mypy type: ignore pragmas for validity
+2. Audit ALL ruff noqa pragmas for validity
+3. Fix type checking issues where solutions exist
+4. Resolve linting violations with proper fixes
+5. Remove unnecessary pragmas that can be fixed
+6. Document required pragmas with technical justification
+7. Update coding standards for exceptional pragma usage
 
 ### Phase 3: Story Completion (Days 6-8)
 1. Review each epic's stories

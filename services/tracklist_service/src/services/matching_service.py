@@ -7,7 +7,7 @@ with local audio files using metadata and fuzzy matching.
 
 import logging
 from difflib import SequenceMatcher
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 from uuid import UUID
 from dataclasses import dataclass
 
@@ -247,7 +247,7 @@ class MatchingService:
         else:
             return max(0.0, 1.0 - diff_percent)
 
-    def _match_date(self, tracklist_date: Optional[any], audio_date: Optional[any]) -> float:
+    def _match_date(self, tracklist_date: Optional[Any], audio_date: Optional[Any]) -> float:
         """
         Match dates between tracklist and audio metadata.
 
@@ -366,6 +366,7 @@ class MatchingService:
                 title=track_entry.title,
                 remix=track_entry.remix,
                 label=track_entry.label,
+                bpm=None,  # Add required bpm field
             )
             tracks.append(track)
 

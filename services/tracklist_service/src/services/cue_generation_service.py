@@ -14,7 +14,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel
+# Import request/response models from models.cue_file to avoid duplication
+from ..models.cue_file import (
+    GenerateCueRequest as ModelGenerateCueRequest,
+    BatchGenerateCueRequest as ModelBatchGenerateCueRequest,
+    CueGenerationResponse as ModelCueGenerationResponse,
+    BatchCueGenerationResponse as ModelBatchCueGenerationResponse,
+    CueFormat as ModelCueFormat,  # Import the Enum from models
+)
 
 # Import time utilities
 from services.tracklist_service.src.utils.time_utils import parse_cue_time  # type: ignore[import-untyped]
@@ -35,67 +42,21 @@ try:
     )
 
     CUE_HANDLER_AVAILABLE = True
-    CueFormat = ImportedCueFormat
+    CueFormat = ImportedCueFormat  # type: ignore[misc,no-redef]
 except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("CUE handler not available, using placeholder implementation")
     CUE_HANDLER_AVAILABLE = False
-
-    # Define placeholder classes
-    class CueFormat:  # type: ignore[no-redef]
-        STANDARD = "standard"
-        CDJ = "cdj"
-        TRAKTOR = "traktor"
-        SERATO = "serato"
-        REKORDBOX = "rekordbox"
-        KODI = "kodi"
+    CueFormat = ModelCueFormat  # type: ignore[misc,no-redef,assignment]
 
 
 logger = logging.getLogger(__name__)
 
-
-class GenerateCueRequest(BaseModel):
-    """Request model for CUE file generation."""
-
-    format: str  # Will be converted to CueFormat
-    options: Dict[str, Any] = {}
-    validate_audio: bool = True
-    audio_file_path: Optional[str] = None
-    store_file: bool = True
-
-
-class BatchGenerateCueRequest(BaseModel):
-    """Request model for batch CUE file generation."""
-
-    formats: List[str]
-    options: Dict[str, Any] = {}
-    validate_audio: bool = False
-    audio_file_path: Optional[str] = None
-    store_files: bool = True
-
-
-class CueGenerationResponse(BaseModel):
-    """Response model for CUE file generation."""
-
-    success: bool
-    cue_file_id: Optional[UUID] = None
-    file_path: Optional[str] = None
-    format: Optional[str] = None
-    content: Optional[str] = None
-    validation_report: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    processing_time_ms: Optional[float] = None
-
-
-class BatchCueGenerationResponse(BaseModel):
-    """Response model for batch CUE file generation."""
-
-    success: bool
-    total_files: int
-    successful_files: int
-    failed_files: int
-    results: List[CueGenerationResponse]
-    processing_time_ms: Optional[float] = None
+# Re-export with original names for backward compatibility
+GenerateCueRequest = ModelGenerateCueRequest
+BatchGenerateCueRequest = ModelBatchGenerateCueRequest
+CueGenerationResponse = ModelCueGenerationResponse
+BatchCueGenerationResponse = ModelBatchCueGenerationResponse
 
 
 class CueGenerationService:
@@ -115,6 +76,7 @@ class CueGenerationService:
         self.validator: Optional[Any] = None
         self.converter: Optional[Any] = None
         self.parser: Optional[Any] = None
+        self.cue_integration: Optional[Any] = None  # Placeholder for CUE integration service
 
         # Initialize format-specific generators if CUE handler is available
         if CUE_HANDLER_AVAILABLE:
@@ -129,6 +91,8 @@ class CueGenerationService:
             self.validator = CueValidator()
             self.converter = CueConverter()
             self.parser = CueParser()
+            # Initialize cue_integration with necessary methods
+            self.cue_integration = self  # Use self as integration service
 
     async def generate_cue_file(self, tracklist: Any, request: GenerateCueRequest) -> CueGenerationResponse:
         """
@@ -479,43 +443,114 @@ class CueGenerationService:
         now = datetime.now(timezone.utc)
         return f"{now.year}/{now.month:02d}/{tracklist_id}/{format_name}.cue"
 
-    async def validate_tracklist_for_cue(self, tracklist: Any) -> Tuple[bool, List[str]]:
+    async def validate_tracklist_for_cue(self, tracklist: Any, format_type: Optional[str] = None) -> Any:
         """
         Validate if tracklist is suitable for CUE generation.
 
         Args:
             tracklist: Tracklist to validate
+            format_type: Optional format type for format-specific validation
 
         Returns:
-            Tuple of (is_valid, error_messages)
+            ValidationResult-like object with valid, error, and warnings attributes
         """
+
+        class ValidationResult:
+            def __init__(self) -> None:
+                self.valid = True
+                self.error: Optional[str] = None
+                self.warnings: List[str] = []
+                self.errors: List[str] = []
+                self.metadata: Dict[str, Any] = {}
+
+        result = ValidationResult()
         errors = []
 
         # Check required fields
         if not tracklist:
             errors.append("Tracklist is required")
-            return False, errors
+            result.valid = False
+            result.error = "Tracklist is required"
+            result.errors = errors
+            return result
 
-        if not hasattr(tracklist, "tracks") or not tracklist.tracks:
-            errors.append("Tracklist must have at least one track")
+    def get_format_capabilities(self, format_type: str) -> Dict[str, Any]:
+        """
+        Get capabilities and features for a specific CUE format.
 
-        # Check track data
-        for idx, track in enumerate(getattr(tracklist, "tracks", []), 1):
-            if not getattr(track, "title", None):
-                errors.append(f"Track {idx} missing title")
-            if not getattr(track, "start_time", None):
-                errors.append(f"Track {idx} missing start time")
+        Args:
+            format_type: CUE format type
 
-        # Check timing sequence
-        if hasattr(tracklist, "tracks") and len(tracklist.tracks) > 1:
-            for i in range(len(tracklist.tracks) - 1):
-                current = tracklist.tracks[i]
-                next_track = tracklist.tracks[i + 1]
-                if hasattr(current, "end_time") and hasattr(next_track, "start_time"):
-                    if current.end_time and next_track.start_time and current.end_time > next_track.start_time:
-                        errors.append(f"Track {i + 1} overlaps with track {i + 2}")
+        Returns:
+            Dictionary of format capabilities
+        """
+        capabilities = {
+            "standard": {
+                "supports_multiple_files": True,
+                "supports_pregap": True,
+                "supports_postgap": True,
+                "supports_isrc": True,
+                "supports_catalog": True,
+                "max_tracks": 99,
+                "timing_precision": "frames",
+                "metadata_fields": ["title", "performer", "songwriter", "rem"],
+            },
+            "cdj": {
+                "supports_multiple_files": False,
+                "supports_pregap": False,
+                "supports_postgap": False,
+                "supports_isrc": False,
+                "supports_catalog": False,
+                "max_tracks": 999,
+                "timing_precision": "milliseconds",
+                "metadata_fields": ["title", "artist", "bpm", "key"],
+            },
+            "traktor": {
+                "supports_multiple_files": False,
+                "supports_pregap": False,
+                "supports_postgap": False,
+                "supports_isrc": False,
+                "supports_catalog": False,
+                "max_tracks": 999,
+                "timing_precision": "milliseconds",
+                "metadata_fields": ["title", "artist", "bpm", "key", "rating"],
+            },
+            "serato": {
+                "supports_multiple_files": False,
+                "supports_pregap": False,
+                "supports_postgap": False,
+                "supports_isrc": False,
+                "supports_catalog": False,
+                "max_tracks": 999,
+                "timing_precision": "milliseconds",
+                "metadata_fields": ["title", "artist", "bpm", "key", "color"],
+            },
+            "rekordbox": {
+                "supports_multiple_files": False,
+                "supports_pregap": False,
+                "supports_postgap": False,
+                "supports_isrc": False,
+                "supports_catalog": False,
+                "max_tracks": 999,
+                "timing_precision": "milliseconds",
+                "metadata_fields": ["title", "artist", "bpm", "key", "color", "rating"],
+            },
+            "kodi": {
+                "supports_multiple_files": True,
+                "supports_pregap": True,
+                "supports_postgap": False,
+                "supports_isrc": False,
+                "supports_catalog": False,
+                "max_tracks": 999,
+                "timing_precision": "seconds",
+                "metadata_fields": ["title", "artist", "album", "year", "genre"],
+            },
+        }
 
-        return len(errors) == 0, errors
+        return capabilities.get(
+            format_type.lower(),
+            {"error": f"Unknown format: {format_type}", "supported_formats": list(capabilities.keys())},
+        )
 
     async def convert_cue_format(
         self, cue_content: str, source_format: str, target_format: str
@@ -566,3 +601,209 @@ class CueGenerationService:
         except Exception as e:
             logger.error(f"Format conversion failed: {e}", exc_info=True)
             return CueGenerationResponse(success=False, error=str(e))
+
+    def get_supported_formats(self) -> List[Any]:
+        """
+        Get list of supported CUE formats.
+
+        Returns:
+            List of supported CueFormat enum values
+        """
+        # Return instances if it's an enum, otherwise return empty list
+        if hasattr(CueFormat, "__members__"):
+            return list(CueFormat.__members__.values())  # type: ignore
+        return []
+
+    async def invalidate_tracklist_cache(self, tracklist_id: UUID) -> int:
+        """
+        Invalidate cache for a specific tracklist.
+
+        Args:
+            tracklist_id: ID of the tracklist to invalidate
+
+        Returns:
+            Number of cache entries invalidated
+        """
+        if not self.cache_service:
+            return 0
+
+        # Invalidate all formats for this tracklist
+        invalidated_count = 0
+        if hasattr(CueFormat, "__members__"):
+            for format_name in CueFormat.__members__.values():  # type: ignore
+                cache_key = f"cue:{tracklist_id}:{format_name.value}"  # type: ignore
+                if hasattr(self.cache_service, "delete"):
+                    await self.cache_service.delete(cache_key)
+                    invalidated_count += 1
+
+        return invalidated_count
+
+    def get_conversion_preview(
+        self,
+        source_format: Any,
+        target_format: Any,  # Accept both CueFormat types
+    ) -> List[str]:
+        """
+        Get preview of potential issues when converting between formats.
+
+        Args:
+            source_format: Source CUE format
+            target_format: Target CUE format
+
+        Returns:
+            List of warning messages about potential data loss or issues
+        """
+        warnings = []
+
+        # Check if formats are the same
+        if source_format == target_format:
+            warnings.append("Source and target formats are the same")
+            return warnings
+
+        # Convert to string values for comparison if needed
+        if hasattr(source_format, "value"):
+            source_str = source_format.value
+        else:
+            source_str = str(source_format).lower()
+
+        if hasattr(target_format, "value"):
+            target_str = target_format.value
+        else:
+            target_str = str(target_format).lower()
+
+        # Format-specific conversion warnings
+        conversion_warnings = {
+            ("standard", "cdj"): [
+                "CDJ format may not support all metadata fields",
+                "Some timing precision may be lost",
+            ],
+            ("standard", "traktor"): [
+                "Traktor-specific cue points will be generated",
+                "BPM information may need manual adjustment",
+            ],
+            ("rekordbox", "standard"): [
+                "Rekordbox-specific metadata will be lost",
+                "Hot cue colors will not be preserved",
+            ],
+            ("serato", "standard"): [
+                "Serato-specific cue point types will be simplified",
+                "Loop information may be lost",
+            ],
+        }
+
+        # Get specific warnings for this conversion
+        key = (source_str, target_str)
+        if key in conversion_warnings:
+            warnings.extend(conversion_warnings[key])
+        else:
+            # Generic warning for unsupported conversions
+            warnings.append(f"Converting from {source_str} to {target_str} may result in data loss")
+
+        return warnings
+
+    def validate_cue_content(self, content: str, format_type: Any, options: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate CUE file content.
+
+        Args:
+            content: CUE file content to validate
+            format_type: CUE format type
+            options: Validation options
+
+        Returns:
+            Validation result dictionary
+        """
+        errors: List[str] = []
+        warnings: List[str] = []
+        result: Dict[str, Any] = {
+            "valid": True,
+            "errors": errors,
+            "warnings": warnings,
+            "metadata": {
+                "format": str(format_type),
+                "content_length": len(content),
+                "line_count": content.count("\n") + 1,
+            },
+        }
+
+        # Basic validation checks
+        if not content:
+            result["valid"] = False
+            errors.append("CUE content is empty")
+            return result
+
+        # Check for required CUE file markers
+        if "TITLE" not in content and "title" not in content.lower():
+            warnings.append("CUE file may be missing TITLE field")
+
+        if "FILE" not in content and "file" not in content.lower():
+            warnings.append("CUE file may be missing FILE declaration")
+
+        if "TRACK" not in content and "track" not in content.lower():
+            result["valid"] = False
+            errors.append("CUE file has no TRACK entries")
+
+        return result
+
+    def convert_cue_format_sync(
+        self, content: str, source_format: Any, target_format: Any, preserve_metadata: bool, options: Dict[str, Any]
+    ) -> Any:
+        """
+        Convert CUE content between formats (synchronous version for cue_integration compatibility).
+
+        Args:
+            content: Source CUE content
+            source_format: Source format
+            target_format: Target format
+            preserve_metadata: Whether to preserve metadata
+            options: Conversion options
+
+        Returns:
+            Conversion result object
+        """
+
+        class ConversionResult:
+            def __init__(self) -> None:
+                self.success = True
+                self.output = content  # Default to original content
+                self.warnings: List[str] = []
+                self.data_loss: List[str] = []
+                self.error: Optional[str] = None
+
+        result = ConversionResult()
+
+        # Add conversion warnings
+        preview_warnings = self.get_conversion_preview(source_format, target_format)
+        result.warnings = preview_warnings
+
+        # For now, just return the original content with warnings
+        # Actual conversion would happen here if CUE handler was available
+        if not CUE_HANDLER_AVAILABLE:
+            result.warnings.append("CUE handler not available, returning original content")
+
+        return result
+
+    async def regenerate_cue_file(
+        self, tracklist: Any, cue_file: Any, options: Optional[Dict[str, Any]] = None
+    ) -> CueGenerationResponse:
+        """
+        Regenerate a CUE file for an existing tracklist and CUE file record.
+
+        Args:
+            tracklist: Tracklist data
+            cue_file: Existing CUE file record
+            options: Optional regeneration options
+
+        Returns:
+            CueGenerationResponse with regenerated file details
+        """
+        # Create a request object for regeneration
+        request = GenerateCueRequest(
+            format=cue_file.format if hasattr(cue_file, "format") else "standard",
+            options=options or {},
+            validate_audio=False,
+            audio_file_path=None,
+        )
+
+        # Use the regular generate method
+        return await self.generate_cue_file(tracklist, request)

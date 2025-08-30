@@ -214,12 +214,12 @@ class CacheService:
     async def disconnect(self) -> None:
         """Disconnect from Redis."""
         if self.redis_client:
-            await self.redis_client.aclose()
+            await self.redis_client.close()
             self.redis_client = None
             self._redis_available = False
             logger.info("Disconnected from Redis")
 
-    def _generate_cache_key(self, prefix: str, *components) -> str:
+    def _generate_cache_key(self, prefix: str, *components: Any) -> str:
         """Generate standardized cache key."""
         key_parts = [prefix]
         for component in components:
@@ -291,7 +291,7 @@ class CacheService:
         try:
             # Delete all variants
             deleted = await self.redis_client.delete(key, f"{key}:gz", f"{key}:meta")
-            return deleted > 0
+            return bool(deleted > 0)  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"Redis delete failed for key {key}: {e}")
@@ -316,14 +316,14 @@ class CacheService:
         if content:
             self.metrics.hits += 1
             logger.debug(f"Cache hit (Redis) for CUE content: {key}")
-            return content
+            return str(content) if content is not None else None
 
         # Try memory cache
         content = self.memory_cache.get(key)
         if content:
             self.metrics.hits += 1
             logger.debug(f"Cache hit (memory) for CUE content: {key}")
-            return content
+            return str(content) if content is not None else None
 
         self.metrics.misses += 1
         logger.debug(f"Cache miss for CUE content: {key}")
@@ -369,26 +369,25 @@ class CacheService:
         Returns:
             Cached validation result if available
         """
-        key_components = ["validation", cue_file_id]
         if audio_file_path:
             import hashlib
 
             audio_hash = hashlib.md5(audio_file_path.encode()).hexdigest()[:8]
-            key_components.append(audio_hash)
-
-        key = self._generate_cache_key(*key_components)
+            key = self._generate_cache_key("validation", cue_file_id, audio_hash)
+        else:
+            key = self._generate_cache_key("validation", cue_file_id)
 
         # Try Redis first
         result = await self._get_redis(key)
         if result:
             self.metrics.hits += 1
-            return result
+            return result  # type: ignore[no-any-return]
 
         # Try memory cache
         result = self.memory_cache.get(key)
         if result:
             self.metrics.hits += 1
-            return result
+            return result  # type: ignore[no-any-return]
 
         self.metrics.misses += 1
         return None
@@ -407,14 +406,13 @@ class CacheService:
         Returns:
             True if cached successfully
         """
-        key_components = ["validation", cue_file_id]
         if audio_file_path:
             import hashlib
 
             audio_hash = hashlib.md5(audio_file_path.encode()).hexdigest()[:8]
-            key_components.append(audio_hash)
-
-        key = self._generate_cache_key(*key_components)
+            key = self._generate_cache_key("validation", cue_file_id, audio_hash)
+        else:
+            key = self._generate_cache_key("validation", cue_file_id)
 
         redis_success = await self._set_redis(key, result, self.config.validation_ttl)
         memory_success = self.memory_cache.set(key, result, self.config.memory_cache_ttl)
@@ -441,13 +439,13 @@ class CacheService:
         capabilities = await self._get_redis(key)
         if capabilities:
             self.metrics.hits += 1
-            return capabilities
+            return capabilities  # type: ignore[no-any-return]
 
         # Try memory cache
         capabilities = self.memory_cache.get(key)
         if capabilities:
             self.metrics.hits += 1
-            return capabilities
+            return capabilities  # type: ignore[no-any-return]
 
         self.metrics.misses += 1
         return None
@@ -498,7 +496,7 @@ class CacheService:
                 deleted = await self.redis_client.delete(*keys)
                 self.metrics.deletes += deleted
                 logger.info(f"Invalidated {deleted} cache entries for tracklist {tracklist_id}")
-                return deleted
+                return int(deleted)  # type: ignore[no-any-return]
 
             return 0
 

@@ -393,13 +393,16 @@ class RetryManager:
         )
 
         # Store in Redis for tracking
+        retry_data = {
+            "scheduled_at": datetime.now(UTC).isoformat(),
+            "retry_at": retry_message["retry_at"],
+            "retry_count": retry_message["retry_count"],
+        }
+        # Convert to proper types for Redis
+        redis_retry_data = {k: str(v) for k, v in retry_data.items()}
         self.redis.hset(
             f"retry:{job.id}",
-            mapping={
-                "scheduled_at": datetime.now(UTC).isoformat(),
-                "retry_at": retry_message["retry_at"],
-                "retry_count": retry_message["retry_count"],
-            },
+            mapping=redis_retry_data,
         )
         self.redis.expire(f"retry:{job.id}", int(delay) + 3600)  # Expire after delay + 1 hour
 
@@ -457,7 +460,9 @@ class RetryManager:
         )
 
         # Store in Redis for analysis
-        self.redis.hset(f"dlq:{job.id}", mapping=dlq_message)
+        # Convert to proper types for Redis
+        redis_dlq_data = {k: str(v) for k, v in dlq_message.items()}
+        self.redis.hset(f"dlq:{job.id}", mapping=redis_dlq_data)
 
         # Get retry count before cleanup
         retry_count = self.failed_jobs[job.id].retry_count if job.id in self.failed_jobs else 0

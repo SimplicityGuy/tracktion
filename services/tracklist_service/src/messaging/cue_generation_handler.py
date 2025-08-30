@@ -16,6 +16,7 @@ from services.tracklist_service.src.messaging.message_schemas import (
     CueGenerationMessage,
     CueConversionMessage,
     CueValidationMessage,
+    MessageType,
 )
 from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient
 from services.tracklist_service.src.models.cue_file import CueFormat, GenerateCueRequest, BatchGenerateCueRequest
@@ -88,7 +89,7 @@ class CueGenerationMessageHandler:
             await self._send_completion_message(
                 message,
                 success=response.success,
-                cue_file_id=response.cue_file_id,
+                cue_file_id=str(response.cue_file_id) if response.cue_file_id else None,
                 file_path=response.file_path,
                 validation_report=response.validation_report.model_dump() if response.validation_report else None,
                 error=response.error,
@@ -370,19 +371,19 @@ class CueGenerationMessageHandler:
             # Start consuming different message types
             await asyncio.gather(
                 self.rabbitmq_client.consume_messages(
-                    message_type="cue_generation",
+                    message_type=MessageType.CUE_GENERATION,
                     handler=self.handle_cue_generation,
                 ),
                 self.rabbitmq_client.consume_messages(
-                    message_type="batch_cue_generation",
+                    message_type=MessageType.BATCH_CUE_GENERATION,
                     handler=self.handle_batch_cue_generation,
                 ),
                 self.rabbitmq_client.consume_messages(
-                    message_type="cue_validation",
+                    message_type=MessageType.CUE_VALIDATION,
                     handler=self.handle_cue_validation,
                 ),
                 self.rabbitmq_client.consume_messages(
-                    message_type="cue_conversion",
+                    message_type=MessageType.CUE_CONVERSION,
                     handler=self.handle_cue_conversion,
                 ),
             )

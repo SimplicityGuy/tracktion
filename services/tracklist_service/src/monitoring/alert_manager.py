@@ -152,7 +152,10 @@ class AlertManager:
                 failed_extractions = []
                 if page_type:
                     failed_result = self.redis_client.lrange(failed_key, 0, 9)
-                    failed_data = await failed_result if hasattr(failed_result, "__await__") else failed_result
+                    if hasattr(failed_result, "__await__"):
+                        failed_data = await failed_result
+                    else:
+                        failed_data = failed_result
                     failed_extractions = [json.loads(f) for f in failed_data if f]
 
                 status = HealthStatus(

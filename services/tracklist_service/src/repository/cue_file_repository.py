@@ -88,7 +88,7 @@ class CueFileRepository:
             else:
                 logger.debug(f"CUE file {cue_file_id} not found")
 
-            return cue_file
+            return cue_file  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"Failed to get CUE file {cue_file_id}: {e}", exc_info=True)
@@ -176,7 +176,7 @@ class CueFileRepository:
             else:
                 logger.debug(f"No active CUE file found for tracklist {tracklist_id} format {cue_format}")
 
-            return cue_file
+            return cue_file  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(

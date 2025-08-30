@@ -6,7 +6,7 @@ including import from 1001tracklists and CUE file generation.
 """
 
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
@@ -144,19 +144,19 @@ class TracklistDB(Base):
 
     __tablename__ = "tracklists"
 
-    id = Column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid4)
-    audio_file_id = Column(PostgresUUID(as_uuid=True), nullable=False)  # Foreign key to recordings.id
-    source = Column(String(50), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    tracks = Column(JSON, nullable=False, default=list)
-    cue_file_path = Column(Text, nullable=True)
-    cue_file_id = Column(PostgresUUID(as_uuid=True), nullable=True)
-    confidence_score = Column(Float, default=1.0, nullable=False)
-    draft_version = Column(Integer, nullable=True)
-    is_draft = Column(Boolean, default=False, nullable=False)
-    parent_tracklist_id = Column(PostgresUUID(as_uuid=True), ForeignKey("tracklists.id"), nullable=True)
-    default_cue_format = Column(String(20), nullable=True)
+    id: UUID = Column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid4)  # type: ignore[assignment]
+    audio_file_id: UUID = Column(PostgresUUID(as_uuid=True), nullable=False)  # type: ignore[assignment]
+    source: str = Column(String(50), nullable=False)  # type: ignore[assignment]
+    created_at: datetime = Column(DateTime, default=datetime.utcnow, nullable=False)  # type: ignore[assignment]
+    updated_at: datetime = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)  # type: ignore[assignment]
+    tracks: List[Dict[str, Any]] = Column(JSON, nullable=False, default=list)  # type: ignore[assignment]
+    cue_file_path: Optional[str] = Column(Text, nullable=True)  # type: ignore[assignment]
+    cue_file_id: Optional[UUID] = Column(PostgresUUID(as_uuid=True), nullable=True)  # type: ignore[assignment]
+    confidence_score: float = Column(Float, default=1.0, nullable=False)  # type: ignore[assignment]
+    draft_version: Optional[int] = Column(Integer, nullable=True)  # type: ignore[assignment]
+    is_draft: bool = Column(Boolean, default=False, nullable=False)  # type: ignore[assignment]
+    parent_tracklist_id: Optional[UUID] = Column(PostgresUUID(as_uuid=True), ForeignKey("tracklists.id"), nullable=True)  # type: ignore[assignment]
+    default_cue_format: Optional[str] = Column(String(20), nullable=True)  # type: ignore[assignment]
 
     # Relationships
     # Note: Recording model is in a different service, so relationship is commented out

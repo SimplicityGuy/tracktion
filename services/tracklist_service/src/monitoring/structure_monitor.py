@@ -161,21 +161,21 @@ class StructureMonitor:
 
         # Count tags
         for tag in soup.find_all():
-            if not hasattr(tag, 'name'):
+            if not hasattr(tag, "name"):
                 continue
             tag_name = tag.name
             structure["tag_counts"][tag_name] = structure["tag_counts"].get(tag_name, 0) + 1
 
             # Collect classes
-            if hasattr(tag, 'get') and tag.get("class"):
+            if hasattr(tag, "get") and tag.get("class"):
                 structure["class_names"].update(tag.get("class"))
 
             # Collect IDs
-            if hasattr(tag, 'get') and tag.get("id"):
+            if hasattr(tag, "get") and tag.get("id"):
                 structure["id_names"].add(tag.get("id"))
 
             # Collect data attributes
-            if hasattr(tag, 'attrs'):
+            if hasattr(tag, "attrs"):
                 for attr in tag.attrs:
                     if attr.startswith("data-"):
                         structure["data_attributes"].add(attr)
@@ -214,9 +214,15 @@ class StructureMonitor:
         if not element:
             return {}
 
+        classes = element.get("class")
+        if classes is None:
+            classes = []
+        elif isinstance(classes, str):
+            classes = [classes]
+
         return {
             "tag": element.name,
-            "classes": element.get("class", []),
+            "classes": classes,
             "id": element.get("id"),
             "data_attrs": {k: v for k, v in element.attrs.items() if k.startswith("data-")},
         }
@@ -225,7 +231,7 @@ class StructureMonitor:
         """Try to detect site version from meta tags or comments."""
         # Check meta tags
         version_meta = soup.find("meta", attrs={"name": "version"})
-        if version_meta:
+        if version_meta and hasattr(version_meta, "get"):
             content = version_meta.get("content")
             return str(content) if content else None
 

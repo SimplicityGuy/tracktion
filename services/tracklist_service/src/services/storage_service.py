@@ -148,7 +148,15 @@ class FilesystemBackend(StorageBackend):
 
         except Exception as e:
             logger.error(f"Failed to store file {file_path}: {e}", exc_info=True)
-            return StorageResult(success=False, error=str(e))
+            return StorageResult(
+                success=False,
+                file_path="",
+                checksum="",
+                file_size=0,
+                version=0,
+                error=str(e),
+                metadata={},
+            )
 
     def retrieve(self, file_path: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """
@@ -295,7 +303,15 @@ class S3Backend(StorageBackend):
         """Store content to S3."""
         # Placeholder implementation
         logger.warning("S3 storage not implemented, using placeholder")
-        return StorageResult(success=False, error="S3 backend not implemented")
+        return StorageResult(
+            success=False,
+            file_path="",
+            checksum="",
+            file_size=0,
+            version=0,
+            error="S3 backend not implemented",
+            metadata={},
+        )
 
     def retrieve(self, file_path: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """Retrieve content from S3."""
@@ -323,7 +339,11 @@ class StorageService:
 
     def __init__(self, config: Optional[StorageConfig] = None):
         """Initialize storage service with configuration."""
-        self.config = config or StorageConfig()
+        self.config = config or StorageConfig(
+            primary="filesystem",
+            backup=None,
+            max_versions=5,
+        )
 
         # Initialize backends
         self.backends: Dict[str, StorageBackend] = {}

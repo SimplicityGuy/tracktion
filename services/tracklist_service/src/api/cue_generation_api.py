@@ -273,7 +273,7 @@ async def get_supported_formats() -> List[str]:
     """
     try:
         formats = cue_generation_service.get_supported_formats()
-        return [f.value for f in formats]
+        return [f.value if hasattr(f, "value") else str(f) for f in formats]
     except Exception as e:
         logger.error(f"Failed to get supported formats: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve supported formats: {str(e)}")
@@ -514,7 +514,7 @@ async def get_cue_file_info(
             raise HTTPException(status_code=404, detail=f"CUE file {cue_file_id} not found")
 
         # Get storage information
-        file_info = storage_service.get_file_info(cue_file.file_path)
+        file_info = storage_service.get_file_info(str(cue_file.file_path))
 
         return {
             "id": str(cue_file.id),
@@ -560,7 +560,7 @@ async def download_cue_file_by_id(
             raise HTTPException(status_code=404, detail=f"CUE file {cue_file_id} not found")
 
         # Retrieve file content from storage
-        success, content, error = storage_service.retrieve_cue_file(cue_file.file_path)
+        success, content, error = storage_service.retrieve_cue_file(str(cue_file.file_path))
         if not success:
             logger.error(f"Failed to retrieve CUE file content: {error}")
             raise HTTPException(status_code=500, detail=f"Failed to retrieve file content: {error}")
@@ -569,7 +569,8 @@ async def download_cue_file_by_id(
         import tempfile
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".cue", delete=False) as tmp_file:
-            tmp_file.write(content)
+            if content:
+                tmp_file.write(content)
             tmp_path = tmp_file.name
 
         # Generate appropriate filename
@@ -626,7 +627,7 @@ async def regenerate_cue_file(
             )
 
         # Get tracklist to regenerate from
-        tracklist = await get_tracklist_by_id(cue_file.tracklist_id)
+        tracklist = await get_tracklist_by_id(UUID(str(cue_file.tracklist_id)))
 
         # Use the regeneration service with new options
         response = await cue_generation_service.regenerate_cue_file(cue_file_id, tracklist, options)
@@ -677,7 +678,7 @@ async def delete_cue_file(
             success = await repository.soft_delete_cue_file(cue_file_id)
         else:
             # Also delete from storage for hard delete
-            storage_service.delete_cue_file(cue_file.file_path)
+            storage_service.delete_cue_file(str(cue_file.file_path))
             success = await repository.hard_delete_cue_file(cue_file_id)
 
         if not success:
@@ -727,7 +728,7 @@ async def get_cue_file_versions(
         version_data = []
         for version in versions:
             # Get storage info if available
-            storage_info = storage_service.get_file_info(version.file_path)
+            storage_info = storage_service.get_file_info(str(version.file_path))
 
             version_data.append(
                 {
@@ -802,7 +803,7 @@ async def list_cue_files(
         file_data = []
         for cue_file in cue_files:
             # Get storage info if available
-            storage_info = storage_service.get_file_info(cue_file.file_path)
+            storage_info = storage_service.get_file_info(str(cue_file.file_path))
 
             file_data.append(
                 {
@@ -879,13 +880,13 @@ async def validate_cue_file(
             raise HTTPException(status_code=404, detail=f"CUE file {cue_file_id} not found")
 
         # Retrieve CUE file content from storage
-        success, content, error = storage_service.retrieve_cue_file(cue_file.file_path)
+        success, content, error = storage_service.retrieve_cue_file(str(cue_file.file_path))
         if not success:
             logger.error(f"Failed to retrieve CUE file content for validation: {error}")
             raise HTTPException(status_code=500, detail=f"Failed to retrieve file content: {error}")
 
         # Initialize validation report
-        validation_report = {
+        validation_report: Dict[str, Any] = {
             "cue_file_id": str(cue_file_id),
             "format": cue_file.format,
             "file_path": cue_file.file_path,
@@ -902,9 +903,15 @@ async def validate_cue_file(
 
         # Validate CUE content using CUE integration service
         try:
-            format_validation = cue_generation_service.cue_integration.validate_cue_content(
-                content, CueFormat(cue_file.format), validation_options or {}
-            )
+            if cue_generation_service.cue_integration:
+                format_validation = cue_generation_service.cue_integration.validate_cue_content(
+                    content, CueFormat(cue_file.format), validation_options or {}
+                )
+            else:
+                # Fallback validation if cue_integration is not available
+                format_validation = cue_generation_service.validate_cue_content(
+                    content, CueFormat(cue_file.format), validation_options or {}
+                )
 
             validation_report["valid"] = format_validation.valid
             if format_validation.error:
@@ -933,10 +940,10 @@ async def validate_cue_file(
         if audio_file_path:
             try:
                 # Get tracklist for audio validation
-                tracklist = await get_tracklist_by_id(cue_file.tracklist_id)
+                tracklist = await get_tracklist_by_id(UUID(str(cue_file.tracklist_id)))
 
                 # Validate timing against audio duration
-                audio_validation = await audio_validation_service.validate_tracklist_timing(
+                audio_validation = await audio_validation_service.validate_track_timings(
                     tracklist, audio_file_path, validation_options or {}
                 )
 
@@ -1038,7 +1045,7 @@ async def validate_tracklist_for_cue(
         )
 
         # Initialize comprehensive validation report
-        validation_report = {
+        validation_report: Dict[str, Any] = {
             "tracklist_id": str(tracklist_id),
             "target_format": format,
             "validation_timestamp": datetime.now(timezone.utc).isoformat(),
@@ -1064,7 +1071,7 @@ async def validate_tracklist_for_cue(
         # Validate against audio file if provided
         if audio_file_path and validation_result.valid:
             try:
-                audio_validation = await audio_validation_service.validate_tracklist_timing(
+                audio_validation = await audio_validation_service.validate_track_timings(
                     tracklist, audio_file_path, validation_options or {}
                 )
 
@@ -1184,7 +1191,7 @@ async def convert_cue_file(
             }
 
         # Retrieve source CUE file content
-        success, content, error = storage_service.retrieve_cue_file(source_cue_file.file_path)
+        success, content, error = storage_service.retrieve_cue_file(str(source_cue_file.file_path))
         if not success:
             logger.error(f"Failed to retrieve source CUE file content: {error}")
             raise HTTPException(status_code=500, detail=f"Failed to retrieve source file: {error}")
@@ -1195,7 +1202,7 @@ async def convert_cue_file(
         )
 
         # Initialize conversion report
-        conversion_report = {
+        conversion_report: Dict[str, Any] = {
             "success": True,
             "cue_file_id": None,
             "source_cue_file_id": str(cue_file_id),
@@ -1295,10 +1302,10 @@ async def convert_cue_file(
             created_cue_file = await repository.create_cue_file(converted_cue_file)
 
             conversion_report["cue_file_id"] = str(created_cue_file.id)
-            conversion_report["file_path"] = created_cue_file.file_path
-            conversion_report["file_size"] = created_cue_file.file_size
-            conversion_report["checksum"] = created_cue_file.checksum
-            conversion_report["version"] = created_cue_file.version
+            conversion_report["file_path"] = str(created_cue_file.file_path)
+            conversion_report["file_size"] = int(created_cue_file.file_size)
+            conversion_report["checksum"] = str(created_cue_file.checksum)
+            conversion_report["version"] = int(created_cue_file.version)
 
             # Add conversion-specific warnings from the result
             if conversion_result.warnings:

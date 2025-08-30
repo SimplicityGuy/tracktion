@@ -1,5 +1,6 @@
 """Web-based monitoring dashboard for resilient scraping system."""
 
+from typing import List, Optional
 from aiohttp import web
 from aiohttp.web import Application, Request, Response
 import aiohttp_cors
@@ -232,9 +233,10 @@ class WebMonitoringDashboard:
     async def api_metrics(self, request: Request) -> Response:
         """API endpoint for system metrics."""
         try:
-            page_types = request.query.get("page_types")
-            if page_types:
-                page_types = page_types.split(",")
+            page_types_param = request.query.get("page_types")
+            page_types: Optional[List[str]] = None
+            if page_types_param:
+                page_types = page_types_param.split(",")
 
             metrics = await self.dashboard.get_system_metrics(page_types)
             return web.json_response(metrics.to_dict())

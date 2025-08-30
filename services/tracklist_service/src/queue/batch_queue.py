@@ -139,7 +139,9 @@ class BatchJobQueue:
             "created_at": datetime.now(UTC).isoformat(),
             "status": "queued",
         }
-        self.redis.hset(f"batch:{batch_id}", mapping=batch_metadata)
+        # Convert to proper types for Redis
+        redis_data = {k: str(v) for k, v in batch_metadata.items()}
+        self.redis.hset(f"batch:{batch_id}", mapping=redis_data)
         self.redis.expire(f"batch:{batch_id}", 86400)  # 24 hour TTL
 
         # Enqueue jobs
@@ -158,7 +160,10 @@ class BatchJobQueue:
                 )
 
             # Track job in Redis
-            self.redis.hset(f"job:{job.id}", mapping=asdict(job))
+            job_dict = asdict(job)
+            # Convert to proper types for Redis
+            redis_job_data = {k: str(v) for k, v in job_dict.items()}
+            self.redis.hset(f"job:{job.id}", mapping=redis_job_data)
             self.redis.sadd(f"batch:{batch_id}:jobs", job.id)
 
         logger.info(f"Batch {batch_id} enqueued with {len(deduplicated_jobs)} jobs (priority: {priority})")
@@ -235,7 +240,9 @@ class BatchJobQueue:
             "active": "true",
         }
 
-        self.redis.hset(f"schedule:{schedule_id}", mapping=schedule_data)
+        # Convert to proper types for Redis
+        redis_schedule_data = {k: str(v) for k, v in schedule_data.items()}
+        self.redis.hset(f"schedule:{schedule_id}", mapping=redis_schedule_data)
         self.redis.zadd("scheduled_batches", {schedule_id: next_run.timestamp()})
 
         logger.info(f"Batch scheduled with ID {schedule_id}, next run: {next_run}")
@@ -263,12 +270,21 @@ class BatchJobQueue:
             for job_id in job_ids:
                 job_data = self.redis.hgetall(f"job:{job_id}")
                 if job_data:
-                    status = job_data.get("status", "pending")
+                    # Convert bytes to strings if needed
+                    if isinstance(job_data, dict):
+                        status_value = job_data.get(b"status", job_data.get("status", "pending"))
+                        if isinstance(status_value, bytes):
+                            status_value = status_value.decode()
+                        status = str(status_value)
+                    else:
+                        status = "pending"
                     jobs_status[status] = jobs_status.get(status, 0) + 1
 
             if isinstance(batch_meta, dict):
-                batch_meta["jobs_status"] = jobs_status
-                batch_meta["progress_percentage"] = (jobs_status["completed"] / len(job_ids)) * 100 if job_ids else 0
+                batch_meta["jobs_status"] = str(jobs_status)
+                batch_meta["progress_percentage"] = str(
+                    (jobs_status["completed"] / len(job_ids)) * 100 if job_ids else 0
+                )
 
         return dict(batch_meta)
 
