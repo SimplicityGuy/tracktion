@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from services.file_rename_service.api.ml_routers import ml_router
 from services.file_rename_service.api.routers import rename_router
 from services.file_rename_service.app.config import settings
 
@@ -153,6 +154,7 @@ async def root() -> dict[str, str]:
 
 # Include API routers
 app.include_router(rename_router)
+app.include_router(ml_router)
 
 
 if __name__ == "__main__":
