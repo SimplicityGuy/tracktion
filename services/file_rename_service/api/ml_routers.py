@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -265,11 +265,11 @@ async def predict(request: PredictRequest) -> PredictResponse:
 
         return PredictResponse(**result)
 
-    except FileNotFoundError as err:
+    except FileNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No trained model available",
-        ) from err
+        )
     except Exception as e:
         logger.error(f"Error making prediction: {e}")
         raise HTTPException(
@@ -415,7 +415,7 @@ async def setup_ab_test(request: ABTestRequest) -> dict[str, Any]:
         ) from e
 
 
-@ml_router.get("/ab-test/status", response_model=dict[str, Any] | None)
+@ml_router.get("/ab-test/status", response_model=Optional[dict[str, Any]])
 async def get_ab_test_status() -> dict[str, Any] | None:
     """
     Get current A/B test status.

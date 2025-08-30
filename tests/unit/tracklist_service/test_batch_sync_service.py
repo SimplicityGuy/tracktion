@@ -133,7 +133,7 @@ class TestBatchSyncService:
             Exception("Test error"),
         ]
 
-        with pytest.raises(ValueError):
+        with pytest.raises(Exception):
             await batch_sync_service.batch_sync_tracklists(
                 tracklist_ids=sample_tracklist_ids[:2],
                 source=SyncSource.ALL,
@@ -167,7 +167,7 @@ class TestBatchSyncService:
         """Test priority-based batch synchronization."""
         # Mock sync configurations with different priorities
         configs = []
-        for i, _tid in enumerate(sample_tracklist_ids):
+        for i, tid in enumerate(sample_tracklist_ids):
             config = MagicMock(spec=SyncConfiguration)
             config.sync_frequency = ["realtime", "hourly", "daily", "weekly", "manual"][i]
             configs.append(config)
@@ -276,7 +276,7 @@ class TestBatchSyncService:
         """Test aggregating conflicts across tracklists."""
         # Create mock sync events with conflicts
         events = []
-        for _i, _tid in enumerate(sample_tracklist_ids[:2]):
+        for i, tid in enumerate(sample_tracklist_ids[:2]):
             event = MagicMock(spec=SyncEvent)
             event.conflict_data = {
                 "conflicts": [

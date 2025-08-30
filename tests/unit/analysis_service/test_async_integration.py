@@ -187,7 +187,7 @@ class TestParallelFFTOptimizer:
         results = await fft_optimizer.benchmark_fft_performance(0.1)
 
         assert len(results) > 0
-        for _key, duration in results.items():
+        for key, duration in results.items():
             assert duration > 0
             assert duration < 10  # Should complete in reasonable time
 
@@ -264,7 +264,7 @@ class TestAsyncErrorHandler:
         for i in range(2):
             try:
                 await error_handler.handle_with_retry(always_fails, task_id=f"test{i}", audio_file="test.mp3")
-            except Exception:
+            except:
                 pass
 
         assert error_handler.circuit_open

@@ -148,7 +148,7 @@ class TestImportService:
         import_service.redis_client.get.return_value = '{"cached": "data"}'
 
         # Force refresh should bypass cache
-        import_service.fetch_tracklist_from_1001(url, force_refresh=True)
+        result = import_service.fetch_tracklist_from_1001(url, force_refresh=True)
 
         # Should not check cache
         import_service.redis_client.get.assert_not_called()

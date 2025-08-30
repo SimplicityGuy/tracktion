@@ -81,7 +81,7 @@ class KeyDetector:
 class EssentiaKeyDetector(KeyDetector):
     """Key detection using Essentia's KeyExtractor."""
 
-    def __init__(self) -> None:
+    def __init__(self):
         super().__init__("Essentia_KeyExtractor")
 
     def detect(self, audio_path: str) -> Dict:
@@ -156,7 +156,7 @@ class EssentiaKeyDetector(KeyDetector):
 class LibrosaKeyDetector(KeyDetector):
     """Key detection using Librosa's chroma features."""
 
-    def __init__(self) -> None:
+    def __init__(self):
         super().__init__("Librosa_Chroma")
 
         # Krumhansl-Schmuckler key profiles
@@ -180,8 +180,8 @@ class LibrosaKeyDetector(KeyDetector):
             mean_chroma = np.mean(chroma, axis=1)
 
             # Correlate with key profiles
-            major_corrs: List[float] = []
-            minor_corrs: List[float] = []
+            major_corrs = []
+            minor_corrs = []
 
             for shift in range(12):
                 # Rotate chroma vector
@@ -369,7 +369,7 @@ def analyze_key_detection_results(df: pd.DataFrame) -> Dict:
     return summary
 
 
-def main() -> None:
+def main():
     """Main function for testing key detection."""
     sample_dir = Path(__file__).parent.parent / "sample_data"
 
@@ -379,7 +379,7 @@ def main() -> None:
         return
 
     # Get all audio files
-    audio_files: List[Path] = []
+    audio_files = []
     for ext in ["*.mp3", "*.wav", "*.flac", "*.m4a"]:
         audio_files.extend(sample_dir.glob(ext))
 

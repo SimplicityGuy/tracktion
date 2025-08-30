@@ -66,9 +66,9 @@ class TracktionEventHandler(FileSystemEventHandler):
         Args:
             event: FileSystemEvent object containing event details
         """
-        if not event.is_directory and self.is_audio_file(str(event.src_path)):
+        if not event.is_directory and self.is_audio_file(event.src_path):
             logger.debug("File modified", path=event.src_path)
-            self._send_event("modified", str(event.src_path))
+            self._send_event("modified", event.src_path)
 
     def on_deleted(self, event: FileSystemEvent) -> None:
         """Handle file deletion events.
@@ -90,19 +90,19 @@ class TracktionEventHandler(FileSystemEventHandler):
             return
 
         # Check if either source or destination is an audio file
-        if not (self.is_audio_file(str(event.src_path)) or self.is_audio_file(str(event.dest_path))):
+        if not (self.is_audio_file(event.src_path) or self.is_audio_file(event.dest_path)):
             return
 
         # Determine if it's a rename or move
-        src_dir = os.path.dirname(str(event.src_path))
-        dest_dir = os.path.dirname(str(event.dest_path))
+        src_dir = os.path.dirname(event.src_path)
+        dest_dir = os.path.dirname(event.dest_path)
 
         if src_dir == dest_dir:
             logger.info("File renamed", old_path=event.src_path, new_path=event.dest_path)
-            self._send_event("renamed", str(event.dest_path), old_path=str(event.src_path))
+            self._send_event("renamed", event.dest_path, old_path=event.src_path)
         else:
             logger.info("File moved", old_path=event.src_path, new_path=event.dest_path)
-            self._send_event("moved", str(event.dest_path), old_path=str(event.src_path))
+            self._send_event("moved", event.dest_path, old_path=event.src_path)
 
     def _send_event(self, event_type: str, file_path: str, **kwargs: Any) -> None:
         """Send file event to message publisher.
