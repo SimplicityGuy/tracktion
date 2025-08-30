@@ -275,7 +275,7 @@ class BatchJobQueue:
                         # Handle both bytes and string keys
                         status_value = None
                         if b"status" in job_data:
-                            status_value = job_data[b"status"]
+                            status_value = job_data[b"status"]  # type: ignore[index]
                         elif "status" in job_data:
                             status_value = job_data["status"]
                         else:

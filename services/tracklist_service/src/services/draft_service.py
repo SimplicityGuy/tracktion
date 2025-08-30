@@ -62,6 +62,7 @@ class DraftService:
             confidence_score=1.0,
             cue_file_id=None,
             parent_tracklist_id=None,
+            default_cue_format=None,
         )
 
         # Save to database
@@ -190,7 +191,7 @@ class DraftService:
             # Only get latest version of each draft lineage
             query = query.filter_by(parent_tracklist_id=None)
 
-        drafts_db = query.order_by(TracklistDB.draft_version.desc()).all()
+        drafts_db = query.order_by(TracklistDB.draft_version.desc()).all()  # type: ignore[union-attr]
 
         return [draft_db.to_model() for draft_db in drafts_db]
 
@@ -361,7 +362,7 @@ class DraftService:
                 audio_file_id=audio_file_id,
                 is_draft=True,
             )
-            .order_by(TracklistDB.draft_version.desc())
+            .order_by(TracklistDB.draft_version.desc())  # type: ignore[union-attr]
             .first()
         )
 

@@ -143,6 +143,7 @@ class FilesystemBackend(StorageBackend):
                 checksum=checksum,
                 file_size=file_size,
                 version=version,
+                error=None,
                 metadata=metadata or {},
             )
 
