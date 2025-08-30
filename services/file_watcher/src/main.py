@@ -43,7 +43,7 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        add_instance_id,
+        add_instance_id,  # type: ignore[list-item]
         structlog.dev.ConsoleRenderer(),
     ],
     context_class=dict,
@@ -64,7 +64,7 @@ class FileWatcherService:
         self.scan_path = Path(data_dir)
         self.instance_id = INSTANCE_ID
         self.running = False
-        self.observer: Observer | None = None
+        self.observer: Observer | None = None  # type: ignore[valid-type]
         self.publisher: MessagePublisher | None = None
         self.shutdown_timeout = 10  # seconds to wait for graceful shutdown
 

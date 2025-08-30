@@ -32,7 +32,7 @@ class FeatureExtractor:
 
     def fit(self, training_data: list[dict[str, Any]]) -> None:
         """Build vocabulary from training data."""
-        token_counter = Counter()
+        token_counter: Counter[str] = Counter()
 
         for sample in training_data:
             tokens = sample.get("tokens", [])
@@ -62,7 +62,9 @@ class FeatureExtractor:
 
         # Statistical features
         if self.config.get("include_statistics", True):
-            features.update(self._extract_statistics(tokens, filename))
+            stats = self._extract_statistics(tokens, filename)
+            for key, value in stats.items():
+                features[key] = value
 
         # Metadata features
         if self.config.get("include_metadata", True):
@@ -122,7 +124,7 @@ class FeatureExtractor:
 
     def _extract_statistics(self, tokens: list[dict[str, Any]], filename: str) -> dict[str, float]:
         """Extract statistical features from tokens."""
-        stats = {}
+        stats: dict[str, float] = {}
 
         # Token counts by type
         type_counts = Counter(token.get("type", "") for token in tokens)
@@ -134,9 +136,9 @@ class FeatureExtractor:
         stats["num_versions"] = type_counts.get("version", 0)
 
         # Filename characteristics
-        stats["filename_length"] = len(filename)
-        stats["num_tokens"] = len(tokens)
-        stats["avg_token_length"] = np.mean([len(t.get("value", "")) for t in tokens]) if tokens else 0
+        stats["filename_length"] = float(len(filename))
+        stats["num_tokens"] = float(len(tokens))
+        stats["avg_token_length"] = float(np.mean([len(t.get("value", "")) for t in tokens]) if tokens else 0)
 
         # Pattern detection
         stats["has_camelcase"] = float(bool(re.search(r"[a-z][A-Z]", filename)))
@@ -172,9 +174,9 @@ class FeatureExtractor:
 
         return metadata
 
-    def transform_batch(self, samples: list[dict[str, Any]]) -> dict[str, np.ndarray]:
+    def transform_batch(self, samples: list[dict[str, Any]]) -> dict[str, np.ndarray | None]:
         """Transform batch of samples into feature arrays."""
-        batch_features = {
+        batch_features: dict[str, list[Any]] = {
             "token_encodings": [],
             "statistics": [],
             "metadata": [],

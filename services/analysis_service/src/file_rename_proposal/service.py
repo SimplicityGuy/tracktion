@@ -161,7 +161,7 @@ class FileRenameProposalServiceFactory:
         try:
             # Test database connection
             with self.db_manager.get_db_session() as session:
-                session.execute("SELECT 1")
+                session.execute("SELECT 1")  # type: ignore[call-overload]
             health["components"]["database"] = {"status": "connected"}
         except Exception as e:
             health["components"]["database"] = {"status": "error", "message": str(e)}

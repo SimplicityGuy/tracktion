@@ -39,7 +39,7 @@ class TracktionEventHandler(FileSystemEventHandler):
         super().__init__()
         self.publisher = message_publisher
 
-    def is_audio_file(self, path: str) -> bool:
+    def is_audio_file(self, path: str | bytes) -> bool:
         """Check if a file is a supported audio file.
 
         Args:
@@ -48,7 +48,8 @@ class TracktionEventHandler(FileSystemEventHandler):
         Returns:
             True if file has a supported audio extension
         """
-        return Path(path).suffix.lower() in self.SUPPORTED_EXTENSIONS
+        path_str = path if isinstance(path, str) else path.decode("utf-8")
+        return Path(path_str).suffix.lower() in self.SUPPORTED_EXTENSIONS
 
     def on_created(self, event: FileSystemEvent) -> None:
         """Handle file creation events.
@@ -104,7 +105,7 @@ class TracktionEventHandler(FileSystemEventHandler):
             logger.info("File moved", old_path=event.src_path, new_path=event.dest_path)
             self._send_event("moved", event.dest_path, old_path=event.src_path)
 
-    def _send_event(self, event_type: str, file_path: str, **kwargs: Any) -> None:
+    def _send_event(self, event_type: str, file_path: str | bytes, **kwargs: Any) -> None:
         """Send file event to message publisher.
 
         Args:
@@ -112,13 +113,16 @@ class TracktionEventHandler(FileSystemEventHandler):
             file_path: Path to the file
             **kwargs: Additional event data (e.g., old_path for moves/renames)
         """
+        # Convert bytes to str if needed
+        path_str = file_path if isinstance(file_path, str) else file_path.decode("utf-8")
+
         if not self.publisher:
-            logger.warning("No message publisher configured, event not sent", event_type=event_type, path=file_path)
+            logger.warning("No message publisher configured, event not sent", event_type=event_type, path=path_str)
             return
 
         try:
             # Get file info
-            file_path_obj = Path(file_path)
+            file_path_obj = Path(path_str)
             file_info = {
                 "path": str(file_path_obj.absolute()),
                 "name": file_path_obj.name,
@@ -150,15 +154,22 @@ class TracktionEventHandler(FileSystemEventHandler):
                         }
                     )
                 except Exception as e:
-                    logger.warning("Could not get file stats or hashes", path=file_path, error=str(e))
+                    logger.warning("Could not get file stats or hashes", path=path_str, error=str(e))
 
             # Add any additional kwargs (like old_path)
-            file_info.update(kwargs)
+            # Convert any bytes paths in kwargs to strings
+            processed_kwargs = {}
+            for key, value in kwargs.items():
+                if isinstance(value, bytes):
+                    processed_kwargs[key] = value.decode("utf-8")
+                else:
+                    processed_kwargs[key] = value
+            file_info.update(processed_kwargs)
 
             # Publish the event
             success = self.publisher.publish_file_event(file_info, event_type)
             if not success:
-                logger.warning("Failed to publish file event", event_type=event_type, path=file_path)
+                logger.warning("Failed to publish file event", event_type=event_type, path=path_str)
 
         except Exception as e:
-            logger.error("Error sending event", event_type=event_type, path=file_path, error=str(e), exc_info=True)
+            logger.error("Error sending event", event_type=event_type, path=path_str, error=str(e), exc_info=True)

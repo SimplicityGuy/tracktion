@@ -98,12 +98,12 @@ class AudioCache:
                 try:
                     import xxhash
 
-                    hasher = xxhash.xxh128()
+                    hasher = xxhash.xxh128()  # type: ignore[assignment]
                 except ImportError:
                     logger.warning("xxhash not available, falling back to SHA256")
-                    hasher = hashlib.sha256()
+                    hasher = hashlib.sha256()  # type: ignore[assignment]
             else:
-                hasher = hashlib.sha256()
+                hasher = hashlib.sha256()  # type: ignore[assignment]
 
             # Read file in chunks to handle large files
             with open(file_path, "rb") as f:

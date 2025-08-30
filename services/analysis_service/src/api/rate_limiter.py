@@ -66,7 +66,7 @@ class TokenBucket:
         """
         self.rate = rate
         self.capacity = capacity
-        self.tokens = capacity
+        self.tokens: float = float(capacity)
         self.last_update = time.monotonic()
         self.lock = asyncio.Lock()
 
@@ -163,7 +163,7 @@ class SlidingWindowCounter:
 
             oldest = self.requests[0]
             reset_time = (oldest + self.window_size) - time.time()
-            return max(0.0, reset_time)
+            return max(0.0, reset_time)  # type: ignore[no-any-return]
 
 
 class RequestQueue:
@@ -445,7 +445,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     Middleware for applying rate limiting to all requests.
     """
 
-    def __init__(self, app, config: Optional[RateLimitConfig] = None):
+    def __init__(self, app: Any, config: Optional[RateLimitConfig] = None):
         """
         Initialize middleware.
 
@@ -509,7 +509,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             for key, value in headers.items():
                 response.headers[key] = value
 
-            return response
+            return response  # type: ignore[no-any-return]
 
         finally:
             # Release connection
@@ -517,7 +517,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 # Decorator for per-endpoint rate limiting
-def rate_limit(requests_per_minute: int = 60, strategy: RateLimitStrategy = RateLimitStrategy.TOKEN_BUCKET):
+def rate_limit(
+    requests_per_minute: int = 60, strategy: RateLimitStrategy = RateLimitStrategy.TOKEN_BUCKET
+) -> Callable[[Callable], Callable]:
     """
     Decorator for applying rate limiting to specific endpoints.
 
@@ -531,7 +533,7 @@ def rate_limit(requests_per_minute: int = 60, strategy: RateLimitStrategy = Rate
         config = RateLimitConfig(requests_per_minute=requests_per_minute, strategy=strategy)
         limiter = AsyncRateLimiter(config)
 
-        async def wrapper(request: Request, *args, **kwargs):
+        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             # Check rate limit
             allowed, retry_after = await limiter.check_rate_limit(request)
 

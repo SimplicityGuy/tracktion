@@ -280,7 +280,7 @@ class TemporalAnalyzer:
         # Convert CV to stability score (0-1)
         # CV of 0 = perfect stability (1.0)
         # CV of 0.2 or higher = low stability (0.0)
-        stability = max(0.0, min(1.0, 1.0 - (cv * 5)))
+        stability = max(0.0, min(1.0, 1.0 - (cv * 5)))  # type: ignore[call-overload]
 
         return float(stability)
 

@@ -374,7 +374,7 @@ class ProgressTracker:
                 if stats[key].is_integer():
                     stats[key] = int(stats[key])
             except (ValueError, AttributeError):
-                stats[key] = value
+                stats[key] = value  # type: ignore[assignment]
 
         # Calculate average processing time
         if stats.get("processed_file_count", 0) > 0:

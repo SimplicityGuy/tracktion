@@ -84,11 +84,12 @@ class Predictor:
             ):
                 stats.append(features[key])
 
-        X = np.array([stats])
+        x = np.array([stats])
 
         # Get predictions
         if return_probabilities:
-            probabilities = self.trainer.model.predict_proba(X)[0]
+            assert self.trainer.model is not None, "Model not loaded"
+            probabilities = self.trainer.model.predict_proba(x)[0]
             top_indices = np.argsort(probabilities)[-top_k:][::-1]
 
             predictions = []
@@ -101,11 +102,12 @@ class Predictor:
                     }
                 )
         else:
-            prediction = self.trainer.model.predict(X)[0]
+            assert self.trainer.model is not None, "Model not loaded"
+            prediction = self.trainer.model.predict(x)[0]
             suggested_name = self.trainer.label_encoder.inverse_transform([prediction])[0]
 
             # Get confidence from prediction probability
-            probabilities = self.trainer.model.predict_proba(X)[0]
+            probabilities = self.trainer.model.predict_proba(x)[0]
             confidence = float(probabilities[prediction])
 
             predictions = [
@@ -121,7 +123,9 @@ class Predictor:
             "filename_original": filename,
             "predictions": predictions,
             "inference_time_ms": inference_time,
-            "model_version": self.trainer.current_model_metadata.version,
+            "model_version": self.trainer.current_model_metadata.version
+            if self.trainer.current_model_metadata
+            else "unknown",
         }
 
         # Update cache
@@ -160,7 +164,7 @@ class Predictor:
             start_time = time.time()
 
             # Extract features for all samples
-            X_batch = []
+            x_batch = []
             for filename, tokens in uncached_samples:
                 features = self.trainer.feature_extractor.extract_features(tokens, filename)
                 stats = []
@@ -172,13 +176,14 @@ class Predictor:
                         or key == "avg_token_length"
                     ):
                         stats.append(features[key])
-                X_batch.append(stats)
+                x_batch.append(stats)
 
-            X_batch = np.array(X_batch)
+            x_batch = np.array(x_batch)
 
             # Get batch predictions
-            predictions = self.trainer.model.predict(X_batch)
-            probabilities = self.trainer.model.predict_proba(X_batch)
+            assert self.trainer.model is not None, "Model not loaded"
+            predictions = self.trainer.model.predict(x_batch)
+            probabilities = self.trainer.model.predict_proba(x_batch)
 
             batch_time = (time.time() - start_time) * 1000
             avg_time = batch_time / len(uncached_samples)
@@ -197,7 +202,9 @@ class Predictor:
                         }
                     ],
                     "inference_time_ms": avg_time,
-                    "model_version": self.trainer.current_model_metadata.version,
+                    "model_version": self.trainer.current_model_metadata.version
+                    if self.trainer.current_model_metadata
+                    else "unknown",
                 }
 
                 # Update cache
@@ -250,7 +257,7 @@ class Predictor:
 
     def _generate_cache_key(self, filename: str) -> str:
         """Generate cache key for filename."""
-        return f"{self.trainer.current_model_metadata.version}:{filename}"
+        return f"{self.trainer.current_model_metadata.version if self.trainer.current_model_metadata else 'unknown'}:{filename}"
 
     def _update_cache(self, key: str, value: dict[str, Any]) -> None:
         """Update prediction cache with LRU eviction."""

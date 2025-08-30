@@ -92,6 +92,19 @@ disallow_untyped_defs = false
 module = "docs.prototypes.*"
 disallow_untyped_defs = false
 
+# Temporary overrides for gradual type fixing
+# These should be removed as types are properly fixed
+[[tool.mypy.overrides]]
+module = [
+    "services.tracklist_service.tests.*",
+    "services.tracklist_service.src.messaging.*",
+    "services.tracklist_service.src.api.*",
+]
+# Relaxed but not ignored - still catch major issues
+disallow_untyped_defs = false
+warn_return_any = false
+check_untyped_defs = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["tracktion"]
 

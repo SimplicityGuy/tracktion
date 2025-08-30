@@ -177,7 +177,7 @@ class ModelVersionManager:
             else:
                 metrics["approval_rate"] = 0
 
-        return config
+        return config  # type: ignore[no-any-return]
 
     def update_ab_metrics(self, version: str, approved: bool) -> None:
         """Update A/B test metrics for a prediction."""
@@ -274,4 +274,4 @@ class ModelVersionManager:
             return []
 
         with open(self.deployment_history_file) as f:
-            return json.load(f)
+            return json.load(f)  # type: ignore[no-any-return]
