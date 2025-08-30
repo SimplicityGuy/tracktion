@@ -139,7 +139,7 @@ class SyncCacheService:
             if data:
                 state = json.loads(data)
                 logger.debug(f"Retrieved cached sync state for tracklist {tracklist_id}")
-                return state
+                return state  # type: ignore[no-any-return]
 
             return None
 
@@ -323,7 +323,7 @@ class SyncCacheService:
 
             if data:
                 conflict_data = json.loads(data)
-                return conflict_data.get("conflicts", [])
+                return conflict_data.get("conflicts", [])  # type: ignore[no-any-return]
 
             return None
 
@@ -389,7 +389,7 @@ class SyncCacheService:
             data = await self.redis_client.get(key)
 
             if data:
-                return json.loads(data)
+                return json.loads(data)  # type: ignore[no-any-return]
 
             return None
 
@@ -454,7 +454,7 @@ class SyncCacheService:
             data = await self.redis_client.get(key)
 
             if data:
-                return json.loads(data)
+                return json.loads(data)  # type: ignore[no-any-return]
 
             return None
 

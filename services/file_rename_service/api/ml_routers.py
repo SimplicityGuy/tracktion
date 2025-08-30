@@ -424,8 +424,8 @@ async def get_ab_test_status() -> dict[str, Any] | None:
     or null if no test is active.
     """
     try:
-        status = version_manager.get_ab_test_status()
-        return status
+        ab_status = version_manager.get_ab_test_status()
+        return ab_status
 
     except Exception as e:
         logger.error(f"Error getting A/B test status: {e}")
@@ -447,13 +447,15 @@ async def get_model_metrics(
     """
     try:
         if version:
-            model_info = version_manager.list_models()
-            model = next((m for m in model_info if m.version == version), None)
+            models_list = version_manager.list_models()
+            model = next((m for m in models_list if m.version == version), None)
             if not model:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Model version {version} not found",
                 )
+            # Convert MLModel to dict for consistent handling
+            model_dict = model.to_dict()
         else:
             model_info = predictor.get_model_info()
             if not model_info:
@@ -461,18 +463,18 @@ async def get_model_metrics(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="No model currently loaded",
                 )
-            model = model_info
+            model_dict = model_info
 
-        metrics = model.get("training_metrics", {}) if isinstance(model, dict) else model.training_metrics
+        metrics = model_dict.get("training_metrics", {})
 
         return ModelMetricsResponse(
-            version=model.get("version", "") if isinstance(model, dict) else model.version,
+            version=model_dict.get("version", ""),
             accuracy=metrics.get("accuracy", 0),
             precision=metrics.get("precision", 0),
             recall=metrics.get("recall", 0),
             f1_score=metrics.get("f1_score", 0),
             inference_time_avg_ms=30.0,  # TODO: Track actual inference times
-            sample_count=model.get("sample_count", 0) if isinstance(model, dict) else model.sample_count or 0,
+            sample_count=model_dict.get("sample_count", 0),
         )
 
     except HTTPException:

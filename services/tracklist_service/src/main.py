@@ -143,7 +143,7 @@ def create_app() -> FastAPI:
             middleware = RateLimitMiddleware(app, rate_limiter)
             return await middleware.dispatch(request, call_next)
         # If rate limiter not initialized yet, pass through
-        return await call_next(request)
+        return await call_next(request)  # type: ignore[no-any-return]
 
     # Include API routes
     app.include_router(search_router, prefix=config.api.api_prefix)
