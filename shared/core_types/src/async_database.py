@@ -156,7 +156,7 @@ class AsyncDatabaseManager:
         redis_port = int(os.getenv("REDIS_PORT", "6379"))
         redis_db = int(os.getenv("REDIS_DB", "0"))
 
-        self.redis_client = await aioredis.from_url(
+        self.redis_client = await aioredis.from_url(  # type: ignore[no-untyped-call]
             f"redis://{redis_host}:{redis_port}/{redis_db}",
             encoding="utf-8",
             decode_responses=True,
@@ -256,7 +256,7 @@ async def get_async_db_session() -> AsyncSession:
         await async_db_manager.initialize()
         if not async_db_manager.AsyncSessionLocal:
             raise RuntimeError("Async database not initialized")
-    return async_db_manager.AsyncSessionLocal()  # type: ignore[no-any-return]
+    return async_db_manager.AsyncSessionLocal()
 
 
 async def get_async_neo4j_driver() -> AsyncDriver:

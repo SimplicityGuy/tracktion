@@ -216,7 +216,7 @@ class RateLimiter:
         return {allowed, remaining, reset_time}
         """
 
-        result = await self.redis.eval(  # type: ignore[no-untyped-call]
+        result = await self.redis.eval(  # type: ignore[no-untyped-call, misc]
             script,
             1,  # Number of keys
             key,  # The key

@@ -11,7 +11,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from .parser import CueParser
 from .generator import CueFormat
 from .formats import get_generator
-from .validator import CueValidator, ValidationResult, Severity
+from .validator import CueValidator, ValidationResult
+from .validation_rules import Severity
 from .exceptions import CueParsingError
 from .format_mappings import (
     CONVERSION_RULES,

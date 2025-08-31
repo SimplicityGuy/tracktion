@@ -318,7 +318,7 @@ class BatchJobQueue:
 
         # Cancel pending jobs
         job_ids = self.redis.smembers(f"batch:{batch_id}:jobs")
-        for job_id in job_ids:
+        for job_id in job_ids:  # type: ignore[union-attr]
             job_data = self.redis.hgetall(f"job:{job_id}")
             if job_data and job_data.get("status") == "pending":  # type: ignore[union-attr]
                 self.redis.hset(f"job:{job_id}", "status", "cancelled")

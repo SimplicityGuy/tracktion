@@ -462,7 +462,7 @@ class RetryManager:
         # Store in Redis for analysis
         # Convert to proper types for Redis
         redis_dlq_data: Dict[str, Any] = {k: str(v) for k, v in dlq_message.items()}
-        self.redis.hset(f"dlq:{job.id}", mapping=redis_dlq_data)  # type: ignore[arg-type]
+        self.redis.hset(f"dlq:{job.id}", mapping=redis_dlq_data)
 
         # Get retry count before cleanup
         retry_count = self.failed_jobs[job.id].retry_count if job.id in self.failed_jobs else 0

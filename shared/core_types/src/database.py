@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from neo4j import GraphDatabase  # type: ignore[import-not-found]
-from neo4j import Driver  # type: ignore[import-not-found]
+from neo4j import Driver  # type: ignore[import-not-found, attr-defined]
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -174,7 +174,7 @@ def get_db_session() -> Session:
     """
     if not db_manager.SessionLocal:
         raise RuntimeError("Database not initialized")
-    return db_manager.SessionLocal()  # type: ignore[no-any-return]
+    return db_manager.SessionLocal()
 
 
 def get_neo4j_driver() -> Driver:
