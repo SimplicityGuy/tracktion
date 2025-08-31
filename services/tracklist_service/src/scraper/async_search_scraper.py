@@ -5,11 +5,11 @@ Implements async search functionality for DJs, events, and tracks with circuit b
 """
 
 import time
-from typing import List, Optional
+from typing import List, Optional, Union
 from urllib.parse import urlencode, urljoin
 
 import structlog
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, Tag, PageElement, NavigableString  # type: ignore[attr-defined]
 
 from ..models.search_models import (
     PaginationInfo,
@@ -205,7 +205,9 @@ class AsyncSearchScraper(AsyncScraperBase):
 
         return results
 
-    def _parse_single_result(self, container: Tag, search_type: SearchType) -> Optional[SearchResult]:
+    def _parse_single_result(
+        self, container: Union[Tag, PageElement, NavigableString], search_type: SearchType
+    ) -> Optional[SearchResult]:
         """Parse a single search result.
 
         Args:
@@ -216,6 +218,10 @@ class AsyncSearchScraper(AsyncScraperBase):
             Parsed search result or None if parsing fails
         """
         try:
+            # Ensure container is a Tag
+            if not isinstance(container, Tag):
+                return None
+
             # Extract common fields
             title = ""
             url = ""
@@ -227,7 +233,7 @@ class AsyncSearchScraper(AsyncScraperBase):
                 title_elem = container.find("a")
                 if title_elem:
                     title = title_elem.get_text(strip=True)
-                    url = title_elem.get("href", "")
+                    url = title_elem.get("href", "")  # type: ignore[attr-defined]
 
             elif search_type == SearchType.EVENT:
                 title_elem = container.find("h4")
@@ -235,7 +241,7 @@ class AsyncSearchScraper(AsyncScraperBase):
                     title = title_elem.get_text(strip=True)
                 link_elem = container.find("a")
                 if link_elem:
-                    url = link_elem.get("href", "")
+                    url = link_elem.get("href", "")  # type: ignore[attr-defined]
 
             elif search_type == SearchType.TRACK:
                 title_elem = container.find("span", class_="trackName")
@@ -248,11 +254,17 @@ class AsyncSearchScraper(AsyncScraperBase):
             # Build result
             if title and url:
                 return SearchResult(
-                    title=title,
-                    url=url if url.startswith("http") else f"https://www.1001tracklists.com{url}",
-                    description=description,
+                    dj_name=description or title or "Unknown DJ",  # Use description or title as DJ name
+                    event_name=None,
                     date=date,
-                    result_type=search_type.value,
+                    venue=None,
+                    set_type=None,
+                    url=url if url.startswith("http") else f"https://www.1001tracklists.com{url}",
+                    duration=None,
+                    track_count=None,
+                    genre=None,
+                    description=title if description else None,
+                    source_url=url if url.startswith("http") else f"https://www.1001tracklists.com{url}",
                 )
 
             return None
@@ -277,7 +289,7 @@ class AsyncSearchScraper(AsyncScraperBase):
 
         # Try to find pagination elements
         pagination_elem = soup.find("div", class_="pagination")
-        if pagination_elem:
+        if pagination_elem and isinstance(pagination_elem, Tag):
             # Look for total results count
             results_text = pagination_elem.get_text()
             import re
@@ -294,7 +306,7 @@ class AsyncSearchScraper(AsyncScraperBase):
             last_link = pagination_elem.find_all("a")
             if last_link:
                 for link in reversed(last_link):
-                    href = link.get("href", "")
+                    href = link.get("href", "")  # type: ignore[attr-defined]
                     if "page=" in href:
                         import re
 
@@ -304,9 +316,9 @@ class AsyncSearchScraper(AsyncScraperBase):
                             break
 
         return PaginationInfo(
-            current_page=current_page,
+            page=current_page,
             total_pages=max(total_pages, 1),
-            total_results=total_results,
+            total_items=total_results,
             limit=limit,
             has_next=current_page < total_pages,
             has_previous=current_page > 1,

@@ -133,10 +133,35 @@ async def search_1001tracklists(
             processing_time = int((time.time() - start_time) * 1000)
             # cached_results should already be a dict from cache
             if isinstance(cached_results, dict):
-                cached_results.update(
-                    {"cached": True, "processing_time_ms": processing_time, "correlation_id": correlation_id}
-                )
-                return SearchResponse(**cached_results)
+                # Convert legacy cache format to new SearchResponse format
+                if "results" in cached_results and "pagination" not in cached_results:
+                    # Create proper pagination structure
+                    page = cached_results.get("page", 1)
+                    page_size = cached_results.get("page_size", 20)
+                    total_results = cached_results.get("total_count", 0)
+                    has_more = cached_results.get("has_more", False)
+
+                    # pagination_info not used in current implementation
+
+                    formatted_results = {
+                        "success": True,
+                        "results": cached_results.get("results", []),
+                        "total_count": total_results,
+                        "page": page,
+                        "page_size": page_size,
+                        "has_more": has_more,
+                        "error": None,
+                        "cached": True,
+                        "processing_time_ms": processing_time,
+                        "correlation_id": correlation_id,
+                    }
+                    return SearchResponse(**formatted_results)
+                else:
+                    # Assume it's already in correct format, just update metadata
+                    cached_results.update(
+                        {"cached": True, "processing_time_ms": processing_time, "correlation_id": correlation_id}
+                    )
+                    return SearchResponse(**cached_results)
             else:
                 # If it's not a dict, skip using cache
                 logger.warning(f"Cached data is not in expected format: {type(cached_results)}")
@@ -157,21 +182,18 @@ async def search_1001tracklists(
 
         has_more = end_index < total_results
 
-        pagination_info = {
-            "page": page,
-            "limit": page_size,
-            "total_pages": (total_results + page_size - 1) // page_size,
-            "total_items": total_results,
-            "has_next": has_more,
-            "has_previous": page > 1,
-        }
+        # pagination_info not used in current implementation
 
         response_data = {
+            "success": True,
             "results": paginated_results,
-            "pagination": pagination_info,
-            "query_info": {"query": query, "search_type": "dj"},
-            "cache_hit": False,
-            "response_time_ms": int((time.time() - start_time) * 1000),
+            "total_count": total_results,
+            "page": page,
+            "page_size": page_size,
+            "has_more": has_more,
+            "error": None,
+            "cached": False,
+            "processing_time_ms": int((time.time() - start_time) * 1000),
             "correlation_id": correlation_id,
         }
 
@@ -184,7 +206,7 @@ async def search_1001tracklists(
         except Exception as e:
             logger.warning(f"Failed to cache search results: {e}")
 
-        return SearchResponse(**response_data)
+        return SearchResponse(**response_data)  # type: ignore[arg-type]
 
     except HTTPException:
         raise
@@ -192,21 +214,18 @@ async def search_1001tracklists(
         logger.error(f"Search error: {e}", exc_info=True)
         processing_time = int((time.time() - start_time) * 1000)
 
-        error_pagination_info = {
-            "page": page,
-            "limit": page_size,
-            "total_pages": 0,
-            "total_items": 0,
-            "has_next": False,
-            "has_previous": False,
-        }
+        # error_pagination_info not used in current implementation
 
         return SearchResponse(
+            success=False,
             results=[],
-            pagination=error_pagination_info,
-            query_info={"query": query, "search_type": "dj", "error": f"Search failed: {str(e)}"},
-            cache_hit=False,
-            response_time_ms=processing_time,
+            total_count=0,
+            page=page,
+            page_size=page_size,
+            has_more=False,
+            error=f"Search failed: {str(e)}",
+            cached=False,
+            processing_time_ms=processing_time,
             correlation_id=correlation_id,
         )
 

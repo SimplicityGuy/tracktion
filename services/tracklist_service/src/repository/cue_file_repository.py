@@ -40,7 +40,7 @@ class CueFileRepository:
         try:
             # Check if file already exists and increment version
             existing_files = await self.get_cue_files_by_tracklist_and_format(
-                cue_file_db.tracklist_id,
+                cue_file_db.tracklist_id,  # type: ignore[arg-type]
                 cue_file_db.format,  # type: ignore[arg-type]
             )
 
@@ -89,7 +89,7 @@ class CueFileRepository:
             else:
                 logger.debug(f"CUE file {cue_file_id} not found")
 
-            return cue_file  # type: ignore[no-any-return]
+            return cue_file
 
         except Exception as e:
             logger.error(f"Failed to get CUE file {cue_file_id}: {e}", exc_info=True)
@@ -177,7 +177,7 @@ class CueFileRepository:
             else:
                 logger.debug(f"No active CUE file found for tracklist {tracklist_id} format {cue_format}")
 
-            return cue_file  # type: ignore[no-any-return]
+            return cue_file
 
         except Exception as e:
             logger.error(

@@ -84,7 +84,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
 
         # Process the request
-        response = await call_next(request)  # type: ignore
+        response = await call_next(request)
 
         # Add rate limit headers to successful response
         if rate_limit_result.headers:

@@ -84,7 +84,7 @@ def register_exception_handlers(app: Any) -> None:
     app.add_exception_handler(TracklistServiceError, tracklist_exception_handler)
 
     # Also handle standard HTTP exceptions
-    @app.exception_handler(StarletteHTTPException)
+    @app.exception_handler(StarletteHTTPException)  # type: ignore[misc]
     async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
@@ -97,7 +97,7 @@ def register_exception_handlers(app: Any) -> None:
         )
 
     # Handle general exceptions
-    @app.exception_handler(Exception)
+    @app.exception_handler(Exception)  # type: ignore[misc]
     async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         import logging
 

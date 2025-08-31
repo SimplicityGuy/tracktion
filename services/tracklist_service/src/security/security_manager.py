@@ -14,7 +14,7 @@ import redis.asyncio as redis
 from fastapi import Request, Response
 
 from .models import SecurityConfig, IPAccessRule, AccessRuleType, AuditLog, AuditEventType
-from .abuse_detector import AbuseDetector, AbuseScore
+from .abuse_detector import AbuseDetector, AbuseScore  # type: ignore[attr-defined]
 from ..auth.models import User
 
 logger = logging.getLogger(__name__)

@@ -8,11 +8,11 @@ tracks, timestamps, transitions, and metadata with circuit breaker support.
 import hashlib
 import re
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, Union
 from urllib.parse import urlparse
 
 import structlog
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, Tag, PageElement  # type: ignore[attr-defined]
 
 from ..models.tracklist_models import (
     CuePoint,
@@ -80,12 +80,12 @@ class AsyncTracklistScraper(AsyncScraperBase):
                 url=url,
                 dj_name=dj_name,
                 event_name=event_info.get("name", ""),
-                event_date=event_info.get("date"),
-                event_venue=event_info.get("venue", ""),
+                date=event_info.get("date"),
+                venue=event_info.get("venue", ""),
                 tracks=tracks,
                 transitions=transitions,
                 metadata=metadata,
-                html_hash=html_hash,
+                source_html_hash=html_hash,
                 scraped_at=datetime.now(timezone.utc),
             )
 
@@ -176,7 +176,7 @@ class AsyncTracklistScraper(AsyncScraperBase):
             logger.warning(f"Failed to extract DJ name: {e}")
             return "Unknown DJ"
 
-    def _extract_event_info(self, soup: BeautifulSoup) -> Dict[str, any]:
+    def _extract_event_info(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """Extract event information from the page."""
         info = {"name": "", "date": None, "venue": ""}
 
@@ -192,7 +192,7 @@ class AsyncTracklistScraper(AsyncScraperBase):
                 date_text = date_elem.get_text(strip=True)
                 # Try to parse the date
                 try:
-                    from dateutil import parser
+                    from dateutil import parser  # type: ignore[import-untyped]
 
                     info["date"] = parser.parse(date_text).date()
                 except Exception:
@@ -226,9 +226,12 @@ class AsyncTracklistScraper(AsyncScraperBase):
 
         return tracks
 
-    def _parse_track(self, container: Tag, position: int) -> Optional[Track]:
+    def _parse_track(self, container: Union[Tag, PageElement], position: int) -> Optional[Track]:
         """Parse a single track from its container."""
         try:
+            # Ensure container is a Tag
+            if not isinstance(container, Tag):
+                return None
             # Extract track title
             title_elem = container.find("span", class_="trackName") or container.find("a", class_="track")
             title = title_elem.get_text(strip=True) if title_elem else ""
@@ -261,19 +264,22 @@ class AsyncTracklistScraper(AsyncScraperBase):
             # Create cue points if time is available
             cue_points = []
             if time_str:
-                cue_point = self._parse_time_to_cue(time_str, "start")
+                cue_point = self._parse_time_to_cue(time_str, position)
                 if cue_point:
                     cue_points.append(cue_point)
 
             if title:
                 return Track(
-                    position=position,
+                    number=position,
                     title=title,
                     artist=artist,
+                    remix=None,
                     label=label,
-                    cue_points=cue_points,
+                    timestamp=cue_points[0] if cue_points else None,
                     bpm=bpm,
                     key=key,
+                    genre=None,
+                    notes=None,
                 )
 
             return None
@@ -282,7 +288,7 @@ class AsyncTracklistScraper(AsyncScraperBase):
             logger.warning(f"Failed to parse track at position {position}: {e}")
             return None
 
-    def _parse_time_to_cue(self, time_str: str, cue_type: str) -> Optional[CuePoint]:
+    def _parse_time_to_cue(self, time_str: str, track_number: int) -> Optional[CuePoint]:
         """Parse time string to CuePoint."""
         try:
             # Parse time format (HH:MM:SS or MM:SS)
@@ -296,7 +302,8 @@ class AsyncTracklistScraper(AsyncScraperBase):
                 return None
 
             total_seconds = hours * 3600 + minutes * 60 + seconds
-            return CuePoint(time_seconds=total_seconds, type=cue_type)
+            timestamp_ms = total_seconds * 1000
+            return CuePoint(track_number=track_number, timestamp_ms=timestamp_ms, formatted_time=time_str)
 
         except Exception:
             return None
@@ -313,7 +320,7 @@ class AsyncTracklistScraper(AsyncScraperBase):
                 trans_text = elem.get_text(strip=True).lower()
 
                 # Determine transition type
-                trans_type = TransitionType.MIX
+                trans_type = TransitionType.UNKNOWN
                 if "cut" in trans_text:
                     trans_type = TransitionType.CUT
                 elif "fade" in trans_text:
@@ -328,8 +335,10 @@ class AsyncTracklistScraper(AsyncScraperBase):
                         Transition(
                             from_track=1,
                             to_track=2,
-                            type=trans_type,
-                            duration_seconds=None,  # Would need more parsing
+                            transition_type=trans_type,
+                            timestamp_ms=None,
+                            duration_ms=None,  # Would need more parsing
+                            notes=None,
                         )
                     )
 
@@ -340,18 +349,49 @@ class AsyncTracklistScraper(AsyncScraperBase):
 
     def _extract_metadata(self, soup: BeautifulSoup) -> TracklistMetadata:
         """Extract metadata from the page."""
-        metadata = TracklistMetadata()
+        metadata = TracklistMetadata(
+            recording_type=None,
+            duration_minutes=None,
+            play_count=None,
+            favorite_count=None,
+            comment_count=None,
+            download_url=None,
+            stream_url=None,
+            soundcloud_url=None,
+            mixcloud_url=None,
+            youtube_url=None,
+        )
 
         try:
             # Extract duration
             duration_elem = soup.find("span", class_="duration") or soup.find("span", class_="length")
             if duration_elem:
-                metadata.duration = duration_elem.get_text(strip=True)
+                duration_text = duration_elem.get_text(strip=True)
+                # Try to convert duration to minutes
+                try:
+                    # Parse duration like "1:23:45" or "23:45"
+                    parts = duration_text.split(":")
+                    if len(parts) == 3:
+                        hours, minutes, seconds = map(int, parts)
+                        total_minutes = hours * 60 + minutes + (seconds // 60)
+                    elif len(parts) == 2:
+                        minutes, seconds = map(int, parts)
+                        total_minutes = minutes + (seconds // 60)
+                    else:
+                        total_minutes = None
+                    if total_minutes:
+                        metadata = metadata.model_copy(update={"duration_minutes": total_minutes})
+                except Exception:
+                    pass
 
-            # Extract genre
+            # Extract genre (add to tags since there's no genre field)
             genre_elem = soup.find("span", class_="genre") or soup.find("a", class_="genre")
             if genre_elem:
-                metadata.genre = genre_elem.get_text(strip=True)
+                genre = genre_elem.get_text(strip=True)
+                if genre:
+                    tags = list(metadata.tags)
+                    tags.append(genre)
+                    metadata = metadata.model_copy(update={"tags": tags})
 
             # Extract play count
             plays_elem = soup.find("span", class_="plays") or soup.find("span", class_="playCount")
@@ -361,10 +401,9 @@ class AsyncTracklistScraper(AsyncScraperBase):
                 if match:
                     metadata.play_count = int(match.group(1))
 
-            # Extract upload date
-            upload_elem = soup.find("time", class_="uploaded") or soup.find("span", class_="uploadDate")
-            if upload_elem:
-                metadata.uploaded_at = upload_elem.get_text(strip=True)
+            # Extract upload date (no uploaded_at field in TracklistMetadata)
+            # upload_elem = soup.find("time", class_="uploaded") or soup.find("span", class_="uploadDate")
+            # Note: TracklistMetadata doesn't have uploaded_at field
 
             # Extract tags
             tag_elements = soup.find_all("a", class_="tag") or soup.find_all("span", class_="tag")

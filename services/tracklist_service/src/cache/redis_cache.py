@@ -91,7 +91,7 @@ class RedisCache:
                     response = cached_response.response
                     response.cache_hit = True
                     response.correlation_id = request.correlation_id
-                    return response  # type: ignore[no-any-return]
+                    return response
                 else:
                     # Expired - delete from cache
                     logger.debug(f"Cache expired for key: {key}")
@@ -324,7 +324,7 @@ class RedisCache:
 
         try:
             value = self.client.get(key)
-            return value  # type: ignore[return-value,no-any-return]
+            return value  # type: ignore[return-value]
         except Exception as e:
             logger.error(f"Error getting value from cache: {e}")
             return None

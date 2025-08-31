@@ -495,7 +495,7 @@ class PerformanceOptimizer:
         self.current_workers = target_workers
 
         # Persist configuration
-        self.redis.hset("optimizer:config", "workers", target_workers)
+        self.redis.hset("optimizer:config", "workers", str(target_workers))
 
     async def _adjust_rate_limits(self, metrics: PerformanceMetrics, pattern: str) -> None:
         """Adjust rate limits based on metrics and pattern.

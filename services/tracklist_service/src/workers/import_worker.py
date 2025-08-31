@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class ImportWorker:
     """Background worker for processing import jobs."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the import worker."""
         self.import_service = ImportService()
         self.matching_service = MatchingService()

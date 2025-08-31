@@ -74,7 +74,7 @@ class DraftService:
         if self.redis:
             self._cache_draft(draft)
 
-        return draft  # type: ignore[no-any-return]
+        return draft
 
     def save_draft(
         self,
@@ -130,7 +130,7 @@ class DraftService:
         if self.redis:
             self._cache_draft(draft)
 
-        return draft  # type: ignore[no-any-return]
+        return draft
 
     def get_draft(self, draft_id: UUID) -> Optional[Tracklist]:
         """Retrieve a draft tracklist.
@@ -166,7 +166,7 @@ class DraftService:
         if self.redis:
             self._cache_draft(draft)
 
-        return draft  # type: ignore[no-any-return]
+        return draft
 
     def list_drafts(
         self,
@@ -245,7 +245,7 @@ class DraftService:
         if self.redis:
             self._invalidate_cache(draft_id)
 
-        return draft_db.to_model()  # type: ignore[no-any-return]
+        return draft_db.to_model()
 
     def delete_draft(self, draft_id: UUID) -> bool:
         """Delete a draft tracklist.
@@ -432,7 +432,7 @@ class DraftService:
 
         if value:
             data = json.loads(value if isinstance(value, (str, bytes)) else value.decode("utf-8"))  # type: ignore[union-attr]
-            return Tracklist.model_validate(data)  # type: ignore[no-any-return]
+            return Tracklist.model_validate(data)
 
         return None
 
