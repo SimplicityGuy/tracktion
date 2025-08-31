@@ -249,7 +249,7 @@ class TracklistsSyncService:
             # Get the tracklist
             tracklist = await self.session.get(TracklistDB, tracklist_id)
             if not tracklist:
-                sync_event.status = "failed"
+                sync_event.status = "failed"  # type: ignore[assignment]
                 await self.session.commit()
                 return False, "Tracklist not found"
 
@@ -277,11 +277,11 @@ class TracklistsSyncService:
             )
 
             # Update sync configuration
-            sync_config.last_sync_at = datetime.utcnow()
+            sync_config.last_sync_at = datetime.utcnow()  # type: ignore[assignment]
 
             # Mark sync event as completed
-            sync_event.status = "completed"
-            sync_event.completed_at = datetime.utcnow()
+            sync_event.status = "completed"  # type: ignore[assignment]
+            sync_event.completed_at = datetime.utcnow()  # type: ignore[assignment]
 
             await self.session.commit()
 
@@ -289,7 +289,7 @@ class TracklistsSyncService:
 
         except Exception as e:
             logger.error(f"Failed to apply updates for tracklist {tracklist_id}: {e}")
-            sync_event.status = "failed"
+            sync_event.status = "failed"  # type: ignore[assignment]
             await self.session.commit()
             return False, str(e)
 

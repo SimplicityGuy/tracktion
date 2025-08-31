@@ -1,7 +1,7 @@
 """Version management service for tracklist versioning."""
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 
 from sqlalchemy import select, and_
@@ -28,7 +28,7 @@ class VersionService:
         change_type: str,
         change_summary: str,
         created_by: Optional[str] = None,
-        tracks_snapshot: Optional[List[dict]] = None,
+        tracks_snapshot: Optional[List[Dict[str, Any]]] = None,
     ) -> TracklistVersion:
         """Create a new version of a tracklist.
 
@@ -167,7 +167,7 @@ class VersionService:
 
         return tracklist  # type: ignore[no-any-return]
 
-    async def get_version_diff(self, tracklist_id: UUID, version1: int, version2: int) -> dict:
+    async def get_version_diff(self, tracklist_id: UUID, version1: int, version2: int) -> Dict[str, Any]:
         """Get differences between two versions.
 
         Args:

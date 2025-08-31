@@ -48,7 +48,7 @@ class Alert:
     metadata: Dict[str, Any] = field(default_factory=dict)
     resolved: bool = False
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert alert to dictionary."""
         return {
             "severity": self.severity.value,

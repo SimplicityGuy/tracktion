@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set
+from asyncio import Task
 from uuid import UUID
 from enum import Enum
 
@@ -87,7 +88,7 @@ class SynchronizationService:
         self.active_syncs: Set[UUID] = set()
 
         # Scheduled sync tasks
-        self.scheduled_tasks: Dict[UUID, asyncio.Task] = {}
+        self.scheduled_tasks: Dict[UUID, Task[Any]] = {}
 
     async def trigger_manual_sync(
         self,
@@ -150,12 +151,12 @@ class SynchronizationService:
                 }
 
             # Update sync event
-            sync_event.status = "completed" if result.get("status") == SyncStatus.COMPLETED.value else "failed"
-            sync_event.completed_at = datetime.now(timezone.utc)
-            sync_event.changes = result
+            sync_event.status = "completed" if result.get("status") == SyncStatus.COMPLETED.value else "failed"  # type: ignore[assignment]
+            sync_event.completed_at = datetime.now(timezone.utc)  # type: ignore[assignment]
+            sync_event.changes = result  # type: ignore[assignment]
 
             # Update config
-            config.last_sync_at = datetime.now(timezone.utc)
+            config.last_sync_at = datetime.now(timezone.utc)  # type: ignore[assignment]
 
             await self.session.commit()
 
@@ -211,8 +212,8 @@ class SynchronizationService:
 
             if conflicts and config.conflict_resolution == "manual":
                 # Queue for manual resolution
-                sync_event.status = "conflict"
-                sync_event.conflict_data = {
+                sync_event.status = "conflict"  # type: ignore[assignment]
+                sync_event.conflict_data = {  # type: ignore[assignment]
                     "conflicts": conflicts,
                     "proposed_changes": updates["changes"],
                 }

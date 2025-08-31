@@ -324,7 +324,7 @@ class RedisCache:
 
         try:
             value = self.client.get(key)
-            return value  # type: ignore[return-value, no-any-return]
+            return value  # type: ignore[return-value,no-any-return]
         except Exception as e:
             logger.error(f"Error getting value from cache: {e}")
             return None

@@ -45,7 +45,7 @@ class ValidationResult(BaseModel):
     warnings: List[str] = Field(default_factory=list, description="Warning messages")
     audio_duration: Optional[float] = Field(None, description="Audio duration in seconds")
     tracklist_duration: Optional[float] = Field(None, description="Tracklist duration in seconds")
-    metadata: Dict = Field(default_factory=dict, description="Additional validation metadata")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional validation metadata")
 
 
 class CueFile(BaseModel):
@@ -287,7 +287,7 @@ class ConvertCueRequest(BaseModel):
     """Request model for CUE format conversion."""
 
     target_format: CueFormat = Field(description="Target format for conversion")
-    options: Dict = Field(default_factory=dict, description="Conversion options")
+    options: Dict[str, Any] = Field(default_factory=dict, description="Conversion options")
     preserve_metadata: bool = Field(default=True, description="Whether to preserve metadata")
 
 
@@ -297,7 +297,7 @@ class ConvertCueResponse(BaseModel):
     success: bool = Field(description="Whether conversion was successful")
     cue_file_id: UUID = Field(description="New CUE file ID")
     file_path: str = Field(description="Converted CUE file path")
-    conversion_report: Dict = Field(default_factory=dict, description="Conversion details")
+    conversion_report: Dict[str, Any] = Field(default_factory=dict, description="Conversion details")
     warnings: List[str] = Field(default_factory=list, description="Conversion warnings")
     error: Optional[str] = Field(None, description="Error message if failed")
 

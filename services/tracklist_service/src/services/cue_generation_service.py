@@ -28,7 +28,7 @@ from services.tracklist_service.src.utils.time_utils import parse_cue_time
 
 # Import CUE handler components from Epic 5
 try:
-    from services.analysis_service.src.cue_handler import (  # type: ignore[import-not-found,attr-defined]
+    from services.analysis_service.src.cue_handler import (  # type: ignore[attr-defined]
         CDJGenerator,
         CueConverter,
         CueFormat as ImportedCueFormat,
@@ -42,7 +42,7 @@ try:
     )
 
     CUE_HANDLER_AVAILABLE = True
-    CueFormat = ImportedCueFormat  # type: ignore[misc,no-redef,assignment]
+    CueFormat = ImportedCueFormat  # type: ignore[assignment]
 except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("CUE handler not available, using placeholder implementation")
@@ -141,7 +141,7 @@ class CueGenerationService:
             # Store file if requested
             cue_file_id = None
             file_path = None
-            if hasattr(request, "store_file") and request.store_file:  # type: ignore[attr-defined]
+            if hasattr(request, "store_file") and request.store_file:
                 cue_file_id, file_path = await self._store_cue_file(
                     tracklist.id if hasattr(tracklist, "id") else uuid4(),
                     request.format,
@@ -382,7 +382,7 @@ class CueGenerationService:
             parsed_cue = self.parser.parse(cue_content)
 
             # Run validation
-            validation_result = self.validator.validate(parsed_cue, strict=True)  # type: ignore[call-arg, arg-type]
+            validation_result = self.validator.validate(parsed_cue, strict=True)
 
             # Check audio duration if file exists
             audio_path = Path(audio_file_path)
@@ -391,21 +391,21 @@ class CueGenerationService:
                 audio_duration_seconds = 3600  # Placeholder: 1 hour
 
                 # Check if last track exceeds audio duration
-                if parsed_cue.tracks:  # type: ignore[attr-defined]
-                    last_track = parsed_cue.tracks[-1]  # type: ignore[attr-defined]
+                if parsed_cue.tracks:
+                    last_track = parsed_cue.tracks[-1]
                     last_track_time = self._parse_time_to_seconds(last_track.indices[0].time)
                     if last_track_time > audio_duration_seconds:
-                        validation_result.add_error(  # type: ignore[attr-defined]
+                        validation_result.add_error(
                             "audio_duration",
                             f"Last track starts after audio ends ({last_track_time}s > {audio_duration_seconds}s)",
                         )
 
             return {
                 "valid": validation_result.is_valid,
-                "errors": [{"field": e.field, "message": e.message} for e in validation_result.errors],  # type: ignore[attr-defined]
-                "warnings": [{"field": w.field, "message": w.message} for w in validation_result.warnings],  # type: ignore[attr-defined]
+                "errors": [{"field": e.field, "message": e.message} for e in validation_result.errors],
+                "warnings": [{"field": w.field, "message": w.message} for w in validation_result.warnings],
                 "metadata": {
-                    "track_count": len(parsed_cue.tracks),  # type: ignore[attr-defined]
+                    "track_count": len(parsed_cue.tracks),
                     "audio_file": audio_file_path,
                     "validated_at": datetime.now(timezone.utc).isoformat(),
                 },
@@ -621,7 +621,7 @@ class CueGenerationService:
                 )
 
             # Convert to target format
-            conversion_result = self.converter.convert(parsed_cue, source_fmt, target_fmt)  # type: ignore[arg-type]
+            conversion_result = self.converter.convert(parsed_cue, source_fmt, target_fmt)
 
             if conversion_result.success:
                 return CueGenerationResponse(
@@ -665,7 +665,7 @@ class CueGenerationService:
         """
         # Return instances if it's an enum, otherwise return empty list
         if hasattr(CueFormat, "__members__"):
-            return list(CueFormat.__members__.values())  # type: ignore
+            return list(CueFormat.__members__.values())
         return []
 
     async def invalidate_tracklist_cache(self, tracklist_id: UUID) -> int:
@@ -684,8 +684,8 @@ class CueGenerationService:
         # Invalidate all formats for this tracklist
         invalidated_count = 0
         if hasattr(CueFormat, "__members__"):
-            for format_name in CueFormat.__members__.values():  # type: ignore
-                cache_key = f"cue:{tracklist_id}:{format_name.value}"  # type: ignore
+            for format_name in CueFormat.__members__.values():
+                cache_key = f"cue:{tracklist_id}:{format_name.value}"
                 if hasattr(self.cache_service, "delete"):
                     await self.cache_service.delete(cache_key)
                     invalidated_count += 1

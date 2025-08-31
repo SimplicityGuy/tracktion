@@ -74,7 +74,7 @@ class DraftService:
         if self.redis:
             self._cache_draft(draft)
 
-        return draft
+        return draft  # type: ignore[no-any-return]
 
     def save_draft(
         self,

@@ -130,7 +130,7 @@ class ProgressTracker:
         self.max_processing_samples = 100
 
         # Notification callbacks
-        self.completion_callbacks: Dict[str, List[Callable]] = defaultdict(list)
+        self.completion_callbacks: Dict[str, List[Callable[..., Any]]] = defaultdict(list)
 
     async def update_progress(
         self,

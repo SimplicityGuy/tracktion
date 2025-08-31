@@ -7,6 +7,7 @@ from datetime import datetime, UTC, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Callable
 from collections import defaultdict, deque
+from asyncio import Task
 import statistics
 
 from redis import Redis
@@ -70,7 +71,7 @@ class OptimizationConfig:
     scale_down_threshold: float = 0.3  # 30% resource usage
     monitoring_interval: int = 10  # Seconds
     optimization_interval: int = 60  # Seconds
-    custom_rules: List[Callable] = field(default_factory=list)
+    custom_rules: List[Callable[..., Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -114,9 +115,9 @@ class PerformanceOptimizer:
         self.resource_limits = ResourceLimits()
 
         # Metrics storage
-        self.metrics_history: deque = deque(maxlen=1000)
-        self.latency_samples: deque = deque(maxlen=10000)
-        self.error_counts: defaultdict = defaultdict(int)
+        self.metrics_history: deque[Any] = deque(maxlen=1000)
+        self.latency_samples: deque[float] = deque(maxlen=10000)
+        self.error_counts: defaultdict[str, int] = defaultdict(int)
 
         # Optimization state
         self.current_workers = self.config.min_workers
@@ -128,8 +129,8 @@ class PerformanceOptimizer:
         self.target_metrics: Optional[PerformanceMetrics] = None
 
         # Monitoring tasks
-        self.monitoring_task: Optional[asyncio.Task] = None
-        self.optimization_task: Optional[asyncio.Task] = None
+        self.monitoring_task: Optional[Task[None]] = None
+        self.optimization_task: Optional[Task[None]] = None
 
     async def start_monitoring(self) -> None:
         """Start performance monitoring and optimization."""

@@ -98,6 +98,7 @@ async def get_tracklist_by_id(
         return TracklistResponse(
             success=False,
             error=f"Internal server error: {str(e)}",
+            tracklist=None,
             processing_time_ms=processing_time,
             correlation_id=correlation_id,
         )
@@ -161,6 +162,7 @@ async def retrieve_tracklist(
                 return TracklistResponse(
                     success=True,
                     tracklist=tracklist,
+                    error=None,
                     cached=True,
                     processing_time_ms=processing_time,
                     correlation_id=request.correlation_id,
@@ -199,6 +201,7 @@ async def retrieve_tracklist(
         return TracklistResponse(
             success=True,
             tracklist=tracklist,
+            error=None,
             cached=False,
             processing_time_ms=processing_time,
             correlation_id=request.correlation_id,
@@ -211,6 +214,7 @@ async def retrieve_tracklist(
         return TracklistResponse(
             success=False,
             error=f"Failed to retrieve tracklist: {str(e)}",
+            tracklist=None,
             processing_time_ms=processing_time,
             correlation_id=request.correlation_id,
         )

@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from neo4j import GraphDatabase  # type: ignore[import-not-found]
-from neo4j import Driver  # type: ignore[import-not-found, attr-defined]
+from neo4j import Driver
 from dotenv import load_dotenv
 
 # Load environment variables

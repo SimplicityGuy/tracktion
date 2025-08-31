@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Global variables for connection
 engine: Optional[Engine] = None
-SessionLocal: Optional[sessionmaker] = None
+SessionLocal: Optional[sessionmaker[Session]] = None
 
 
 def init_database() -> None:

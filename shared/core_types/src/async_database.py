@@ -11,7 +11,7 @@ import asyncpg  # type: ignore[import-untyped]
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import text
 from neo4j import AsyncGraphDatabase  # type: ignore[import-not-found]
-from neo4j import AsyncDriver  # type: ignore[import-not-found]
+from neo4j import AsyncDriver
 from redis import asyncio as aioredis
 from dotenv import load_dotenv
 
