@@ -104,8 +104,8 @@ class AlertManager:
         self.dashboard_url = dashboard_url
         self._alert_history: List[Alert] = []
         self._health_checks: Dict[str, HealthStatus] = {}
-        self._anomaly_detectors: Dict[str, Callable] = {}
-        self._monitoring_tasks: List[asyncio.Task] = []
+        self._anomaly_detectors: Dict[str, Callable[..., Any]] = {}
+        self._monitoring_tasks: List[asyncio.Task[Any]] = []
 
     async def check_parser_health(self, page_type: Optional[str] = None) -> HealthStatus:
         """Check health status of parser(s).
@@ -153,7 +153,7 @@ class AlertManager:
                 if page_type:
                     failed_result = self.redis_client.lrange(failed_key, 0, 9)
                     if hasattr(failed_result, "__await__"):
-                        failed_data = await failed_result  # type: ignore[misc]
+                        failed_data = await failed_result
                     else:
                         failed_data = failed_result
                     failed_extractions = [json.loads(f) for f in failed_data if f]

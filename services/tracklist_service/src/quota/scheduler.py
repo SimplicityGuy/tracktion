@@ -1,6 +1,7 @@
 """Scheduled tasks for quota management."""
 
 import logging
+from typing import Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 
@@ -107,7 +108,7 @@ class QuotaScheduler:
         except Exception as e:
             logger.error(f"Quota cleanup failed: {e}")
 
-    def get_job_status(self) -> dict:
+    def get_job_status(self) -> dict[str, Any]:
         """Get status of scheduled jobs.
 
         Returns:

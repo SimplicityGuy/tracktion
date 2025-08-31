@@ -7,7 +7,7 @@ with local audio files using metadata and fuzzy matching.
 
 import logging
 from difflib import SequenceMatcher
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 from dataclasses import dataclass
 
@@ -22,7 +22,7 @@ class MatchingResult:
     """Result from matching a tracklist with an audio file."""
 
     confidence_score: float
-    metadata: Optional[Dict] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class MatchingService:
@@ -32,7 +32,9 @@ class MatchingService:
         """Initialize the matching service."""
         self.confidence_weights = {"title": 0.3, "artist": 0.25, "duration": 0.25, "date": 0.1, "event": 0.1}
 
-    def match_tracklist_to_audio(self, scraped_tracklist: ScrapedTracklist, audio_metadata: Dict) -> Tuple[float, Dict]:
+    def match_tracklist_to_audio(
+        self, scraped_tracklist: ScrapedTracklist, audio_metadata: Dict[str, Any]
+    ) -> Tuple[float, Dict[str, Any]]:
         """
         Match a scraped tracklist to audio file metadata.
 
@@ -180,7 +182,7 @@ class MatchingService:
 
         return s
 
-    def _normalize_title(self, scraped_tracklist: ScrapedTracklist, audio_metadata: Dict) -> str:
+    def _normalize_title(self, scraped_tracklist: ScrapedTracklist, audio_metadata: Dict[str, Any]) -> str:
         """
         Create a normalized title from scraped tracklist.
 
@@ -324,7 +326,7 @@ class MatchingService:
 
         return MatchingResult(confidence_score=confidence, metadata=audio_metadata)
 
-    def _get_audio_metadata(self, audio_file_id: UUID) -> Dict:
+    def _get_audio_metadata(self, audio_file_id: UUID) -> Dict[str, Any]:
         """
         Get audio file metadata.
 
@@ -399,7 +401,7 @@ class MatchingService:
             metadata=metadata,
         )
 
-    def _calculate_weighted_confidence(self, scores: list) -> float:
+    def _calculate_weighted_confidence(self, scores: List[Tuple[str, float]]) -> float:
         """
         Calculate weighted confidence score.
 

@@ -12,7 +12,7 @@ from sqlalchemy.sql import func
 from .database import Base
 
 
-class Recording(Base):
+class Recording(Base):  # type: ignore[misc]
     """Model for music recording files."""
 
     __tablename__ = "recordings"
@@ -73,7 +73,7 @@ class Recording(Base):
         }
 
 
-class Metadata(Base):
+class Metadata(Base):  # type: ignore[misc]
     """Model for recording metadata key-value pairs."""
 
     __tablename__ = "metadata"
@@ -103,7 +103,7 @@ class Metadata(Base):
         return {"id": str(self.id), "recording_id": str(self.recording_id), "key": self.key, "value": self.value}
 
 
-class Tracklist(Base):
+class Tracklist(Base):  # type: ignore[misc]
     """Model for recording tracklists."""
 
     __tablename__ = "tracklists"
@@ -161,7 +161,7 @@ class Tracklist(Base):
         return True
 
 
-class RenameProposal(Base):
+class RenameProposal(Base):  # type: ignore[misc]
     """Model for file rename proposals."""
 
     __tablename__ = "rename_proposals"

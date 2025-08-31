@@ -170,7 +170,7 @@ class TracklistDB(Base):
     def to_model(self) -> Tracklist:
         """Convert to Pydantic model."""
         # Note: When this method is called on a loaded instance, these are values not Columns
-        tracks_data: list = self.tracks if isinstance(self.tracks, list) else []
+        tracks_data: list[Any] = self.tracks if isinstance(self.tracks, list) else []
         tracks_list = [TrackEntry.from_dict(t) for t in tracks_data]
 
         return Tracklist(
