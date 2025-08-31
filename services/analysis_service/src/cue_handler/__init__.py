@@ -40,9 +40,11 @@ from .backup import BackupManager
 # Validator exports
 from .validator import (
     CueValidator,
+    ValidationResult,
+)
+from .validation_rules import (
     Severity,
     ValidationIssue,
-    ValidationResult,
 )
 
 # Converter exports

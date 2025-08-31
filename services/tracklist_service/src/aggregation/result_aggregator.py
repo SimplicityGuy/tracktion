@@ -95,7 +95,7 @@ class ResultAggregator:
         self.aggregated_results: Dict[str, AggregationResult] = {}
 
         # Custom aggregation functions
-        self.custom_aggregators: Dict[str, Callable] = {}
+        self.custom_aggregators: Dict[str, Callable[..., Any]] = {}
 
     def add_result(self, batch_id: str, job_id: str, result: Dict[str, Any]) -> None:
         """Add job result to batch.
@@ -575,7 +575,7 @@ class ResultAggregator:
             if data and "result" in data:
                 result = json.loads(data["result"])
                 job_id = key.split(":")[-1]
-                results.append({"job_id": job_id, "timestamp": data.get("timestamp"), **result})  # type: ignore[union-attr]
+                results.append({"job_id": job_id, "timestamp": data.get("timestamp"), **result})
 
         self.batch_results[batch_id] = results
 

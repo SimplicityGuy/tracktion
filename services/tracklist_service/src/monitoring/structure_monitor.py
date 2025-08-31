@@ -75,7 +75,7 @@ class ChangeReport:
 class StructureMonitor:
     """Monitor HTML structure changes for 1001tracklists pages."""
 
-    def __init__(self, redis_client: Optional[redis.Redis] = None, config_path: Optional[Path] = None):  # type: ignore[type-arg]
+    def __init__(self, redis_client: Optional[redis.Redis] = None, config_path: Optional[Path] = None):
         """Initialize structure monitor.
 
         Args:
@@ -251,7 +251,7 @@ class StructureMonitor:
 
         return None
 
-    def compare_structures(self, current: dict, baseline: Dict[str, Any]) -> ChangeReport:
+    def compare_structures(self, current: dict[str, Any], baseline: Dict[str, Any]) -> ChangeReport:
         """Compare current structure with baseline.
 
         Args:

@@ -40,22 +40,23 @@ class CueFileRepository:
         try:
             # Check if file already exists and increment version
             existing_files = await self.get_cue_files_by_tracklist_and_format(
-                cue_file_db.tracklist_id, cue_file_db.format
+                cue_file_db.tracklist_id,
+                cue_file_db.format,  # type: ignore[arg-type]
             )
 
             if existing_files:
                 # Mark previous versions as inactive
                 for existing_file in existing_files:
-                    existing_file.is_active = False
+                    existing_file.is_active = False  # type: ignore[assignment]
 
                 # Set new version number
-                latest_version = max(f.version for f in existing_files)
-                cue_file_db.version = latest_version + 1
+                latest_version = max(f.version for f in existing_files)  # type: ignore[type-var]
+                cue_file_db.version = latest_version + 1  # type: ignore[assignment]
             else:
-                cue_file_db.version = 1
+                cue_file_db.version = 1  # type: ignore[assignment]
 
             # Ensure new file is active
-            cue_file_db.is_active = True
+            cue_file_db.is_active = True  # type: ignore[assignment]
 
             self.session.add(cue_file_db)
             await self.session.commit()
@@ -225,7 +226,7 @@ class CueFileRepository:
                 logger.warning(f"CUE file {cue_file_id} not found for soft delete")
                 return False
 
-            cue_file.is_active = False
+            cue_file.is_active = False  # type: ignore[assignment]
             await self.session.commit()
 
             logger.info(f"Soft deleted CUE file {cue_file_id}")

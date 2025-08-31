@@ -9,7 +9,7 @@ import hashlib
 import logging
 import re
 from datetime import date, datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Tag
@@ -118,7 +118,7 @@ class TracklistScraper(ScraperBase):
         # Fallback
         return "Unknown DJ"
 
-    def _extract_event_info(self, soup: BeautifulSoup) -> Dict:
+    def _extract_event_info(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """Extract event information from the page."""
         info = {}
 

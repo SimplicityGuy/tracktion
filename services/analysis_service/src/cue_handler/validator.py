@@ -6,7 +6,7 @@ file references, timing consistency, and format compatibility.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import logging
 
 from .parser import CueParser
@@ -114,7 +114,7 @@ class ValidationResult:
             lines.append(f"  → Suggestion: {issue.suggestion}")
         return "\n".join(lines)
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         """Generate JSON report for programmatic use."""
         return {
             "file_path": self.file_path,
@@ -134,7 +134,7 @@ class ValidationResult:
             "info": [self._issue_to_dict(i) for i in self.info],
         }
 
-    def _issue_to_dict(self, issue: ValidationIssue) -> dict:
+    def _issue_to_dict(self, issue: ValidationIssue) -> dict[str, Any]:
         """Convert issue to dictionary."""
         return {
             "severity": issue.severity.value,

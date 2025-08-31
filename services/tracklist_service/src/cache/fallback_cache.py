@@ -104,7 +104,7 @@ class FallbackCache:
 
     def __init__(
         self,
-        redis_client: Optional[redis.Redis] = None,  # type: ignore[type-arg]
+        redis_client: Optional[redis.Redis] = None,
         default_ttl: int = 3600,
         max_fallback_age: int = 86400 * 7,  # 7 days
     ):
@@ -131,7 +131,7 @@ class FallbackCache:
         key: str,
         max_age: Optional[int] = None,
         strategy: CacheStrategy = CacheStrategy.FLEXIBLE,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """Get cached data with fallback options.
 
         Args:
@@ -317,7 +317,7 @@ class FallbackCache:
 
     def _evaluate_cached_item(
         self, item: CachedItem, max_age: Optional[int], strategy: CacheStrategy
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """Evaluate if cached item should be returned.
 
         Args:
@@ -416,7 +416,7 @@ class FallbackCache:
         except Exception as e:
             logger.error(f"Error storing fallback: {e}")
 
-    async def _get_fallback_data(self, key: str) -> Optional[dict]:
+    async def _get_fallback_data(self, key: str) -> Optional[dict[str, Any]]:
         """Get data from fallback layers.
 
         Args:

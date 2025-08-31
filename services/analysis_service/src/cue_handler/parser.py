@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Optional, List
 
 try:
-    import chardet
+    import chardet  # type: ignore[import-not-found]
 
     HAS_CHARDET = True
 except ImportError:

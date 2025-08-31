@@ -413,26 +413,26 @@ class ProgressTracker:
 
         # Check Redis
         key = f"job_progress:{job_id}"
-        data = self.redis.hgetall(key)
+        data = self.redis.hgetall(key)  # type: ignore[misc]
         if data:
             # Convert back to JobProgress
             job = JobProgress(
-                job_id=data["job_id"],
-                batch_id=data["batch_id"],
-                url=data["url"],
-                status=JobStatus(data["status"]),
-                retry_count=int(data.get("retry_count", 0)),
+                job_id=data["job_id"],  # type: ignore[index]
+                batch_id=data["batch_id"],  # type: ignore[index]
+                url=data["url"],  # type: ignore[index]
+                status=JobStatus(data["status"]),  # type: ignore[index]
+                retry_count=int(data.get("retry_count", 0)),  # type: ignore[union-attr]
             )
-            if data.get("started_at"):
-                job.started_at = datetime.fromisoformat(data["started_at"])
-            if data.get("completed_at"):
-                job.completed_at = datetime.fromisoformat(data["completed_at"])
-            if data.get("processing_time"):
-                job.processing_time = float(data["processing_time"])
-            if data.get("error"):
-                job.error = data["error"]
-            if data.get("result"):
-                job.result = json.loads(data["result"])
+            if data.get("started_at"):  # type: ignore[union-attr]
+                job.started_at = datetime.fromisoformat(data["started_at"])  # type: ignore[index]
+            if data.get("completed_at"):  # type: ignore[union-attr]
+                job.completed_at = datetime.fromisoformat(data["completed_at"])  # type: ignore[index]
+            if data.get("processing_time"):  # type: ignore[union-attr]
+                job.processing_time = float(data["processing_time"])  # type: ignore[index]
+            if data.get("error"):  # type: ignore[union-attr]
+                job.error = data["error"]  # type: ignore[index]
+            if data.get("result"):  # type: ignore[union-attr]
+                job.result = json.loads(data["result"])  # type: ignore[index]
 
             # Cache in memory
             self.job_progress[job_id] = job
@@ -455,25 +455,25 @@ class ProgressTracker:
 
         # Check Redis
         key = f"batch_progress:{batch_id}"
-        data = self.redis.hgetall(key)
+        data = self.redis.hgetall(key)  # type: ignore[misc]
         if data:
             # Convert back to BatchProgress
             batch = BatchProgress(
-                batch_id=data["batch_id"],
-                total_jobs=int(data["total_jobs"]),
-                pending=int(data.get("pending", 0)),
-                processing=int(data.get("processing", 0)),
-                completed=int(data.get("completed", 0)),
-                failed=int(data.get("failed", 0)),
-                retrying=int(data.get("retrying", 0)),
-                cancelled=int(data.get("cancelled", 0)),
+                batch_id=data["batch_id"],  # type: ignore[index]
+                total_jobs=int(data["total_jobs"]),  # type: ignore[index]
+                pending=int(data.get("pending", 0)),  # type: ignore[union-attr]
+                processing=int(data.get("processing", 0)),  # type: ignore[union-attr]
+                completed=int(data.get("completed", 0)),  # type: ignore[union-attr]
+                failed=int(data.get("failed", 0)),  # type: ignore[union-attr]
+                retrying=int(data.get("retrying", 0)),  # type: ignore[union-attr]
+                cancelled=int(data.get("cancelled", 0)),  # type: ignore[union-attr]
             )
-            if data.get("start_time"):
-                batch.start_time = datetime.fromisoformat(data["start_time"])
-            if data.get("last_update"):
-                batch.last_update = datetime.fromisoformat(data["last_update"])
-            if data.get("estimated_completion"):
-                batch.estimated_completion = datetime.fromisoformat(data["estimated_completion"])
+            if data.get("start_time"):  # type: ignore[union-attr]
+                batch.start_time = datetime.fromisoformat(data["start_time"])  # type: ignore[index]
+            if data.get("last_update"):  # type: ignore[union-attr]
+                batch.last_update = datetime.fromisoformat(data["last_update"])  # type: ignore[index]
+            if data.get("estimated_completion"):  # type: ignore[union-attr]
+                batch.estimated_completion = datetime.fromisoformat(data["estimated_completion"])  # type: ignore[index]
 
             # Cache in memory
             self.batch_progress[batch_id] = batch
@@ -499,9 +499,9 @@ class ProgressTracker:
         if not job_ids:
             pattern = "job_progress:*"
             for key in self.redis.scan_iter(match=pattern):
-                data = self.redis.hgetall(key)
-                if data and data.get("batch_id") == batch_id:
-                    job_id = data["job_id"]
+                data = self.redis.hgetall(key)  # type: ignore[misc]
+                if data and data.get("batch_id") == batch_id:  # type: ignore[union-attr]
+                    job_id = data["job_id"]  # type: ignore[index]
                     job_ids.add(job_id)
                     self.batch_jobs[batch_id].add(job_id)
 

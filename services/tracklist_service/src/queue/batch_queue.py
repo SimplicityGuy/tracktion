@@ -141,7 +141,7 @@ class BatchJobQueue:
         }
         # Convert to proper types for Redis
         redis_data: Dict[str, Any] = {k: str(v) for k, v in batch_metadata.items()}
-        self.redis.hset(f"batch:{batch_id}", mapping=redis_data)  # type: ignore[arg-type]
+        self.redis.hset(f"batch:{batch_id}", mapping=redis_data)
         self.redis.expire(f"batch:{batch_id}", 86400)  # 24 hour TTL
 
         # Enqueue jobs
@@ -163,7 +163,7 @@ class BatchJobQueue:
             job_dict = asdict(job)
             # Convert to proper types for Redis
             redis_job_data: Dict[str, Any] = {k: str(v) for k, v in job_dict.items()}
-            self.redis.hset(f"job:{job.id}", mapping=redis_job_data)  # type: ignore[arg-type]
+            self.redis.hset(f"job:{job.id}", mapping=redis_job_data)
             self.redis.sadd(f"batch:{batch_id}:jobs", job.id)
 
         logger.info(f"Batch {batch_id} enqueued with {len(deduplicated_jobs)} jobs (priority: {priority})")
@@ -191,7 +191,7 @@ class BatchJobQueue:
 
             if existing_job_id:
                 # Check if existing job is still active
-                existing_job = self.redis.hgetall(f"job:{existing_job_id}")  # type: ignore[misc]
+                existing_job = self.redis.hgetall(f"job:{existing_job_id}")
                 if existing_job:
                     status = existing_job.get("status")  # type: ignore[union-attr]
                     if status and status in ["pending", "processing"]:
@@ -242,7 +242,7 @@ class BatchJobQueue:
 
         # Convert to proper types for Redis
         redis_schedule_data: Dict[str, Any] = {k: str(v) for k, v in schedule_data.items()}
-        self.redis.hset(f"schedule:{schedule_id}", mapping=redis_schedule_data)  # type: ignore[arg-type]
+        self.redis.hset(f"schedule:{schedule_id}", mapping=redis_schedule_data)
         self.redis.zadd("scheduled_batches", {schedule_id: next_run.timestamp()})
 
         logger.info(f"Batch scheduled with ID {schedule_id}, next run: {next_run}")
@@ -277,8 +277,8 @@ class BatchJobQueue:
                         # Check if the keys are bytes or strings
                         if any(isinstance(k, bytes) for k in job_data.keys()):
                             # Keys are bytes, so check for b"status"
-                            if b"status" in job_data:  # type: ignore[comparison-overlap]
-                                status_value = job_data[b"status"]  # type: ignore[index]
+                            if b"status" in job_data:
+                                status_value = job_data[b"status"]
                         elif "status" in job_data:
                             status_value = job_data["status"]
 
@@ -318,8 +318,8 @@ class BatchJobQueue:
 
         # Cancel pending jobs
         job_ids = self.redis.smembers(f"batch:{batch_id}:jobs")
-        for job_id in job_ids:  # type: ignore[union-attr]
-            job_data = self.redis.hgetall(f"job:{job_id}")  # type: ignore[misc]
+        for job_id in job_ids:
+            job_data = self.redis.hgetall(f"job:{job_id}")
             if job_data and job_data.get("status") == "pending":  # type: ignore[union-attr]
                 self.redis.hset(f"job:{job_id}", "status", "cancelled")
 

@@ -157,7 +157,7 @@ class CircuitBreaker:
         self.success_count = 0
         self.state_changed_at = datetime.now(UTC)
 
-    def call(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
+    def call(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute function with circuit breaker protection."""
         if self.state == "open":
             # Check if recovery timeout has passed
@@ -402,7 +402,7 @@ class RetryManager:
         redis_retry_data: Dict[str, Any] = {k: str(v) for k, v in retry_data.items()}
         self.redis.hset(
             f"retry:{job.id}",
-            mapping=redis_retry_data,  # type: ignore[arg-type]
+            mapping=redis_retry_data,
         )
         self.redis.expire(f"retry:{job.id}", int(delay) + 3600)  # Expire after delay + 1 hour
 

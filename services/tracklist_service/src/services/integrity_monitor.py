@@ -29,7 +29,7 @@ class IntegrityMonitor:
         self.auto_clean = auto_clean
         self.last_check: Optional[datetime] = None
         self.is_running = False
-        self._monitor_task: Optional[asyncio.Task] = None
+        self._monitor_task: Optional[asyncio.Task[None]] = None
 
     async def start(self) -> None:
         """Start the integrity monitoring service."""

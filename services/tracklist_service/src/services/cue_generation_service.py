@@ -209,7 +209,7 @@ class CueGenerationService:
             else:
                 failed_count += 1
 
-        processing_time = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+        processing_time = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
 
         return BatchCueGenerationResponse(
             success=failed_count == 0,

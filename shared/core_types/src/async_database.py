@@ -7,10 +7,11 @@ from contextlib import asynccontextmanager
 from functools import wraps
 from typing import Any, AsyncGenerator, Callable, Optional
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import text
-from neo4j import AsyncGraphDatabase, AsyncDriver
+from neo4j import AsyncGraphDatabase  # type: ignore[import-not-found]
+from neo4j import AsyncDriver  # type: ignore[import-not-found]
 from redis import asyncio as aioredis
 from dotenv import load_dotenv
 
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Note: Base is imported from .database when needed to avoid circular imports
 
 
-def async_retry_on_failure(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0) -> Callable:
+def async_retry_on_failure(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0) -> Callable[..., Any]:
     """Decorator for retrying async database operations on failure.
 
     Args:
@@ -35,7 +36,7 @@ def async_retry_on_failure(max_attempts: int = 3, delay: float = 1.0, backoff: f
         Decorated async function with retry logic
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             attempt = 1
@@ -70,7 +71,7 @@ class AsyncDatabaseManager:
         self.pg_pool: Optional[asyncpg.Pool] = None
         self.neo4j_driver: Optional[AsyncDriver] = None
         self.redis_client: Optional[aioredis.Redis] = None
-        self.AsyncSessionLocal: Optional[async_sessionmaker] = None
+        self.AsyncSessionLocal: Optional[async_sessionmaker[AsyncSession]] = None
         self._initialized = False
 
     async def initialize(self) -> None:

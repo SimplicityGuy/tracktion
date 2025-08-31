@@ -8,6 +8,7 @@ from typing import Optional, Tuple
 import logging
 
 from .models import CueSheet
+from .validation_rules import ValidationIssue, Severity
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ class AudioAnalyzer:
             Duration in milliseconds, or None if cannot determine
         """
         try:
-            from mutagen import File
+            from mutagen import File  # type: ignore[import-not-found]
 
             audio = File(file_path)
             if audio and audio.info:
@@ -87,7 +88,7 @@ class AudioAnalyzer:
             logger.warning(f"mutagen failed for {file_path}: {e}")
 
         try:
-            from pydub import AudioSegment
+            from pydub import AudioSegment  # type: ignore[import-not-found]
 
             # Determine format from extension
             ext = Path(file_path).suffix.lower()[1:]  # Remove the dot
@@ -145,7 +146,7 @@ class AudioAnalyzer:
 
         return None
 
-    def validate_track_bounds(self, cue_sheet: CueSheet, cue_path: Path) -> list:
+    def validate_track_bounds(self, cue_sheet: CueSheet, cue_path: Path) -> list[ValidationIssue]:
         """Validate that track times are within audio file bounds.
 
         Args:
@@ -178,13 +179,13 @@ class AudioAnalyzer:
 
                             if idx_frames > audio_duration_frames:
                                 issues.append(
-                                    {
-                                        "track": track.number,
-                                        "index": idx_num,
-                                        "time": str(idx_time),
-                                        "audio_duration": audio_duration / 1000,
-                                        "message": f"Track {track.number:02d} INDEX {idx_num:02d} at {idx_time} exceeds audio duration ({audio_duration / 1000:.1f}s)",
-                                    }
+                                    ValidationIssue(
+                                        severity=Severity.ERROR,
+                                        line_number=0,  # Audio validation doesn't have line numbers
+                                        category="Audio Bounds",
+                                        message=f"Track {track.number:02d} INDEX {idx_num:02d} at {idx_time} exceeds audio duration ({audio_duration / 1000:.1f}s)",
+                                        suggestion="Adjust track timing to fit within audio file duration",
+                                    )
                                 )
 
         return issues

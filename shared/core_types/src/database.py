@@ -10,7 +10,8 @@ from typing import Any, Callable, Generator, Optional
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
-from neo4j import GraphDatabase, Driver
+from neo4j import GraphDatabase  # type: ignore[import-not-found]
+from neo4j import Driver  # type: ignore[import-not-found]
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 Base = declarative_base()
 
 
-def retry_on_failure(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0) -> Callable:
+def retry_on_failure(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0) -> Callable[..., Any]:
     """Decorator for retrying database operations on failure.
 
     Args:
@@ -34,7 +35,7 @@ def retry_on_failure(max_attempts: int = 3, delay: float = 1.0, backoff: float =
         Decorated function with retry logic
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             attempt = 1
@@ -67,7 +68,7 @@ class DatabaseManager:
         """Initialize database connections with retry logic."""
         self.pg_engine: Optional[Engine] = None
         self.neo4j_driver: Optional[Driver] = None
-        self.SessionLocal: Optional[sessionmaker] = None
+        self.SessionLocal: Optional[sessionmaker[Session]] = None
         self._initialize_connections()
 
     @retry_on_failure(max_attempts=5, delay=2.0)
@@ -173,7 +174,7 @@ def get_db_session() -> Session:
     """
     if not db_manager.SessionLocal:
         raise RuntimeError("Database not initialized")
-    return db_manager.SessionLocal()
+    return db_manager.SessionLocal()  # type: ignore[no-any-return]
 
 
 def get_neo4j_driver() -> Driver:

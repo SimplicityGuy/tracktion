@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class QuotaManager:
     """Manages API usage quotas with daily/monthly limits and alerting."""
 
-    def __init__(self, redis_client: redis.Redis):  # type: ignore[type-arg]
+    def __init__(self, redis_client: redis.Redis):
         """Initialize quota manager.
 
         Args:

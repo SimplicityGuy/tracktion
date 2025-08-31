@@ -124,7 +124,7 @@ class AdaptiveParser:
         self._versions: Dict[str, ParserVersion] = {}
         self._current_version = "1.0.0"
         self._extractor = ResilientExtractor()
-        self._hot_reload_tasks: List[asyncio.Task] = []
+        self._hot_reload_tasks: List[asyncio.Task[Any]] = []
         self._ab_tests: Dict[str, ABTestResult] = {}
 
         # Load initial configuration
@@ -202,7 +202,7 @@ class AdaptiveParser:
         except (OSError, IOError) as e:
             logger.error(f"Failed to save configuration: {e}")
 
-    def learn_patterns(self, successful_extractions: List[dict]) -> None:
+    def learn_patterns(self, successful_extractions: List[dict[str, Any]]) -> None:
         """Learn from successful extractions.
 
         Args:

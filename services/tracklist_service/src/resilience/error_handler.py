@@ -350,7 +350,7 @@ class PartialExtractor:
         return tracks
 
 
-def with_correlation_id(correlation_id: Optional[str] = None) -> Callable:
+def with_correlation_id(correlation_id: Optional[str] = None) -> Callable[..., Any]:
     """
     Decorator to add correlation ID to log messages.
 

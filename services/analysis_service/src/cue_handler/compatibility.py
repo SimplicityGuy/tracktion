@@ -356,7 +356,7 @@ class CompatibilityChecker:
             report.add_suggestion("Kodi format preserves most metadata - good for archival purposes")
             report.add_suggestion("NFO companion files can be generated for additional metadata")
 
-    def get_compatibility_matrix(self) -> Dict[tuple, CompatibilityLevel]:
+    def get_compatibility_matrix(self) -> Dict[tuple[CueFormat, CueFormat], CompatibilityLevel]:
         """Get a matrix of compatibility levels between all format pairs.
 
         Returns:

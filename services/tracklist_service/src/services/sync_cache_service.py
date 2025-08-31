@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class SyncCacheService:
     """Service for caching synchronization state and managing distributed locks."""
 
-    def __init__(self, redis_client: Optional[Redis] = None):  # type: ignore[type-arg]
+    def __init__(self, redis_client: Optional[Redis] = None):
         """Initialize sync cache service.
 
         Args:
