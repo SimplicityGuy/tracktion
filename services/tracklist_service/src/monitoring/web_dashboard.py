@@ -3,7 +3,7 @@
 from typing import List, Optional
 from aiohttp import web
 from aiohttp.web import Application, Request, Response
-import aiohttp_cors
+import aiohttp_cors  # type: ignore[import-not-found]
 
 from services.tracklist_service.src.monitoring.dashboard import MonitoringDashboard
 from services.tracklist_service.src.monitoring.alert_manager import AlertManager

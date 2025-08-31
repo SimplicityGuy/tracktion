@@ -18,7 +18,7 @@ analysis_service_path = Path(__file__).parent.parent.parent.parent / "analysis_s
 sys.path.insert(0, str(analysis_service_path))
 
 try:
-    from cue_handler import (
+    from cue_handler import (  # type: ignore[import-not-found]
         CueGenerator,
         CueFormat as CueHandlerFormat,
         CueTrack,
@@ -29,7 +29,7 @@ try:
         CueConverter,
         ConversionMode,
     )
-    from cue_handler.models import CueTime
+    from cue_handler.models import CueTime  # type: ignore[import-not-found]
 except ImportError as e:
     raise ImportError(f"Could not import CUE handler components: {e}")
 
@@ -284,7 +284,7 @@ class CueIntegrationService:
             Dictionary of format capabilities
         """
         try:
-            from cue_handler.format_mappings import get_format_capabilities
+            from cue_handler.format_mappings import get_format_capabilities  # type: ignore[import-not-found]
 
             handler_format = self.format_mapper.to_cue_handler_format(cue_format)
             capabilities = get_format_capabilities(handler_format)

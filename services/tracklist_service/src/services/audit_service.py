@@ -265,7 +265,7 @@ class AuditService:
         rows = result.all()
 
         # Organize statistics
-        stats = {
+        stats: Dict[str, Any] = {
             "total_entries": sum(row.count for row in rows),
             "by_entity_type": {},
             "by_action": {},

@@ -149,7 +149,7 @@ class CueGenerationService:
                     validation_report,
                 )
 
-            processing_time = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+            processing_time = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
 
             return CueGenerationResponse(
                 success=True,
@@ -163,7 +163,7 @@ class CueGenerationService:
 
         except Exception as e:
             logger.error(f"Failed to generate CUE file: {e}", exc_info=True)
-            processing_time = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+            processing_time = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
             return CueGenerationResponse(
                 success=False,
                 job_id=UUID("00000000-0000-0000-0000-000000000000"),
@@ -589,6 +589,7 @@ class CueGenerationService:
                     file_path=None,
                     validation_report=None,
                     error="CUE handler not available for format conversion",
+                    processing_time_ms=0,
                 )
 
             # Parse source content
@@ -600,6 +601,7 @@ class CueGenerationService:
                     file_path=None,
                     validation_report=None,
                     error="CUE parser not available for format conversion",
+                    processing_time_ms=0,
                 )
             parsed_cue = self.parser.parse(cue_content)
 
@@ -615,6 +617,7 @@ class CueGenerationService:
                     file_path=None,
                     validation_report=None,
                     error=f"Invalid format: {source_format} or {target_format}",
+                    processing_time_ms=0,
                 )
 
             # Convert to target format
@@ -628,6 +631,7 @@ class CueGenerationService:
                     file_path=None,
                     validation_report=None,  # TODO: properly convert validation report
                     error=None,
+                    processing_time_ms=0,
                 )
             else:
                 return CueGenerationResponse(
@@ -637,6 +641,7 @@ class CueGenerationService:
                     file_path=None,
                     validation_report=None,
                     error="Conversion failed",
+                    processing_time_ms=0,
                 )
 
         except Exception as e:
@@ -648,6 +653,7 @@ class CueGenerationService:
                 file_path=None,
                 validation_report=None,
                 error=str(e),
+                processing_time_ms=0,
             )
 
     def get_supported_formats(self) -> List[Any]:
@@ -847,7 +853,7 @@ class CueGenerationService:
         """
         # Create a request object for regeneration
         request = GenerateCueRequest(
-            format=cue_file.format if hasattr(cue_file, "format") else "standard",
+            format=CueFormat(cue_file.format if hasattr(cue_file, "format") else "standard"),
             options=options or {},
             validate_audio=False,
             audio_file_path=None,
