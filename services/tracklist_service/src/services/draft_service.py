@@ -431,7 +431,7 @@ class DraftService:
         value = self.redis.get(key)
 
         if value:
-            data = json.loads(value if isinstance(value, (str, bytes)) else value.decode("utf-8"))
+            data = json.loads(value if isinstance(value, (str, bytes)) else value.decode("utf-8"))  # type: ignore[union-attr]
             return Tracklist.model_validate(data)  # type: ignore[no-any-return]
 
         return None

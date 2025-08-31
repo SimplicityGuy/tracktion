@@ -42,7 +42,7 @@ try:
     )
 
     CUE_HANDLER_AVAILABLE = True
-    CueFormat = ImportedCueFormat  # type: ignore[assignment]
+    CueFormat = ImportedCueFormat
 except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("CUE handler not available, using placeholder implementation")

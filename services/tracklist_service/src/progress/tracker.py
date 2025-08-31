@@ -413,7 +413,7 @@ class ProgressTracker:
 
         # Check Redis
         key = f"job_progress:{job_id}"
-        data = self.redis.hgetall(key)  # type: ignore[misc]
+        data = self.redis.hgetall(key)
         if data:
             # Convert back to JobProgress
             job = JobProgress(
@@ -455,7 +455,7 @@ class ProgressTracker:
 
         # Check Redis
         key = f"batch_progress:{batch_id}"
-        data = self.redis.hgetall(key)  # type: ignore[misc]
+        data = self.redis.hgetall(key)
         if data:
             # Convert back to BatchProgress
             batch = BatchProgress(
@@ -499,7 +499,7 @@ class ProgressTracker:
         if not job_ids:
             pattern = "job_progress:*"
             for key in self.redis.scan_iter(match=pattern):
-                data = self.redis.hgetall(key)  # type: ignore[misc]
+                data = self.redis.hgetall(key)
                 if data and data.get("batch_id") == batch_id:  # type: ignore[union-attr]
                     job_id = data["job_id"]  # type: ignore[index]
                     job_ids.add(job_id)

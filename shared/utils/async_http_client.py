@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 import structlog
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
-from pybreaker import CircuitBreaker
+from pybreaker import CircuitBreaker  # type: ignore[import-not-found]
 
 logger = structlog.get_logger(__name__)
 
@@ -263,13 +263,13 @@ class AsyncHTTPClient:
         # The pybreaker library handles state management internally
         try:
             # Create a wrapper for the circuit breaker to handle async calls
-            @circuit_breaker
+            @circuit_breaker  # type: ignore[misc]
             async def _protected_request() -> httpx.Response:
-                return await self.retry_handler.execute_with_retry(_make_request)
+                return await self.retry_handler.execute_with_retry(_make_request)  # type: ignore[no-any-return]
 
             # Execute the protected request
             result = await _protected_request()
-            return result
+            return result  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(
                 "Request failed with circuit breaker",

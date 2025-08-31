@@ -157,15 +157,21 @@ async def search_1001tracklists(
 
         has_more = end_index < total_results
 
-        response_data = {
-            "success": True,
-            "results": paginated_results,
-            "total_count": total_results,
+        pagination_info = {
             "page": page,
-            "page_size": page_size,
-            "has_more": has_more,
-            "cached": False,
-            "processing_time_ms": int((time.time() - start_time) * 1000),
+            "limit": page_size,
+            "total_pages": (total_results + page_size - 1) // page_size,
+            "total_items": total_results,
+            "has_next": has_more,
+            "has_previous": page > 1,
+        }
+
+        response_data = {
+            "results": paginated_results,
+            "pagination": pagination_info,
+            "query_info": {"query": query, "search_type": "dj"},
+            "cache_hit": False,
+            "response_time_ms": int((time.time() - start_time) * 1000),
             "correlation_id": correlation_id,
         }
 
@@ -186,15 +192,21 @@ async def search_1001tracklists(
         logger.error(f"Search error: {e}", exc_info=True)
         processing_time = int((time.time() - start_time) * 1000)
 
+        error_pagination_info = {
+            "page": page,
+            "limit": page_size,
+            "total_pages": 0,
+            "total_items": 0,
+            "has_next": False,
+            "has_previous": False,
+        }
+
         return SearchResponse(
-            success=False,
             results=[],
-            total_count=0,
-            page=page,
-            page_size=page_size,
-            has_more=False,
-            error=f"Search failed: {str(e)}",
-            processing_time_ms=processing_time,
+            pagination=error_pagination_info,
+            query_info={"query": query, "search_type": "dj", "error": f"Search failed: {str(e)}"},
+            cache_hit=False,
+            response_time_ms=processing_time,
             correlation_id=correlation_id,
         )
 

@@ -11,7 +11,7 @@ from asyncio import Task
 import statistics
 
 from redis import Redis
-import psutil
+import psutil  # type: ignore[import-untyped]
 
 from services.tracklist_service.src.queue.batch_queue import BatchJobQueue
 from services.tracklist_service.src.progress.tracker import ProgressTracker

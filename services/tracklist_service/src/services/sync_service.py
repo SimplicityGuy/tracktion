@@ -313,9 +313,9 @@ class SynchronizationService:
             config = await self._get_or_create_sync_config(tracklist_id)
 
             # Update configuration
-            config.sync_enabled = True
-            config.sync_frequency = frequency.value
-            config.sync_sources = [source.value]
+            config.sync_enabled = True  # type: ignore[assignment]
+            config.sync_frequency = frequency.value  # type: ignore[assignment]
+            config.sync_sources = [source.value]  # type: ignore[assignment]
 
             await self.session.commit()
 
@@ -412,8 +412,8 @@ class SynchronizationService:
         try:
             # Update configuration
             config = await self._get_or_create_sync_config(tracklist_id)
-            config.sync_enabled = False
-            config.sync_frequency = SyncFrequency.MANUAL.value
+            config.sync_enabled = False  # type: ignore[assignment]
+            config.sync_frequency = SyncFrequency.MANUAL.value  # type: ignore[assignment]
 
             await self.session.commit()
 

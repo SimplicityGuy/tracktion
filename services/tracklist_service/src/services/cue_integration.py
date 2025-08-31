@@ -131,7 +131,7 @@ class CueIntegrationService:
         tracklist: Tracklist,
         cue_format: CueFormat,
         audio_filename: str = "audio.wav",
-        options: Optional[Dict] = None,
+        options: Optional[Dict[str, Any]] = None,
     ) -> Tuple[bool, str, Optional[str]]:
         """
         Generate CUE file content from tracklist.
@@ -326,7 +326,7 @@ class CueIntegrationService:
         except Exception as e:
             return [f"Could not get conversion warnings: {str(e)}"]
 
-    def _apply_generation_options(self, generator: Any, options: Dict) -> None:
+    def _apply_generation_options(self, generator: Any, options: Dict[str, Any]) -> None:
         """Apply generation options to generator."""
         # This is a placeholder for applying format-specific options
         # In a real implementation, you would configure the generator

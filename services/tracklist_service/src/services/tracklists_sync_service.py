@@ -293,7 +293,9 @@ class TracklistsSyncService:
             await self.session.commit()
             return False, str(e)
 
-    def _apply_changes_to_tracks(self, current_tracks: List[dict], changes: Dict[str, Any]) -> List[dict]:
+    def _apply_changes_to_tracks(
+        self, current_tracks: List[Dict[str, Any]], changes: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         """Apply changes to the current tracks list.
 
         Args:

@@ -155,6 +155,7 @@ async def search_tracklists(
             error_message=str(e),
             correlation_id=correlation_id,
             details={"query": query, "type": search_type.value},
+            retry_after=30,
         )
 
         raise HTTPException(status_code=500, detail=error.model_dump(mode="json"))
