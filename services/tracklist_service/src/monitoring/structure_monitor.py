@@ -75,7 +75,7 @@ class ChangeReport:
 class StructureMonitor:
     """Monitor HTML structure changes for 1001tracklists pages."""
 
-    def __init__(self, redis_client: Optional[redis.Redis] = None, config_path: Optional[Path] = None):
+    def __init__(self, redis_client: Optional[redis.Redis[str]] = None, config_path: Optional[Path] = None):
         """Initialize structure monitor.
 
         Args:
@@ -369,11 +369,11 @@ class StructureMonitor:
 
             # Also store in version history
             history_key = f"structure:history:{page_type}"
-            await self.redis_client.lpush(  # type: ignore[misc]
+            await self.redis_client.lpush(
                 history_key, json.dumps({"timestamp": datetime.now(UTC).isoformat(), "structure": structure})
             )
             # Keep only last 10 versions
-            await self.redis_client.ltrim(history_key, 0, 9)  # type: ignore[misc]
+            await self.redis_client.ltrim(history_key, 0, 9)
 
         # Update local cache
         self._baseline_cache[page_type] = structure

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class QuotaManager:
     """Manages API usage quotas with daily/monthly limits and alerting."""
 
-    def __init__(self, redis_client: redis.Redis):
+    def __init__(self, redis_client: redis.Redis[str]):
         """Initialize quota manager.
 
         Args:
@@ -189,13 +189,13 @@ class QuotaManager:
         for key in keys:
             try:
                 if quota_type == QuotaType.DAILY:
-                    await self.redis.hset(key, "daily_used", "0")  # type: ignore[misc]
-                    await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))  # type: ignore[misc]
+                    await self.redis.hset(key, "daily_used", "0")
+                    await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))
                 elif quota_type == QuotaType.MONTHLY:
-                    await self.redis.hset(key, "daily_used", "0")  # type: ignore[misc]
-                    await self.redis.hset(key, "monthly_used", "0")  # type: ignore[misc]
-                    await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))  # type: ignore[misc]
-                    await self.redis.hset(key, "last_monthly_reset", str(int(now.timestamp())))  # type: ignore[misc]
+                    await self.redis.hset(key, "daily_used", "0")
+                    await self.redis.hset(key, "monthly_used", "0")
+                    await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))
+                    await self.redis.hset(key, "last_monthly_reset", str(int(now.timestamp())))
                 reset_count += 1
             except Exception as e:
                 key_str = key.decode() if isinstance(key, bytes) else key
@@ -342,7 +342,7 @@ class QuotaManager:
         now = datetime.utcnow()
 
         # Get stored usage data
-        usage_data = await self.redis.hmget(  # type: ignore[misc]
+        usage_data = await self.redis.hmget(
             key, ["daily_used", "monthly_used", "last_daily_reset", "last_monthly_reset"]
         )
 
@@ -354,18 +354,18 @@ class QuotaManager:
         # Check if we need to reset daily usage
         if now.date() > last_daily_reset.date():
             daily_used = 0
-            await self.redis.hset(key, "daily_used", "0")  # type: ignore[misc]
-            await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))  # type: ignore[misc]
+            await self.redis.hset(key, "daily_used", "0")
+            await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))
             last_daily_reset = now
 
         # Check if we need to reset monthly usage
         if now.month != last_monthly_reset.month or now.year != last_monthly_reset.year:
             monthly_used = 0
             daily_used = 0  # Reset daily too
-            await self.redis.hset(key, "monthly_used", "0")  # type: ignore[misc]
-            await self.redis.hset(key, "daily_used", "0")  # type: ignore[misc]
-            await self.redis.hset(key, "last_monthly_reset", str(int(now.timestamp())))  # type: ignore[misc]
-            await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))  # type: ignore[misc]
+            await self.redis.hset(key, "monthly_used", "0")
+            await self.redis.hset(key, "daily_used", "0")
+            await self.redis.hset(key, "last_monthly_reset", str(int(now.timestamp())))
+            await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))
             last_monthly_reset = now
             last_daily_reset = now
 

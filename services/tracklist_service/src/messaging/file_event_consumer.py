@@ -3,14 +3,14 @@
 import asyncio
 import json
 import logging
-from typing import Optional
+from typing import Optional, Any
 
 from aio_pika import IncomingMessage, ExchangeType
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from services.tracklist_service.src.config import get_config
-from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient
+from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient, RabbitMQConfig
 from services.tracklist_service.src.services.file_lifecycle_service import FileLifecycleService
 
 logger = logging.getLogger(__name__)
@@ -25,60 +25,66 @@ class FileEventConsumer:
         Args:
             rabbitmq_client: RabbitMQ client instance
         """
-        self.rabbitmq_client = rabbitmq_client or RabbitMQClient()
-        self.channel = None
-        self.queue = None
-        self.consumer_tag = None
+        # Get config for RabbitMQ
+        config = get_config()
+        rabbitmq_config = RabbitMQConfig()
+        self.rabbitmq_client = rabbitmq_client or RabbitMQClient(rabbitmq_config)
+        self.channel: Optional[Any] = None
+        self.queue: Optional[Any] = None
+        self.consumer_tag: Optional[str] = None
 
         # Database setup
-        config = get_config()
-        self.engine = create_async_engine(config.database.url, echo=False)
-        self.SessionLocal = sessionmaker(
+        db_url = f"postgresql+asyncpg://{config.database.user}:{config.database.password}@{config.database.host}:{config.database.port}/{config.database.name}"
+        self.engine = create_async_engine(db_url, echo=False)
+        self.SessionLocal = sessionmaker(  # type: ignore[call-overload]
             self.engine,
             class_=AsyncSession,
             expire_on_commit=False,
         )
 
         # Configuration
-        self.soft_delete_enabled = config.get("soft_delete_enabled", True)
+        self.soft_delete_enabled = True  # Default to True
 
     async def connect(self) -> None:
         """Connect to RabbitMQ and setup consumer."""
         try:
             await self.rabbitmq_client.connect()
-            self.channel = await self.rabbitmq_client.connection.channel()
+            if self.rabbitmq_client.connection:
+                self.channel = await self.rabbitmq_client.connection.channel()
 
             # Set prefetch count for load balancing
-            await self.channel.set_qos(prefetch_count=10)
+            if self.channel:
+                await self.channel.set_qos(prefetch_count=10)
 
-            # Declare the file events exchange (should already exist from file_watcher)
-            exchange = await self.channel.declare_exchange(
-                "file_events",
-                ExchangeType.TOPIC,
-                durable=True,
-            )
+                # Declare the file events exchange (should already exist from file_watcher)
+                exchange = await self.channel.declare_exchange(
+                    "file_events",
+                    ExchangeType.TOPIC,
+                    durable=True,
+                )
 
-            # Declare consumer queue for file lifecycle events
-            self.queue = await self.channel.declare_queue(
-                "tracklist.file.lifecycle",
-                durable=True,
-                arguments={
-                    "x-dead-letter-exchange": "file_events.dlx",
-                    "x-message-ttl": 86400000,  # 24 hours
-                },
-            )
+                # Declare consumer queue for file lifecycle events
+                self.queue = await self.channel.declare_queue(
+                    "tracklist.file.lifecycle",
+                    durable=True,
+                    arguments={
+                        "x-dead-letter-exchange": "file_events.dlx",
+                        "x-message-ttl": 86400000,  # 24 hours
+                    },
+                )
 
-            # Bind queue to file event routing keys
-            routing_keys = [
-                "file.created",
-                "file.modified",
-                "file.deleted",
-                "file.moved",
-                "file.renamed",
-            ]
+                # Bind queue to file event routing keys
+                routing_keys = [
+                    "file.created",
+                    "file.modified",
+                    "file.deleted",
+                    "file.moved",
+                    "file.renamed",
+                ]
 
-            for routing_key in routing_keys:
-                await self.queue.bind(exchange, routing_key)
+                for routing_key in routing_keys:
+                    if self.queue:
+                        await self.queue.bind(exchange, routing_key)
 
             logger.info("Connected to RabbitMQ for file event consumption")
 
@@ -106,13 +112,14 @@ class FileEventConsumer:
 
         try:
             # Start consuming messages
-            async with self.queue.iterator() as queue_iter:
-                self.consumer_tag = queue_iter.consumer_tag
-                logger.info("Started consuming file events")
+            if self.queue:
+                async with self.queue.iterator() as queue_iter:
+                    self.consumer_tag = queue_iter.consumer_tag
+                    logger.info("Started consuming file events")
 
-                async for message in queue_iter:
-                    async with message.process():
-                        await self.process_message(message)
+                    async for message in queue_iter:
+                        async with message.process():
+                            await self.process_message(message)
 
         except asyncio.CancelledError:
             logger.info("File event consumer cancelled")
@@ -226,7 +233,7 @@ class FileEventConsumer:
             logger.error(f"Error during cleanup of old soft-deletes: {e}")
 
 
-async def main():
+async def main() -> None:
     """Main entry point for file event consumer."""
     consumer = FileEventConsumer()
 
@@ -234,7 +241,7 @@ async def main():
         await consumer.connect()
 
         # Start periodic cleanup task
-        async def periodic_cleanup():
+        async def periodic_cleanup() -> None:
             while True:
                 await asyncio.sleep(86400)  # Run daily
                 await consumer.cleanup_old_deletes(30)

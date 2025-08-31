@@ -244,10 +244,8 @@ async def generate_cue_for_tracklist(
         tracklist = await get_tracklist_by_id(tracklist_id)
 
         # Generate CUE file
-        from typing import cast
-
         result = await generate_cue_file(request, tracklist, background_tasks, async_processing)
-        return cast(CueGenerationResponse, result)
+        return result
 
     except HTTPException:
         raise

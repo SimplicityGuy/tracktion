@@ -9,6 +9,7 @@ import json
 import logging
 import time
 from typing import Optional
+from uuid import uuid4
 
 import aio_pika
 from aio_pika import ExchangeType, Message
@@ -45,7 +46,7 @@ class TracklistMessageHandler:
         """Establish connection to RabbitMQ."""
         try:
             # Create connection
-            self._connection = await aio_pika.connect_robust(
+            self._connection = await aio_pika.connect_robust(  # type: ignore[assignment]
                 self.config.rabbitmq_url,
                 client_properties={
                     "connection_name": "tracklist-service",
@@ -53,18 +54,18 @@ class TracklistMessageHandler:
             )
 
             # Create channel
-            self._channel = await self._connection.channel()
-            await self._channel.set_qos(prefetch_count=self.config.prefetch_count)
+            self._channel = await self._connection.channel()  # type: ignore[union-attr,assignment]
+            await self._channel.set_qos(prefetch_count=self.config.prefetch_count)  # type: ignore[union-attr]
 
             # Declare exchange
-            self._exchange = await self._channel.declare_exchange(
+            self._exchange = await self._channel.declare_exchange(  # type: ignore[union-attr,assignment]
                 self.config.exchange_name,
                 ExchangeType.TOPIC,
                 durable=True,
             )
 
             # Declare and bind queue
-            self._queue = await self._channel.declare_queue(
+            self._queue = await self._channel.declare_queue(  # type: ignore[union-attr,assignment]
                 self.config.search_queue,
                 durable=True,
                 arguments={
@@ -74,10 +75,11 @@ class TracklistMessageHandler:
             )
 
             # Bind queue to exchange
-            await self._queue.bind(
-                self._exchange,
-                routing_key=self.config.search_routing_key,
-            )
+            if self._exchange:
+                await self._queue.bind(  # type: ignore[union-attr]
+                    self._exchange,
+                    routing_key=self.config.search_routing_key,
+                )
 
             logger.info("Connected to RabbitMQ successfully")
 
@@ -135,10 +137,13 @@ class TracklistMessageHandler:
                         error_code="RECENTLY_FAILED",
                         error_message=f"Search recently failed: {recent_error}",
                         correlation_id=request.correlation_id,
+                        details=None,
+                        retry_after=300,  # 5 minutes
                     )
 
                     response_msg = SearchResponseMessage(
                         success=False,
+                        response=None,
                         error=error,
                         processing_time_ms=(time.time() - start_time) * 1000,
                     )
@@ -161,6 +166,7 @@ class TracklistMessageHandler:
             response_msg = SearchResponseMessage(
                 success=True,
                 response=response,
+                error=None,
                 processing_time_ms=processing_time_ms,
             )
 
@@ -184,13 +190,16 @@ class TracklistMessageHandler:
                     error = SearchError(
                         error_code="PROCESSING_ERROR",
                         error_message=str(e),
-                        correlation_id=request.correlation_id if "request" in locals() else None,
+                        correlation_id=request.correlation_id if "request" in locals() and request else uuid4(),
+                        details=None,
+                        retry_after=None,
                     )
 
                     error_response = SearchResponseMessage(
                         success=False,
+                        response=None,
                         error=error,
-                        processing_time_ms=(time.time() - start_time) * 1000,
+                        processing_time_ms=0.0,  # Error occurred, no meaningful processing time
                     )
 
                     await self._publish_response(error_response, request_msg.reply_to)
@@ -203,7 +212,7 @@ class TracklistMessageHandler:
                 logger.error(f"Failed to publish error response: {publish_error}")
 
             # Reject message with requeue based on retry count
-            requeue = message.redelivered_count < self.config.max_retries
+            requeue = (message.redelivered or 0) < self.config.max_retries
             await message.reject(requeue=requeue)
 
     async def _publish_response(self, response: SearchResponseMessage, reply_to: Optional[str] = None) -> None:
@@ -299,7 +308,7 @@ class TracklistMessageHandler:
             content_type="application/json",
             delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             correlation_id=str(request.correlation_id),
-            expiration=str(timeout_seconds * 1000),  # Convert to milliseconds
+            expiration=timeout_seconds * 1000,  # Convert to milliseconds
         )
 
         # Publish message

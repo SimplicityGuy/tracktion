@@ -8,7 +8,7 @@ import asyncio
 import logging
 import signal
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Callable
+from typing import Any, AsyncGenerator, Callable, Dict
 
 import structlog
 import uvicorn
@@ -151,7 +151,7 @@ def create_app() -> FastAPI:
 
     # Health check endpoint
     @app.get("/health")
-    async def health_check() -> dict:
+    async def health_check() -> Dict[str, str]:
         """Health check endpoint."""
         return {"status": "healthy", "service": "tracklist_service", "version": "0.1.0"}
 

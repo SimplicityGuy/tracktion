@@ -176,7 +176,7 @@ class CacheService:
             config: Cache configuration
         """
         self.config = config
-        self.redis_client: Optional[Redis] = None
+        self.redis_client: Optional[Redis[str]] = None
         self.memory_cache = MemoryCache(max_size=config.memory_cache_max_size, default_ttl=config.memory_cache_ttl)
         self.metrics = CacheMetrics()
         self._redis_available = False
@@ -268,7 +268,9 @@ class CacheService:
                     if compressed_data:
                         import gzip
 
-                        decompressed = gzip.decompress(compressed_data).decode("utf-8")
+                        decompressed = gzip.decompress(
+                            compressed_data.encode() if isinstance(compressed_data, str) else compressed_data
+                        ).decode("utf-8")
                         return json.loads(decompressed)
 
             # Try regular key

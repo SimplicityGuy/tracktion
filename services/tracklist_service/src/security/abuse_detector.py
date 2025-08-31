@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class AbuseDetector:
     """Advanced abuse detection using behavioral analysis."""
 
-    def __init__(self, redis_client: redis.Redis):
+    def __init__(self, redis_client: redis.Redis[str]):
         """Initialize abuse detector.
 
         Args:

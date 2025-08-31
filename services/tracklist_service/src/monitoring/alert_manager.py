@@ -85,7 +85,7 @@ class AlertManager:
 
     def __init__(
         self,
-        redis_client: Optional[Redis] = None,
+        redis_client: Optional[Redis[str]] = None,
         slack_webhook_url: Optional[str] = None,
         email_config: Optional[Dict[str, str]] = None,
         dashboard_url: Optional[str] = None,
@@ -151,11 +151,7 @@ class AlertManager:
                 failed_key = f"failed:extractions:{page_type or '*'}"
                 failed_extractions = []
                 if page_type:
-                    failed_result = self.redis_client.lrange(failed_key, 0, 9)
-                    if hasattr(failed_result, "__await__"):
-                        failed_data = await failed_result
-                    else:
-                        failed_data = failed_result
+                    failed_data = await self.redis_client.lrange(failed_key, 0, 9)  # type: ignore[misc]
                     failed_extractions = [json.loads(f) for f in failed_data if f]
 
                 status = HealthStatus(

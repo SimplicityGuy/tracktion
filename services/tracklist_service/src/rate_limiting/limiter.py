@@ -45,7 +45,7 @@ class RateLimitResult:
 class RateLimiter:
     """Distributed rate limiter using Redis and token bucket algorithm."""
 
-    def __init__(self, redis_client: redis.Redis):
+    def __init__(self, redis_client: redis.Redis[str]):
         """Initialize rate limiter.
 
         Args:
@@ -216,7 +216,7 @@ class RateLimiter:
         return {allowed, remaining, reset_time}
         """
 
-        result = await self.redis.eval(  # type: ignore[misc]
+        result = await self.redis.eval(  # type: ignore[no-untyped-call]
             script,
             1,  # Number of keys
             key,  # The key
@@ -242,7 +242,7 @@ class RateLimiter:
         bucket = self.tiers.get(tier, self.tiers[RateLimitTier.FREE.value])
 
         # Get current bucket state
-        bucket_data = await self.redis.hmget(key, ["tokens", "last_refill"])  # type: ignore[misc]
+        bucket_data = await self.redis.hmget(key, ["tokens", "last_refill"])
         tokens = float(bucket_data[0]) if bucket_data[0] else bucket.capacity + bucket.burst_allowance
         last_refill = int(bucket_data[1]) if bucket_data[1] else int(time.time())
 

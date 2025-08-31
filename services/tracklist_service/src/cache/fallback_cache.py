@@ -104,7 +104,7 @@ class FallbackCache:
 
     def __init__(
         self,
-        redis_client: Optional[redis.Redis] = None,
+        redis_client: Optional[redis.Redis[str]] = None,
         default_ttl: int = 3600,
         max_fallback_age: int = 86400 * 7,  # 7 days
     ):

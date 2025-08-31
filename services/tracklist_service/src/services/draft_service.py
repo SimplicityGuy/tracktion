@@ -22,7 +22,7 @@ from services.tracklist_service.src.models.tracklist import (
 class DraftService:
     """Service for managing draft tracklists."""
 
-    def __init__(self, db_session: Session, redis_client: Optional[redis.Redis] = None):
+    def __init__(self, db_session: Session, redis_client: Optional[redis.Redis[str]] = None):
         """Initialize draft service.
 
         Args:

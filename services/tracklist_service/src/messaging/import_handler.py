@@ -5,6 +5,7 @@ Handles RabbitMQ message publishing and consuming for async import processing
 with proper error handling, retry logic, and message acknowledgments.
 """
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -105,7 +106,7 @@ class ImportMessageHandler:
         self.exchange_name = self.config.message_queue.exchange_name
 
         # Message handlers
-        self.import_handlers: List[Callable] = []
+        self.import_handlers: List[Callable[[ImportJobMessage], None]] = []
 
     async def connect(self) -> None:
         """Establish connection to RabbitMQ."""
@@ -158,7 +159,7 @@ class ImportMessageHandler:
         )
 
         # Bind to exchange
-        await import_queue.bind(self.exchange, routing_key="tracklist.import")
+        await import_queue.bind(self.exchange, routing_key="tracklist.import")  # type: ignore[arg-type]
 
         # Result queue (for publishing results)
         result_queue = await self.channel.declare_queue(
@@ -169,7 +170,7 @@ class ImportMessageHandler:
                 "x-max-length": 5000,  # Max 5000 results
             },
         )
-        await result_queue.bind(self.exchange, routing_key="tracklist.import.result")
+        await result_queue.bind(self.exchange, routing_key="tracklist.import.result")  # type: ignore[arg-type]
 
         # Retry queue (for failed imports)
         retry_queue = await self.channel.declare_queue(
@@ -180,7 +181,7 @@ class ImportMessageHandler:
                 "x-max-length": 500,  # Max 500 retries
             },
         )
-        await retry_queue.bind(self.exchange, routing_key="tracklist.import.retry")
+        await retry_queue.bind(self.exchange, routing_key="tracklist.import.retry")  # type: ignore[arg-type]
 
         # Dead letter queue (for permanently failed imports)
         await self.channel.declare_queue(self.import_dlq, durable=True)
@@ -300,7 +301,9 @@ class ImportMessageHandler:
 
                     # Process through registered handlers
                     for handler in self.import_handlers:
-                        await handler(job_message)
+                        result = handler(job_message)
+                        if asyncio.iscoroutine(result):
+                            await result
 
                     # Message will be automatically acknowledged on successful completion
 
@@ -313,7 +316,7 @@ class ImportMessageHandler:
                     # Message will be rejected and potentially retried
                     raise
 
-        await import_queue.consume(process_import_message)
+        await import_queue.consume(process_import_message)  # type: ignore[arg-type]
         logger.info("Started consuming import messages")
 
     def register_import_handler(self, handler: Callable[[ImportJobMessage], None]) -> None:
@@ -343,7 +346,7 @@ class ImportMessageHandler:
         except Exception:
             return False
 
-    async def get_queue_stats(self) -> Dict[str, Dict[str, int]]:
+    async def get_queue_stats(self) -> Dict[str, Dict[str, int | None | str]]:
         """
         Get statistics for all queues.
 
@@ -364,9 +367,9 @@ class ImportMessageHandler:
                 }
             except Exception as e:
                 logger.warning(f"Could not get stats for queue {queue_name}: {e}")
-                stats[queue_name] = {"error": str(e)}
+                stats[queue_name] = {"error": str(e)}  # type: ignore[dict-item]
 
-        return stats
+        return stats  # type: ignore[return-value]
 
 
 # Global instance for easy access

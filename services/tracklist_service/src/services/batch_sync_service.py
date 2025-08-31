@@ -539,7 +539,7 @@ class BatchSyncService:
         """
         query = select(SyncConfiguration).where(SyncConfiguration.tracklist_id == tracklist_id)
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()  # type: ignore[no-any-return]
+        return result.scalar_one_or_none()
 
     async def _get_system_load(self) -> float:
         """Get current system load.
@@ -557,7 +557,7 @@ class BatchSyncService:
 
             # Weighted average
             load = (cpu_percent * 0.7 + memory_percent * 0.3) / 100
-            return min(max(load, 0.0), 1.0)  # type: ignore[no-any-return]
+            return float(min(max(load, 0.0), 1.0))
         except Exception:
             # Default to moderate load if unable to determine
             return 0.5

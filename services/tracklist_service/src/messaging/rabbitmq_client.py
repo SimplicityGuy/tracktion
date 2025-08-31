@@ -63,13 +63,13 @@ class RabbitMQClient:
                 f"{self.config.host}:{self.config.port}{self.config.virtual_host}"
             )
 
-            self.connection = await connect_robust(
+            self.connection = await connect_robust(  # type: ignore[assignment]
                 connection_url,
                 timeout=self.config.connection_timeout,
                 heartbeat=self.config.heartbeat,
             )
 
-            self.channel = await self.connection.channel()
+            self.channel = await self.connection.channel()  # type: ignore[union-attr]
             await self.channel.set_qos(prefetch_count=self.config.prefetch_count)
 
             # Declare exchanges and queues
@@ -167,7 +167,7 @@ class RabbitMQClient:
 
             rabbitmq_message = Message(
                 message.to_json().encode("utf-8"),
-                headers=headers,
+                headers=headers,  # type: ignore[arg-type]
                 priority=message.priority,
                 message_id=str(message.message_id),
                 correlation_id=str(message.correlation_id) if message.correlation_id else None,
@@ -270,7 +270,13 @@ class RabbitMQClient:
                     logger.error(f"Message handler error: {e}", exc_info=True)
 
                     # Check retry count
-                    retry_count = rabbitmq_message.headers.get("retry_count", 0) if rabbitmq_message.headers else 0
+                    if rabbitmq_message.headers and "retry_count" in rabbitmq_message.headers:
+                        try:
+                            retry_count = int(rabbitmq_message.headers["retry_count"])  # type: ignore[arg-type]
+                        except (ValueError, TypeError):
+                            retry_count = 0
+                    else:
+                        retry_count = 0
 
                     if retry_count < self.config.max_retries:
                         # Reject and requeue for retry

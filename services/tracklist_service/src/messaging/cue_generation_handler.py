@@ -309,13 +309,18 @@ class CueGenerationMessageHandler:
 
         completion_message = CueGenerationCompleteMessage(
             message_id=uuid4(),
+            message_type=MessageType.CUE_GENERATION_COMPLETE,
             correlation_id=original_message.correlation_id,
+            retry_count=0,
+            priority=5,
             original_message_id=original_message.message_id,
             job_id=original_message.job_id,
             tracklist_id=original_message.tracklist_id,
             success=success,
-            cue_file_id=cue_file_id,
+            cue_file_id=UUID(cue_file_id) if cue_file_id else None,
             file_path=file_path,
+            file_size=None,
+            checksum=None,
             validation_report=validation_report,
             error=error,
             error_code=error_code,
@@ -332,7 +337,7 @@ class CueGenerationMessageHandler:
         total_files: int = 0,
         successful_files: int = 0,
         failed_files: int = 0,
-        results: Optional[list] = None,
+        results: Optional[list[Dict[str, Any]]] = None,
         error: Optional[str] = None,
         start_time: Optional[datetime] = None,
     ) -> None:
@@ -349,7 +354,10 @@ class CueGenerationMessageHandler:
 
         completion_message = BatchCueGenerationCompleteMessage(
             message_id=uuid4(),
+            message_type=MessageType.BATCH_CUE_GENERATION_COMPLETE,
             correlation_id=original_message.correlation_id,
+            retry_count=0,
+            priority=5,
             original_message_id=original_message.message_id,
             batch_job_id=original_message.batch_job_id,
             tracklist_id=original_message.tracklist_id,
@@ -372,19 +380,19 @@ class CueGenerationMessageHandler:
             await asyncio.gather(
                 self.rabbitmq_client.consume_messages(
                     message_type=MessageType.CUE_GENERATION,
-                    handler=self.handle_cue_generation,
+                    handler=self.handle_cue_generation,  # type: ignore[arg-type]
                 ),
                 self.rabbitmq_client.consume_messages(
                     message_type=MessageType.BATCH_CUE_GENERATION,
-                    handler=self.handle_batch_cue_generation,
+                    handler=self.handle_batch_cue_generation,  # type: ignore[arg-type]
                 ),
                 self.rabbitmq_client.consume_messages(
                     message_type=MessageType.CUE_VALIDATION,
-                    handler=self.handle_cue_validation,
+                    handler=self.handle_cue_validation,  # type: ignore[arg-type]
                 ),
                 self.rabbitmq_client.consume_messages(
                     message_type=MessageType.CUE_CONVERSION,
-                    handler=self.handle_cue_conversion,
+                    handler=self.handle_cue_conversion,  # type: ignore[arg-type]
                 ),
             )
 

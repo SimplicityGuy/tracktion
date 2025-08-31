@@ -853,7 +853,7 @@ class CueGenerationService:
         """
         # Create a request object for regeneration
         request = GenerateCueRequest(
-            format=CueFormat(cue_file.format if hasattr(cue_file, "format") else "standard"),
+            format=CueFormat(cue_file.format if hasattr(cue_file, "format") else "standard"),  # type: ignore[arg-type]
             options=options or {},
             validate_audio=False,
             audio_file_path=None,

@@ -42,7 +42,7 @@ class TracklistMessageHandler:
         """Establish connection to RabbitMQ."""
         try:
             # Create connection
-            self._connection = await aio_pika.connect_robust(
+            self._connection = await aio_pika.connect_robust(  # type: ignore[assignment]
                 self.config.rabbitmq_url,
                 client_properties={
                     "connection_name": "tracklist-service-retrieval",
@@ -50,18 +50,18 @@ class TracklistMessageHandler:
             )
 
             # Create channel
-            self._channel = await self._connection.channel()
-            await self._channel.set_qos(prefetch_count=self.config.prefetch_count)
+            self._channel = await self._connection.channel()  # type: ignore[assignment,union-attr]
+            await self._channel.set_qos(prefetch_count=self.config.prefetch_count)  # type: ignore[union-attr]
 
             # Declare exchange
-            self._exchange = await self._channel.declare_exchange(
+            self._exchange = await self._channel.declare_exchange(  # type: ignore[assignment,union-attr]
                 self.config.exchange_name,
                 ExchangeType.TOPIC,
                 durable=True,
             )
 
             # Declare tracklist retrieval queue
-            self._queue = await self._channel.declare_queue(
+            self._queue = await self._channel.declare_queue(  # type: ignore[assignment,union-attr]
                 "tracklist.retrieval",
                 durable=True,
                 arguments={
@@ -72,10 +72,11 @@ class TracklistMessageHandler:
             )
 
             # Bind queue to exchange
-            await self._queue.bind(
-                self._exchange,
-                routing_key="tracklist.retrieval",
-            )
+            if self._exchange:
+                await self._queue.bind(  # type: ignore[union-attr]
+                    self._exchange,
+                    routing_key="tracklist.retrieval",
+                )
 
             logger.info("Connected to RabbitMQ for tracklist retrieval")
 
@@ -202,7 +203,7 @@ class TracklistMessageHandler:
                 )
 
             # Reject message with requeue based on retry count
-            requeue = message.redelivered_count < self.config.max_retries
+            requeue = (message.redelivered or 0) < self.config.max_retries
             await message.reject(requeue=requeue)
 
             # If max retries exceeded, send to dead letter queue

@@ -129,7 +129,7 @@ class UsageReport:
 class UsageTracker:
     """Comprehensive usage tracking and analytics system."""
 
-    def __init__(self, redis_client: redis.Redis):
+    def __init__(self, redis_client: redis.Redis[str]):
         """Initialize usage tracker.
 
         Args:

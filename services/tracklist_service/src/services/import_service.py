@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class ImportService:
     """Service for importing tracklists from 1001tracklists."""
 
-    def __init__(self, redis_client: Optional[redis.Redis] = None):
+    def __init__(self, redis_client: Optional[redis.Redis[str]] = None):
         """
         Initialize the import service.
 
@@ -37,7 +37,7 @@ class ImportService:
         self.config = get_config()
 
         # Setup Redis client
-        self.redis_client: Optional[redis.Redis] = None
+        self.redis_client: Optional[redis.Redis[str]] = None
         if redis_client:
             self.redis_client = redis_client
         elif self.config.cache.enabled:

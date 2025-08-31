@@ -210,7 +210,7 @@ def main() -> int:
 
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    from database import get_session  # type: ignore[import-untyped]
+    from database import get_session
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
