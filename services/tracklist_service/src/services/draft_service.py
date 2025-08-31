@@ -6,7 +6,7 @@ version management, saving, retrieval, and publishing to final versions.
 
 import json
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID, uuid4
 
 import redis
@@ -120,13 +120,13 @@ class DraftService:
             return new_draft
 
         # Update existing draft
-        draft_db.tracks = [track.to_dict() for track in tracks]  # type: ignore
-        draft_db.updated_at = datetime.utcnow()  # type: ignore
+        draft_db.tracks = [track.to_dict() for track in tracks]
+        draft_db.updated_at = datetime.utcnow()
         self.db.commit()
 
         # Update cache
         draft.tracks = tracks
-        draft.updated_at = draft_db.updated_at  # type: ignore
+        draft.updated_at = draft_db.updated_at
         if self.redis:
             self._cache_draft(draft)
 
@@ -228,16 +228,16 @@ class DraftService:
         if existing_published:
             # Create a backup/archive entry
             archive = TracklistDB.from_model(existing_published.to_model())
-            archive.id = uuid4()  # type: ignore
-            archive.parent_tracklist_id = existing_published.id  # type: ignore
+            archive.id = uuid4()
+            archive.parent_tracklist_id = existing_published.id
             self.db.add(archive)
 
         # Convert draft to published
-        draft_db.is_draft = False  # type: ignore
-        draft_db.updated_at = datetime.utcnow()  # type: ignore
+        draft_db.is_draft = False
+        draft_db.updated_at = datetime.utcnow()
 
         # Clear draft version since it's now published
-        draft_db.draft_version = None  # type: ignore
+        draft_db.draft_version = None
 
         self.db.commit()
 
@@ -280,7 +280,7 @@ class DraftService:
     def batch_update_tracks(
         self,
         draft_id: UUID,
-        track_updates: List[dict],
+        track_updates: List[dict[str, Any]],
     ) -> Tracklist:
         """Batch update multiple tracks efficiently.
 
@@ -319,7 +319,7 @@ class DraftService:
 
     def bulk_create_drafts(
         self,
-        draft_data: List[dict],
+        draft_data: List[dict[str, Any]],
     ) -> List[Tracklist]:
         """Create multiple drafts efficiently in batch.
 
@@ -366,7 +366,7 @@ class DraftService:
             .first()
         )
 
-        return latest.draft_version if latest else None  # type: ignore
+        return latest.draft_version if latest else None
 
     def _has_significant_changes(
         self,
@@ -431,7 +431,7 @@ class DraftService:
         value = self.redis.get(key)
 
         if value:
-            data = json.loads(value if isinstance(value, (str, bytes)) else value.decode("utf-8"))  # type: ignore
+            data = json.loads(value if isinstance(value, (str, bytes)) else value.decode("utf-8"))
             return Tracklist.model_validate(data)  # type: ignore[no-any-return]
 
         return None

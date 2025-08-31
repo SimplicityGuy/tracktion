@@ -6,7 +6,7 @@ with fuzzy matching and confidence scoring.
 """
 
 import logging
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 from uuid import UUID
 from difflib import SequenceMatcher
 
@@ -191,7 +191,7 @@ class CatalogSearchService:
 
     def _calculate_confidence(
         self,
-        metadata: dict,
+        metadata: dict[str, Any],
         query: Optional[str] = None,
         artist: Optional[str] = None,
         title: Optional[str] = None,
@@ -358,7 +358,7 @@ class CatalogSearchService:
 
         return False
 
-    def get_catalog_track_metadata(self, track_id: UUID) -> dict:
+    def get_catalog_track_metadata(self, track_id: UUID) -> dict[str, Any]:
         """
         Get all metadata for a catalog track.
 

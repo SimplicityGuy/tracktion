@@ -6,7 +6,7 @@ including support for multiple formats and storage strategies.
 """
 
 from datetime import datetime
-from typing import Dict, Optional, List
+from typing import Any, Dict, Optional, List
 from uuid import UUID, uuid4
 from enum import Enum
 
@@ -61,7 +61,7 @@ class CueFile(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     version: int = Field(default=1, description="Version number for updates")
     is_active: bool = Field(default=True, description="Current active version")
-    metadata: Dict = Field(default_factory=dict, description="Format-specific metadata")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Format-specific metadata")
 
     model_config = {"json_encoders": {UUID: str}}
 
@@ -97,7 +97,7 @@ class CueGenerationJob(BaseModel):
     cue_file_id: Optional[UUID] = Field(None, description="Result CUE file ID")
     error_message: Optional[str] = Field(None, description="Error message if failed")
     validation_report: Optional[ValidationResult] = Field(None, description="Validation report")
-    options: Dict = Field(default_factory=dict, description="Generation options")
+    options: Dict[str, Any] = Field(default_factory=dict, description="Generation options")
     progress: int = Field(default=0, ge=0, le=100, description="Progress percentage")
 
     model_config = {"json_encoders": {UUID: str}}
@@ -232,7 +232,7 @@ class GenerateCueRequest(BaseModel):
     """Request model for CUE generation."""
 
     format: CueFormat = Field(description="Target CUE format")
-    options: Dict = Field(default_factory=dict, description="Generation options")
+    options: Dict[str, Any] = Field(default_factory=dict, description="Generation options")
     validate_audio: bool = Field(default=True, description="Whether to validate against audio file")
     audio_file_path: Optional[str] = Field(None, description="Path to audio file for validation")
 
@@ -241,7 +241,7 @@ class BatchGenerateCueRequest(BaseModel):
     """Request model for batch CUE generation."""
 
     formats: List[CueFormat] = Field(description="Target CUE formats")
-    options: Dict = Field(default_factory=dict, description="Generation options")
+    options: Dict[str, Any] = Field(default_factory=dict, description="Generation options")
     validate_audio: bool = Field(default=True, description="Whether to validate against audio files")
     audio_file_path: Optional[str] = Field(None, description="Path to audio file for validation")
 
