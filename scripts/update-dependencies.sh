@@ -537,22 +537,6 @@ run_tests() {
         print_warning "Some pre-commit hooks failed - review the changes"
     fi
 
-    # Run ruff linting
-    print_info "Running ruff linting..."
-    if uv run ruff check .; then
-        print_success "Ruff linting passed"
-    else
-        print_warning "Ruff linting failed - review the issues"
-    fi
-
-    # Run mypy type checking
-    print_info "Running mypy type checking..."
-    if uv run mypy .; then
-        print_success "Type checking passed"
-    else
-        print_warning "Type checking failed - review the issues"
-    fi
-
     # Run tests
     print_info "Running pytest..."
     if uv run pytest tests/; then
@@ -698,13 +682,10 @@ show_verification_steps() {
     echo "2. 🪝 Verify pre-commit hooks:"
     echo "   pre-commit run --all-files"
     echo ""
-    echo "3. 📊 Check type hints:"
-    echo "   uv run mypy ."
-    echo ""
-    echo "4. 🔍 Review dependency changes for breaking updates:"
+    echo "3. 🔍 Review dependency changes for breaking updates:"
     echo "   git diff uv.lock | grep -E \"^[+-]version\""
     echo ""
-    echo "5. 🐳 If using Docker, rebuild and test:"
+    echo "4. 🐳 If using Docker, rebuild and test:"
     echo "   docker-compose build"
     echo "   docker-compose up -d"
     echo ""
