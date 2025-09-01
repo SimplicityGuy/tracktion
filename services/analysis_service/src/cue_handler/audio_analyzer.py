@@ -6,22 +6,11 @@ Analyzes audio files to extract duration and verify against CUE timing.
 import logging
 from pathlib import Path
 
+from mutagen import File
+from pydub import AudioSegment
+
 from .models import CueSheet
 from .validation_rules import Severity, ValidationIssue
-
-try:
-    from mutagen import File
-
-    HAS_MUTAGEN = True
-except ImportError:
-    HAS_MUTAGEN = False
-
-try:
-    from pydub import AudioSegment
-
-    HAS_PYDUB = True
-except ImportError:
-    HAS_PYDUB = False
 
 logger = logging.getLogger(__name__)
 
@@ -89,36 +78,30 @@ class AudioAnalyzer:
         Returns:
             Duration in milliseconds, or None if cannot determine
         """
-        if HAS_MUTAGEN:
-            try:
-                audio = File(file_path)
-                if audio and audio.info:
-                    return float(audio.info.length) * 1000  # Convert to ms
-            except Exception as e:
-                logger.warning(f"mutagen failed for {file_path}: {e}")
-        else:
-            logger.warning("mutagen not installed, trying pydub")
+        try:
+            audio = File(file_path)
+            if audio and audio.info:
+                return float(audio.info.length) * 1000  # Convert to ms
+        except Exception as e:
+            logger.warning(f"mutagen failed for {file_path}: {e}")
 
-        if HAS_PYDUB:
-            try:
-                # Determine format from extension
-                ext = Path(file_path).suffix.lower()[1:]  # Remove the dot
-                format_map = {
-                    "wav": "wav",
-                    "mp3": "mp3",
-                    "flac": "flac",
-                    "ogg": "ogg",
-                    "aiff": "aiff",
-                    "aif": "aiff",
-                }
+        try:
+            # Determine format from extension
+            ext = Path(file_path).suffix.lower()[1:]  # Remove the dot
+            format_map = {
+                "wav": "wav",
+                "mp3": "mp3",
+                "flac": "flac",
+                "ogg": "ogg",
+                "aiff": "aiff",
+                "aif": "aiff",
+            }
 
-                audio_format = format_map.get(ext, ext)
-                audio = AudioSegment.from_file(file_path, format=audio_format)
-                return len(audio)  # Already in ms
-            except Exception as e:
-                logger.warning(f"pydub failed for {file_path}: {e}")
-        else:
-            logger.warning("pydub not installed, cannot determine audio duration")
+            audio_format = format_map.get(ext, ext)
+            audio = AudioSegment.from_file(file_path, format=audio_format)
+            return len(audio)  # Already in ms
+        except Exception as e:
+            logger.warning(f"pydub failed for {file_path}: {e}")
 
         return None
 

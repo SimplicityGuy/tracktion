@@ -12,13 +12,8 @@ import structlog
 from dotenv import load_dotenv
 from watchdog.observers import Observer
 
-try:
-    from .message_publisher import MessagePublisher, RabbitMQConfig
-    from .watchdog_handler import TracktionEventHandler
-except ImportError:
-    # For direct execution
-    from message_publisher import MessagePublisher, RabbitMQConfig  # type: ignore[no-redef]
-    from watchdog_handler import TracktionEventHandler  # type: ignore[no-redef]
+from .message_publisher import MessagePublisher, RabbitMQConfig
+from .watchdog_handler import TracktionEventHandler
 
 load_dotenv()
 

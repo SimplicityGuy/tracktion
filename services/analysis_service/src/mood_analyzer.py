@@ -9,17 +9,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
+import essentia.standard as es
 import numpy as np
 
 from services.analysis_service.src.model_manager import ModelManager
-
-try:
-    import essentia.standard as es
-
-    HAS_ESSENTIA = True
-except ImportError:
-    HAS_ESSENTIA = False
-    es = None
 
 logger = logging.getLogger(__name__)
 
@@ -147,10 +140,6 @@ class MoodAnalyzer:
         Returns:
             MoodAnalysisResult with all analyzed features
         """
-        if not HAS_ESSENTIA:
-            logger.error("Essentia not installed. Install with: uv pip install essentia")
-            return None
-
         try:
             # Load audio file (16kHz for most models)
             logger.info(f"Loading audio file for mood analysis: {audio_file}")
@@ -196,9 +185,6 @@ class MoodAnalyzer:
 
             return result
 
-        except ImportError:
-            logger.error("Essentia not installed. Install with: uv pip install essentia")
-            return None
         except Exception as e:
             logger.error(f"Error analyzing mood for {audio_file}: {e!s}")
             return None

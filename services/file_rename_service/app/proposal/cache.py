@@ -9,28 +9,10 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
+import redis.asyncio as redis
+
 from services.file_rename_service.app.config import get_settings
-
-# Handle optional dependencies properly
-HAS_REDIS = False
-redis = None
-try:
-    import redis.asyncio as redis_lib
-
-    redis = redis_lib
-    HAS_REDIS = True
-except ImportError:
-    pass
-
-HAS_MODELS = False
-RenameProposal = None
-try:
-    from services.file_rename_service.app.proposal.models import RenameProposal as ProposalModel
-
-    RenameProposal = ProposalModel
-    HAS_MODELS = True
-except ImportError:
-    pass
+from services.file_rename_service.app.proposal.models import RenameProposal
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -188,10 +170,6 @@ class ProposalCache:
 
         if self._redis_client is None:
             try:
-                # Check if redis is available
-                if redis is None:
-                    raise ImportError("Redis library not available")
-
                 # Create connection pool if not exists
                 if self._connection_pool is None:
                     self._connection_pool = redis.ConnectionPool.from_url(
@@ -287,12 +265,8 @@ class ProposalCache:
                 proposal_data = json.loads(cached_data)
                 proposal_dict = proposal_data["data"]
 
-                # Validate RenameProposal if available
-                if HAS_MODELS and RenameProposal is not None:
-                    proposal = RenameProposal.model_validate(proposal_dict)
-                else:
-                    # If models can't be imported, return raw dict
-                    proposal = proposal_dict
+                # Validate RenameProposal
+                proposal = RenameProposal.model_validate(proposal_dict)
 
                 logger.debug(f"Retrieved cached proposal for key: {key}")
                 return proposal

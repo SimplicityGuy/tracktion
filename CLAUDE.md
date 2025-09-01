@@ -58,3 +58,10 @@ This is a monorepo with multiple services under `services/`. The main service be
   # Example - mypy ignore with reason:
   from alembic import context  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
   ```
+
+### Import Policy - CRITICAL REQUIREMENTS
+- **NO conditional imports allowed** - NEVER use try/except or if blocks for imports
+- **All dependencies must be directly imported** - Assume all dependencies are available
+- **Dependencies must be listed in pyproject.toml** - If a dependency is needed, it must be added to pyproject.toml
+- **Failed imports should raise ImportError** - Let imports fail naturally if dependencies are missing
+- **TYPE_CHECKING imports are acceptable** - Only `if TYPE_CHECKING:` blocks for type hints are allowed

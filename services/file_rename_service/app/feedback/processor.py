@@ -4,15 +4,11 @@ import asyncio
 import contextlib
 import logging
 import os
-import sys
 from datetime import UTC, datetime
 from enum import Enum
 from uuid import uuid4
 
-try:
-    import psutil
-except ImportError:
-    psutil = None
+import psutil
 
 from services.file_rename_service.app.feedback.models import (
     Feedback,
@@ -118,12 +114,8 @@ class FeedbackProcessor:
         """Get current memory usage in MB."""
         try:
             # Get memory info for current process
-            if psutil is not None:
-                process = psutil.Process(os.getpid())
-                return float(process.memory_info().rss / 1024 / 1024)
-            # Fallback to sys.getsizeof for pending feedback list
-            # Note: This is approximate since we can't use async lock here
-            return float(sys.getsizeof(self._pending_feedback) / 1024 / 1024)
+            process = psutil.Process(os.getpid())
+            return float(process.memory_info().rss / 1024 / 1024)
         except Exception:
             return 0.0
 

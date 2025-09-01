@@ -9,15 +9,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
+import essentia.standard as es
 import numpy as np
-
-try:
-    import essentia.standard as es
-
-    HAS_ESSENTIA = True
-except ImportError:
-    HAS_ESSENTIA = False
-    es = None
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +104,6 @@ class KeyDetector:
 
             return final_result
 
-        except ImportError:
-            logger.error("Essentia not installed. Install with: uv pip install essentia")
-            return None
         except Exception as e:
             logger.error(f"Error detecting key for {audio_file}: {e!s}")
             return None
@@ -234,10 +224,6 @@ class KeyDetector:
         Returns:
             KeyDetectionResult based on segment analysis
         """
-        if not HAS_ESSENTIA:
-            logger.error("Essentia not installed. Install with: uv pip install essentia")
-            return None
-
         try:
             # Load audio file
             audio = es.MonoLoader(filename=audio_file)()
