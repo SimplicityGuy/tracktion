@@ -6,21 +6,17 @@ Provides REST endpoints for searching 1001tracklists.com.
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from datetime import date
+from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
 
-from ..cache.redis_cache import get_cache
-from ..models.search_models import (
-    SearchError,
-    SearchRequest,
-    SearchResponse,
-    SearchType,
-)
-from ..scraper.search_scraper import SearchScraper
-from ..config import get_config
+from src.cache.redis_cache import get_cache
+from src.config import get_config
+from src.models.search_models import SearchError, SearchRequest, SearchResponse, SearchType
+from src.scraper.search_scraper import SearchScraper
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +34,13 @@ def get_scraper() -> SearchScraper:
 
 @router.get("/", response_model=SearchResponse)
 async def search_tracklists(
-    query: str = Query(..., min_length=1, max_length=200, description="Search query"),
-    search_type: SearchType = Query(SearchType.DJ, description="Type of search to perform"),
-    page: int = Query(1, ge=1, le=100, description="Page number"),
-    limit: int = Query(20, ge=1, le=100, description="Items per page"),
-    start_date: Optional[str] = Query(None, description="Start date filter (YYYY-MM-DD)"),
-    end_date: Optional[str] = Query(None, description="End date filter (YYYY-MM-DD)"),
-    scraper: SearchScraper = Depends(get_scraper),
+    query: str,
+    scraper: SearchScraper,  # Will be injected via Depends in route
+    search_type: SearchType = SearchType.DJ,
+    page: int = 1,
+    limit: int = 20,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> SearchResponse:
     """Search for tracklists on 1001tracklists.com.
 
@@ -68,7 +64,6 @@ async def search_tracklists(
 
     try:
         # Parse dates if provided
-        from datetime import date
 
         parsed_start_date = None
         parsed_end_date = None
@@ -76,14 +71,14 @@ async def search_tracklists(
         if start_date:
             try:
                 parsed_start_date = date.fromisoformat(start_date)
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD")
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD") from e
 
         if end_date:
             try:
                 parsed_end_date = date.fromisoformat(end_date)
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD")
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD") from e
 
         # Create search request
         request = SearchRequest(
@@ -135,7 +130,7 @@ async def search_tracklists(
 
     except ValidationError as e:
         logger.error(f"Validation error: correlation_id={correlation_id}, error={e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     except HTTPException:
         # Re-raise HTTP exceptions (like date validation errors)
@@ -158,15 +153,15 @@ async def search_tracklists(
             retry_after=30,
         )
 
-        raise HTTPException(status_code=500, detail=error.model_dump(mode="json"))
+        raise HTTPException(status_code=500, detail=error.model_dump(mode="json")) from e
 
 
 @router.get("/dj/{dj_slug}", response_model=SearchResponse)
 async def get_dj_tracklists(
     dj_slug: str,
-    page: int = Query(1, ge=1, le=100, description="Page number"),
-    limit: int = Query(20, ge=1, le=100, description="Items per page"),
-    scraper: SearchScraper = Depends(get_scraper),
+    scraper: SearchScraper,  # Will be injected via Depends in route
+    page: int = 1,
+    limit: int = 20,
 ) -> SearchResponse:
     """Get tracklists for a specific DJ.
 
@@ -201,15 +196,15 @@ async def get_dj_tracklists(
 
     except Exception as e:
         logger.error(f"Failed to get DJ tracklists: dj_slug={dj_slug}, error={e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve tracklists for DJ: {dj_slug}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve tracklists for DJ: {dj_slug}") from e
 
 
 @router.get("/event/{event_slug}", response_model=SearchResponse)
 async def get_event_tracklists(
     event_slug: str,
-    page: int = Query(1, ge=1, le=100, description="Page number"),
-    limit: int = Query(20, ge=1, le=100, description="Items per page"),
-    scraper: SearchScraper = Depends(get_scraper),
+    scraper: SearchScraper,  # Will be injected via Depends in route
+    page: int = 1,
+    limit: int = 20,
 ) -> SearchResponse:
     """Get tracklists for a specific event.
 
@@ -244,11 +239,11 @@ async def get_event_tracklists(
 
     except Exception as e:
         logger.error(f"Failed to get event tracklists: event_slug={event_slug}, error={e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve tracklists for event: {event_slug}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve tracklists for event: {event_slug}") from e
 
 
 @router.get("/health")
-async def health_check() -> Dict[str, Any]:
+async def health_check() -> dict[str, Any]:
     """Health check endpoint.
 
     Returns:

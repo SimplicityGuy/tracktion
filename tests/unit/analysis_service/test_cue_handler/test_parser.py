@@ -1,7 +1,9 @@
 """Unit tests for CUE parser."""
 
-import os
+import logging
 import tempfile
+from io import StringIO
+from pathlib import Path
 
 import pytest
 
@@ -238,11 +240,11 @@ FILE "file with spaces.mp3" MP3
     def test_character_limit_warnings(self):
         """Test warnings for exceeding character limits."""
         long_title = "A" * 100
-        cue_content = f'''TITLE "{long_title}"
+        cue_content = f"""TITLE "{long_title}"
 FILE "test.wav" WAVE
   TRACK 01 AUDIO
     PERFORMER "{long_title}"
-    INDEX 01 00:00:00'''
+    INDEX 01 00:00:00"""
 
         sheet = self.parser.parse(cue_content)
 
@@ -322,7 +324,7 @@ FILE "test.wav" WAVE
             sheet = self.parser.parse_file(temp_path, encoding="latin-1")
             assert "Tëst Älbüm" in sheet.title
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_parse_nonexistent_file(self):
         """Test parsing nonexistent file raises error."""
@@ -347,7 +349,7 @@ FILE "test.wav" WAVE
 
             assert "too large" in str(exc.value)
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_empty_cue_sheet(self):
         """Test parsing empty CUE sheet."""
@@ -360,8 +362,6 @@ FILE "test.wav" WAVE
 
     def test_logger_integration(self):
         """Test that parser accepts and uses logger."""
-        import logging
-        from io import StringIO
 
         # Create a logger with string stream handler
         log_stream = StringIO()
@@ -386,6 +386,7 @@ FILE "test.wav" WAVE
 
     def test_complex_multitrack_cue(self):
         """Test parsing complex CUE with all features."""
+
         cue_content = """REM GENRE "Electronic"
 REM DATE 2023
 REM DISCID 8E0B710B

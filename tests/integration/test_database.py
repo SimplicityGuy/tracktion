@@ -1,6 +1,7 @@
 """Integration tests for database operations."""
 
-from uuid import UUID
+import os
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -201,7 +202,6 @@ class TestNeo4jOperations:
     @pytest.fixture
     def neo4j_repo(self):
         """Create Neo4j repository instance."""
-        import os
 
         repo = Neo4jRepository(
             uri=os.getenv("NEO4J_TEST_URI", "bolt://localhost:7687"),
@@ -219,7 +219,6 @@ class TestNeo4jOperations:
 
     def test_create_recording_node(self, neo4j_repo):
         """Test creating a recording node in Neo4j."""
-        from uuid import uuid4
 
         recording_id = uuid4()
         result = neo4j_repo.create_recording_node(
@@ -232,7 +231,6 @@ class TestNeo4jOperations:
 
     def test_add_metadata_relationships(self, neo4j_repo, sample_metadata_items):
         """Test creating metadata relationships in Neo4j."""
-        from uuid import uuid4
 
         recording_id = uuid4()
 
@@ -255,7 +253,6 @@ class TestNeo4jOperations:
 
     def test_add_tracklist_with_tracks(self, neo4j_repo, sample_tracks):
         """Test creating tracklist with tracks in Neo4j."""
-        from uuid import uuid4
 
         recording_id = uuid4()
 
@@ -278,7 +275,6 @@ class TestNeo4jOperations:
 
     def test_delete_recording_node(self, neo4j_repo, sample_metadata_items, sample_tracks):
         """Test deleting a recording node and its relationships."""
-        from uuid import uuid4
 
         recording_id = uuid4()
 

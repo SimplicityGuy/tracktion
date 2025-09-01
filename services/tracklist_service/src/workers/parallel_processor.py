@@ -3,12 +3,15 @@
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set
 from threading import Lock, Semaphore
+from typing import Any
+from urllib.parse import urlparse
+
 import psutil
 
 from services.tracklist_service.src.queue.batch_queue import Job
@@ -64,8 +67,8 @@ class BatchResult:
     failed: int
     skipped: int
     processing_time: float
-    results: List[Dict[str, Any]] = field(default_factory=list)
-    errors: List[Dict[str, Any]] = field(default_factory=list)
+    results: list[dict[str, Any]] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
 
 
 class WorkerPool:
@@ -81,17 +84,18 @@ class WorkerPool:
         self.min_workers = max(1, min_workers)
         self.max_workers = max(self.min_workers, max_workers)
         self.current_workers = self.min_workers
-        self.executor: Optional[ThreadPoolExecutor] = None
+        self.executor: ThreadPoolExecutor | None = None
         self.state = WorkerState.IDLE
         self._lock = Lock()
-        self._active_jobs: Set[str] = set()
+        self._active_jobs: set[str] = set()
 
     def start(self) -> None:
         """Start the worker pool."""
         with self._lock:
             if self.executor is None:
                 self.executor = ThreadPoolExecutor(
-                    max_workers=self.current_workers, thread_name_prefix="tracklist_worker"
+                    max_workers=self.current_workers,
+                    thread_name_prefix="tracklist_worker",
                 )
                 self.state = WorkerState.IDLE
                 logger.info(f"Worker pool started with {self.current_workers} workers")
@@ -123,7 +127,8 @@ class WorkerPool:
                 if self.executor:
                     self.executor.shutdown(wait=False)
                     self.executor = ThreadPoolExecutor(
-                        max_workers=self.current_workers, thread_name_prefix="tracklist_worker"
+                        max_workers=self.current_workers,
+                        thread_name_prefix="tracklist_worker",
                     )
 
                 logger.info(f"Scaled worker pool from {old_count} to {self.current_workers} workers")
@@ -153,8 +158,8 @@ class ParallelProcessor:
         """
         self.worker_pool = WorkerPool(min_workers, max_workers)
         self.metrics = LoadMetrics()
-        self.domain_limits: Dict[str, Semaphore] = {}
-        self.domain_last_request: Dict[str, float] = {}
+        self.domain_limits: dict[str, Semaphore] = {}
+        self.domain_last_request: dict[str, float] = {}
         self._domain_lock = Lock()
 
         # Default domain limits (requests per second)
@@ -168,7 +173,7 @@ class ParallelProcessor:
         for domain, limit in self.domain_configs.items():
             self.domain_limits[domain] = Semaphore(limit)
 
-    async def process_batch(self, jobs: List[Job], processor: Callable[..., Any]) -> BatchResult:
+    async def process_batch(self, jobs: list[Job], processor: Callable[..., Any]) -> BatchResult:
         """Process multiple jobs in parallel with rate limiting.
 
         Args:
@@ -179,7 +184,14 @@ class ParallelProcessor:
             Batch processing result
         """
         if not jobs:
-            return BatchResult(batch_id="", total_jobs=0, successful=0, failed=0, skipped=0, processing_time=0.0)
+            return BatchResult(
+                batch_id="",
+                total_jobs=0,
+                successful=0,
+                failed=0,
+                skipped=0,
+                processing_time=0.0,
+            )
 
         batch_id = jobs[0].batch_id if jobs else ""
         start_time = time.time()
@@ -244,7 +256,12 @@ class ParallelProcessor:
                     results.append(result)
                 else:
                     failed += 1
-                    errors.append({"job_id": job.id, "error": result.get("error", "Unknown error")})
+                    errors.append(
+                        {
+                            "job_id": job.id,
+                            "error": result.get("error", "Unknown error"),
+                        }
+                    )
             except Exception as e:
                 failed += 1
                 errors.append({"job_id": job.id, "error": str(e)})
@@ -266,7 +283,7 @@ class ParallelProcessor:
             errors=errors,
         )
 
-    def _process_job_wrapper(self, job: Job, processor: Callable[..., Any]) -> Dict[str, Any]:
+    def _process_job_wrapper(self, job: Job, processor: Callable[..., Any]) -> dict[str, Any]:
         """Wrapper to process a single job.
 
         Args:
@@ -284,7 +301,7 @@ class ParallelProcessor:
             logger.error(f"Error processing job {job.id}: {e}")
             return {"success": False, "job_id": job.id, "error": str(e)}
 
-    def _group_jobs_by_domain(self, jobs: List[Job]) -> Dict[str, List[Job]]:
+    def _group_jobs_by_domain(self, jobs: list[Job]) -> dict[str, list[Job]]:
         """Group jobs by domain for rate limiting.
 
         Args:
@@ -293,7 +310,7 @@ class ParallelProcessor:
         Returns:
             Jobs grouped by domain
         """
-        grouped: Dict[str, List[Job]] = {}
+        grouped: dict[str, list[Job]] = {}
 
         for job in jobs:
             # Extract domain from URL
@@ -313,7 +330,6 @@ class ParallelProcessor:
         Returns:
             Domain name
         """
-        from urllib.parse import urlparse
 
         parsed = urlparse(url)
         return parsed.netloc or "unknown"
@@ -385,7 +401,7 @@ class ParallelProcessor:
             self.worker_pool.scale(target)
             logger.info(f"Adjusted worker count to {target} (load: {load_factor:.2f})")
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         """Get current processing metrics.
 
         Returns:

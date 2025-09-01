@@ -53,16 +53,34 @@ class TestTrackEntry:
     def test_confidence_bounds(self):
         """Test confidence must be between 0 and 1."""
         # Valid confidence values
-        track = TrackEntry(position=1, start_time=timedelta(minutes=0), artist="Test", title="Test", confidence=0.5)
+        track = TrackEntry(
+            position=1,
+            start_time=timedelta(minutes=0),
+            artist="Test",
+            title="Test",
+            confidence=0.5,
+        )
         assert track.confidence == 0.5
 
         # Invalid confidence > 1
         with pytest.raises(ValidationError):
-            TrackEntry(position=1, start_time=timedelta(minutes=0), artist="Test", title="Test", confidence=1.5)
+            TrackEntry(
+                position=1,
+                start_time=timedelta(minutes=0),
+                artist="Test",
+                title="Test",
+                confidence=1.5,
+            )
 
         # Invalid confidence < 0
         with pytest.raises(ValidationError):
-            TrackEntry(position=1, start_time=timedelta(minutes=0), artist="Test", title="Test", confidence=-0.1)
+            TrackEntry(
+                position=1,
+                start_time=timedelta(minutes=0),
+                artist="Test",
+                title="Test",
+                confidence=-0.1,
+            )
 
     def test_to_dict_from_dict(self):
         """Test conversion to and from dictionary."""
@@ -97,12 +115,20 @@ class TestTracklist:
         """Test creating a valid Tracklist."""
         audio_file_id = uuid4()
         tracks = [
-            TrackEntry(position=i, start_time=timedelta(minutes=i * 5), artist=f"Artist {i}", title=f"Track {i}")
+            TrackEntry(
+                position=i,
+                start_time=timedelta(minutes=i * 5),
+                artist=f"Artist {i}",
+                title=f"Track {i}",
+            )
             for i in range(1, 4)
         ]
 
         tracklist = Tracklist(
-            audio_file_id=audio_file_id, source="1001tracklists", tracks=tracks, confidence_score=0.85
+            audio_file_id=audio_file_id,
+            source="1001tracklists",
+            tracks=tracks,
+            confidence_score=0.85,
         )
 
         assert tracklist.audio_file_id == audio_file_id
@@ -187,7 +213,10 @@ class TestImportResponse:
         tracklist = Tracklist(audio_file_id=uuid4(), source="1001tracklists", tracks=[])
 
         response = ImportTracklistResponse(
-            success=True, tracklist=tracklist, cue_file_path="/path/to/cue/file.cue", cached=False
+            success=True,
+            tracklist=tracklist,
+            cue_file_path="/path/to/cue/file.cue",
+            cached=False,
         )
 
         assert response.success is True

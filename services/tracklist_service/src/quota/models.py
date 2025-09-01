@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import Any
 
 
 class QuotaType(Enum):
@@ -55,7 +55,7 @@ class QuotaResult:
     daily_percentage: float
     monthly_percentage: float
     next_reset: datetime
-    message: Optional[str] = None
+    message: str | None = None
 
 
 @dataclass
@@ -82,4 +82,4 @@ class QuotaUpgrade:
     timestamp: datetime
     approved: bool = False
     processed: bool = False
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None

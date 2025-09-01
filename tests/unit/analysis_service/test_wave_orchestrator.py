@@ -5,7 +5,8 @@ Tests multi-stage wave processing, progressive refinement, and resource manageme
 """
 
 import asyncio
-from datetime import datetime
+import contextlib
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -277,7 +278,11 @@ class TestEarlyTermination:
         await wave_orchestrator.execute_wave(
             wave_id="test_wave_6",
             input_data={"test": "data"},
-            stages=[WaveStage.PREPARATION, WaveStage.INITIAL_ANALYSIS, WaveStage.FEATURE_EXTRACTION],
+            stages=[
+                WaveStage.PREPARATION,
+                WaveStage.INITIAL_ANALYSIS,
+                WaveStage.FEATURE_EXTRACTION,
+            ],
         )
 
         assert len(executed_stages) == 2  # Only first two stages
@@ -411,10 +416,8 @@ class TestWaveCancellation:
 
         # Clean up
         wave_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await wave_task
-        except asyncio.CancelledError:
-            pass
 
     @pytest.mark.asyncio
     async def test_cancel_nonexistent_wave(self, wave_orchestrator):
@@ -430,7 +433,7 @@ class TestStageInputPreparation:
         """Test input preparation for initial stages."""
         context = WaveContext(
             wave_id="test",
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
 
         original_input = {"original": "data"}
@@ -454,7 +457,7 @@ class TestStageInputPreparation:
         """Test input preparation for later stages."""
         context = WaveContext(
             wave_id="test",
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
         context.stage_results[WaveStage.PREPARATION] = {"prep": "result"}
         context.stage_results[WaveStage.INITIAL_ANALYSIS] = {"analysis": "result"}
@@ -482,7 +485,7 @@ class TestQualityScore:
         """Test quality score with no completed stages."""
         context = WaveContext(
             wave_id="test",
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
 
         score = wave_orchestrator._calculate_quality_score(context)
@@ -492,7 +495,7 @@ class TestQualityScore:
         """Test quality score with all stages completed."""
         context = WaveContext(
             wave_id="test",
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
         # Mark all enabled stages as completed
         for stage in wave_orchestrator.config.enabled_stages:
@@ -505,7 +508,7 @@ class TestQualityScore:
         """Test quality score with some failed stages."""
         context = WaveContext(
             wave_id="test",
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
         # Complete 3 out of 5 stages
         context.completed_stages.add(WaveStage.PREPARATION)
@@ -522,7 +525,7 @@ class TestQualityScore:
         """Test quality score with stage-specific quality metrics."""
         context = WaveContext(
             wave_id="test",
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
         context.completed_stages.add(WaveStage.PREPARATION)
         context.completed_stages.add(WaveStage.INITIAL_ANALYSIS)
@@ -546,11 +549,11 @@ class TestShutdown:
         # Add some fake active waves
         wave_orchestrator.active_waves["wave1"] = WaveContext(
             wave_id="wave1",
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
         wave_orchestrator.active_waves["wave2"] = WaveContext(
             wave_id="wave2",
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
 
         await wave_orchestrator.shutdown()

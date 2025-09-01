@@ -1,10 +1,10 @@
 """Health check endpoints for Analysis Service."""
 
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, status
 
-from ...structured_logging import get_logger
+from services.analysis_service.src.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -12,7 +12,7 @@ router = APIRouter(prefix="/v1/health", tags=["health"])
 
 
 @router.get("", status_code=status.HTTP_200_OK)
-async def health_check() -> Dict[str, str]:
+async def health_check() -> dict[str, str]:
     """Basic health check endpoint.
 
     Returns:
@@ -22,7 +22,7 @@ async def health_check() -> Dict[str, str]:
 
 
 @router.get("/ready", status_code=status.HTTP_200_OK)
-async def readiness_check() -> Dict[str, Any]:
+async def readiness_check() -> dict[str, Any]:
     """Readiness check endpoint for kubernetes.
 
     Checks if the service is ready to accept requests.
@@ -39,7 +39,7 @@ async def readiness_check() -> Dict[str, Any]:
 
 
 @router.get("/live", status_code=status.HTTP_200_OK)
-async def liveness_check() -> Dict[str, str]:
+async def liveness_check() -> dict[str, str]:
     """Liveness check endpoint for kubernetes.
 
     Simple check to verify the service is alive.

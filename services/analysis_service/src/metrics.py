@@ -9,18 +9,21 @@ from __future__ import annotations
 
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, Generator, Optional
+from typing import TYPE_CHECKING, Any
 
+import structlog
+from flask import Flask, Response
 from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
     Counter,
     Gauge,
     Histogram,
     generate_latest,
-    CONTENT_TYPE_LATEST,
-    CollectorRegistry,
 )
-from flask import Flask, Response
-import structlog
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 logger = structlog.get_logger(__name__)
 
@@ -28,7 +31,7 @@ logger = structlog.get_logger(__name__)
 class MetricsCollector:
     """Collects and exposes metrics for the analysis pipeline."""
 
-    def __init__(self, registry: Optional[CollectorRegistry] = None) -> None:
+    def __init__(self, registry: CollectorRegistry | None = None) -> None:
         """
         Initialize the metrics collector.
 
@@ -62,11 +65,16 @@ class MetricsCollector:
 
         # Queue metrics
         self.queue_depth = Gauge(
-            "analysis_queue_depth", "Number of items in the processing queue", ["priority"], registry=self.registry
+            "analysis_queue_depth",
+            "Number of items in the processing queue",
+            ["priority"],
+            registry=self.registry,
         )
 
         self.active_workers = Gauge(
-            "analysis_active_workers", "Number of active worker threads", registry=self.registry
+            "analysis_active_workers",
+            "Number of active worker threads",
+            registry=self.registry,
         )
 
         # Batch processing metrics
@@ -125,7 +133,9 @@ class MetricsCollector:
 
         # Resource utilization
         self.memory_usage = Gauge(
-            "analysis_memory_usage_bytes", "Current memory usage in bytes", registry=self.registry
+            "analysis_memory_usage_bytes",
+            "Current memory usage in bytes",
+            registry=self.registry,
         )
 
         # Track throughput
@@ -135,7 +145,7 @@ class MetricsCollector:
         logger.info("Metrics collector initialized")
 
     @contextmanager
-    def track_processing_time(self, file_type: str, status: str = "unknown") -> Generator[Dict[str, Any], None, None]:
+    def track_processing_time(self, file_type: str, status: str = "unknown") -> Generator[dict[str, Any]]:
         """
         Context manager to track file processing time.
 
@@ -147,7 +157,7 @@ class MetricsCollector:
             Dictionary to store processing metadata
         """
         start_time = time.time()
-        context: Dict[str, Any] = {"file_type": file_type, "status": status}
+        context: dict[str, Any] = {"file_type": file_type, "status": status}
 
         try:
             yield context
@@ -164,10 +174,15 @@ class MetricsCollector:
             # Update throughput tracking
             self._update_throughput()
 
-            logger.debug("Tracked processing time", file_type=file_type, status=status, duration=duration)
+            logger.debug(
+                "Tracked processing time",
+                file_type=file_type,
+                status=status,
+                duration=duration,
+            )
 
     @contextmanager
-    def track_batch_processing(self, batch_size: int) -> Generator[None, None, None]:
+    def track_batch_processing(self, batch_size: int) -> Generator[None]:
         """
         Context manager to track batch processing metrics.
 
@@ -194,7 +209,12 @@ class MetricsCollector:
             duration = time.time() - start_time
             self.batch_processing_time.labels(batch_size_category=category).observe(duration)
 
-            logger.debug("Tracked batch processing", batch_size=batch_size, category=category, duration=duration)
+            logger.debug(
+                "Tracked batch processing",
+                batch_size=batch_size,
+                category=category,
+                duration=duration,
+            )
 
     def update_queue_depth(self, priority: str, depth: int) -> None:
         """
@@ -230,7 +250,12 @@ class MetricsCollector:
         self.external_service_calls.labels(service=service, status=status).inc()
         self.external_service_latency.labels(service=service).observe(latency)
 
-        logger.debug("Tracked external service call", service=service, status=status, latency=latency)
+        logger.debug(
+            "Tracked external service call",
+            service=service,
+            status=status,
+            latency=latency,
+        )
 
     def update_circuit_breaker_state(self, service: str, state: str) -> None:
         """
@@ -312,7 +337,7 @@ class MetricsServer:
             return Response(self.collector.get_metrics(), mimetype=CONTENT_TYPE_LATEST)
 
         @self.app.route("/health")
-        def health() -> Dict[str, str]:
+        def health() -> dict[str, str]:
             """Basic health check endpoint."""
             return {"status": "healthy"}
 
@@ -328,7 +353,7 @@ class MetricsServer:
 
 
 # Global metrics instance
-_metrics_collector: Optional[MetricsCollector] = None
+_metrics_collector: MetricsCollector | None = None
 
 
 def get_metrics_collector() -> MetricsCollector:
@@ -338,7 +363,7 @@ def get_metrics_collector() -> MetricsCollector:
     Returns:
         The global MetricsCollector instance
     """
-    global _metrics_collector
+    global _metrics_collector  # noqa: PLW0603 - Standard singleton pattern for global metrics collector
     if _metrics_collector is None:
         _metrics_collector = MetricsCollector()
     return _metrics_collector
@@ -346,5 +371,5 @@ def get_metrics_collector() -> MetricsCollector:
 
 def reset_metrics_collector() -> None:
     """Reset the global metrics collector (mainly for testing)."""
-    global _metrics_collector
+    global _metrics_collector  # noqa: PLW0603 - Standard singleton reset pattern for testing
     _metrics_collector = None

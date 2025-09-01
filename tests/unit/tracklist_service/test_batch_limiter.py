@@ -96,7 +96,12 @@ class TestBatchRateLimiter:
 
     def test_initialization(self):
         """Test rate limiter initialization."""
-        limiter = BatchRateLimiter(default_rate=15.0, min_rate=2.0, max_rate=30.0, strategy=RateLimitStrategy.ADAPTIVE)
+        limiter = BatchRateLimiter(
+            default_rate=15.0,
+            min_rate=2.0,
+            max_rate=30.0,
+            strategy=RateLimitStrategy.ADAPTIVE,
+        )
 
         assert limiter.default_rate == 15.0
         assert limiter.min_rate == 2.0
@@ -241,7 +246,8 @@ class TestBatchRateLimiter:
 
         # Set domain as backed off
         limiter.domain_metrics["example.com"] = DomainMetrics(
-            domain="example.com", backoff_until=datetime.now(UTC) + timedelta(seconds=30)
+            domain="example.com",
+            backoff_until=datetime.now(UTC) + timedelta(seconds=30),
         )
 
         requests = [

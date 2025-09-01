@@ -4,7 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
-from services.analysis_service.src.file_rename_proposal.conflict_detector import ConflictDetector
+from services.analysis_service.src.file_rename_proposal.conflict_detector import (
+    ConflictDetector,
+)
 
 
 class TestConflictDetector:
@@ -89,7 +91,12 @@ class TestConflictDetector:
 
     def test_detect_temp_pattern_warning(self, detector):
         """Test detection of temporary file patterns."""
-        test_cases = ["/music/song.mp3.tmp", "/music/temp_song.mp3", "/music/.~lock.song.mp3", "/music/~$song.mp3"]
+        test_cases = [
+            "/music/song.mp3.tmp",
+            "/music/temp_song.mp3",
+            "/music/.~lock.song.mp3",
+            "/music/~$song.mp3",
+        ]
 
         for proposed in test_cases:
             result = detector.detect_conflicts(proposed, set())
@@ -112,7 +119,12 @@ class TestConflictDetector:
 
     def test_detect_system_file_conflict(self, detector):
         """Test detection of system file conflicts."""
-        test_cases = ["/music/desktop.ini", "/music/Thumbs.db", "/music/.DS_Store", "/music/.git"]
+        test_cases = [
+            "/music/desktop.ini",
+            "/music/Thumbs.db",
+            "/music/.DS_Store",
+            "/music/.git",
+        ]
 
         for proposed in test_cases:
             result = detector.detect_conflicts(proposed, set())
@@ -124,12 +136,13 @@ class TestConflictDetector:
         proposals = [
             {"recording_id": "1", "full_proposed_path": "/music/song1.mp3"},
             {"recording_id": "2", "full_proposed_path": "/music/song2.mp3"},
-            {"recording_id": "3", "full_proposed_path": "/music/song1.mp3"},  # Conflicts with first
+            {
+                "recording_id": "3",
+                "full_proposed_path": "/music/song1.mp3",
+            },  # Conflicts with first
         ]
 
-        directory_contents = {
-            "/music": {"song2.mp3", "other.mp3"}  # song2 already exists
-        }
+        directory_contents = {"/music": {"song2.mp3", "other.mp3"}}  # song2 already exists
 
         results = detector.detect_batch_conflicts(proposals, directory_contents)
 

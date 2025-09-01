@@ -4,26 +4,26 @@ Provides comprehensive validation of CUE files including syntax,
 file references, timing consistency, and format compatibility.
 """
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-import logging
+from typing import Any
 
-from .parser import CueParser
-from .models import CueSheet
-from .exceptions import CueParsingError
-from .validation_rules import (
-    ValidationRule,
-    SyntaxValidator,
-    CommandOrderValidator,
-    FileReferenceValidator,
-    TimestampValidator,
-    CrossReferenceValidator,
-    CompatibilityValidator,
-    Severity,
-    ValidationIssue,
-)
 from .audio_analyzer import AudioAnalyzer
+from .exceptions import CueParsingError
+from .models import CueSheet
+from .parser import CueParser
+from .validation_rules import (
+    CommandOrderValidator,
+    CompatibilityValidator,
+    CrossReferenceValidator,
+    FileReferenceValidator,
+    Severity,
+    SyntaxValidator,
+    TimestampValidator,
+    ValidationIssue,
+    ValidationRule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +34,12 @@ class ValidationResult:
 
     file_path: str
     is_valid: bool  # True if no ERRORS
-    errors: List[ValidationIssue] = field(default_factory=list)
-    warnings: List[ValidationIssue] = field(default_factory=list)
-    info: List[ValidationIssue] = field(default_factory=list)
-    audio_duration_ms: Optional[float] = None
-    cue_duration_ms: Optional[float] = None
-    format_compatibility: Dict[str, bool] = field(default_factory=dict)
+    errors: list[ValidationIssue] = field(default_factory=list)
+    warnings: list[ValidationIssue] = field(default_factory=list)
+    info: list[ValidationIssue] = field(default_factory=list)
+    audio_duration_ms: float | None = None
+    cue_duration_ms: float | None = None
+    format_compatibility: dict[str, bool] = field(default_factory=dict)
 
     def add_issue(self, issue: ValidationIssue) -> None:
         """Add an issue to the appropriate list based on severity."""
@@ -86,22 +86,19 @@ class ValidationResult:
             lines.append("\n" + "=" * 60)
             lines.append("ERRORS (Must Fix)")
             lines.append("-" * 40)
-            for error in self.errors:
-                lines.append(self._format_issue(error))
+            lines.extend(self._format_issue(error) for error in self.errors)
 
         if self.warnings:
             lines.append("\n" + "=" * 60)
             lines.append("WARNINGS (Should Fix)")
             lines.append("-" * 40)
-            for warning in self.warnings:
-                lines.append(self._format_issue(warning))
+            lines.extend(self._format_issue(warning) for warning in self.warnings)
 
         if self.info:
             lines.append("\n" + "=" * 60)
             lines.append("INFO (Suggestions)")
             lines.append("-" * 40)
-            for info_item in self.info:
-                lines.append(self._format_issue(info_item))
+            lines.extend(self._format_issue(info_item) for info_item in self.info)
 
         return "\n".join(lines)
 
@@ -154,7 +151,7 @@ class CueValidator:
         self.audio_analyzer = AudioAnalyzer()
 
         # Initialize validation rules
-        self.rules: List[ValidationRule] = [
+        self.rules: list[ValidationRule] = [
             SyntaxValidator(),
             CommandOrderValidator(),
             FileReferenceValidator(),
@@ -190,7 +187,7 @@ class CueValidator:
 
         # Parse CUE file
         try:
-            with open(cue_path, "r", encoding="utf-8-sig") as f:
+            with Path(cue_path).open(encoding="utf-8-sig") as f:
                 cue_content = f.read()
             cue_sheet = self.parser.parse(cue_content)
         except CueParsingError as e:
@@ -199,7 +196,7 @@ class CueValidator:
                     severity=Severity.ERROR,
                     line_number=e.line_number if hasattr(e, "line_number") else None,
                     category="syntax",
-                    message=f"Parse error: {str(e)}",
+                    message=f"Parse error: {e!s}",
                     suggestion="Fix the syntax error and try again",
                 )
             )
@@ -210,7 +207,7 @@ class CueValidator:
                     severity=Severity.ERROR,
                     line_number=None,
                     category="parse",
-                    message=f"Unexpected error parsing CUE: {str(e)}",
+                    message=f"Unexpected error parsing CUE: {e!s}",
                     suggestion="Check the file encoding and format",
                 )
             )
@@ -229,7 +226,7 @@ class CueValidator:
                         severity=Severity.WARNING,
                         line_number=None,
                         category="validation",
-                        message=f"Could not complete {rule.__class__.__name__} validation: {str(e)}",
+                        message=f"Could not complete {rule.__class__.__name__} validation: {e!s}",
                         suggestion=None,
                     )
                 )
@@ -250,7 +247,10 @@ class CueValidator:
                             severity=severity,
                             line_number=None,
                             category="timing",
-                            message=f"CUE duration ({cue_duration / 1000:.1f}s) differs from audio duration ({audio_duration / 1000:.1f}s) by {diff_ms / 1000:.1f}s",
+                            message=(
+                                f"CUE duration ({cue_duration / 1000:.1f}s) differs from "
+                                f"audio duration ({audio_duration / 1000:.1f}s) by {diff_ms / 1000:.1f}s"
+                            ),
                             suggestion="Check track timings and ensure they match the actual audio file",
                         )
                     )
@@ -262,7 +262,7 @@ class CueValidator:
 
         return result
 
-    def validate_batch(self, cue_file_paths: List[str]) -> List[ValidationResult]:
+    def validate_batch(self, cue_file_paths: list[str]) -> list[ValidationResult]:
         """Validate multiple CUE files.
 
         Args:
@@ -284,7 +284,7 @@ class CueValidator:
                         severity=Severity.ERROR,
                         line_number=None,
                         category="system",
-                        message=f"Validation failed: {str(e)}",
+                        message=f"Validation failed: {e!s}",
                         suggestion="Check the file and try again",
                     )
                 )
@@ -292,7 +292,7 @@ class CueValidator:
 
         return results
 
-    def _check_compatibility(self, cue_sheet: CueSheet, result: ValidationResult) -> Dict[str, bool]:
+    def _check_compatibility(self, cue_sheet: CueSheet, result: ValidationResult) -> dict[str, bool]:
         """Check compatibility with various DJ software.
 
         Args:
@@ -311,7 +311,7 @@ class CueValidator:
         }
 
         # Check for format-specific issues
-        for error in result.errors:
+        for _error in result.errors:
             # Any error likely breaks compatibility
             for fmt in compatibility:
                 compatibility[fmt] = False

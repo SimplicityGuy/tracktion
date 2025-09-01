@@ -4,14 +4,17 @@ Unit tests for BPM detection module.
 Tests BPM detection accuracy, confidence scoring, and error handling.
 """
 
-import os
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from services.analysis_service.src.bpm_detector import BPMDetector
+
+# Create a random number generator
+rng = np.random.default_rng()
 
 
 class TestBPMDetector:
@@ -25,7 +28,7 @@ class TestBPMDetector:
     def test_detect_bpm_high_confidence(self, mock_loader):
         """Test BPM detection with high confidence primary algorithm."""
         # Mock audio loading - essentia requires float32
-        mock_audio = np.random.randn(44100 * 10).astype(np.float32)  # 10 seconds of audio
+        mock_audio = rng.standard_normal(44100 * 10).astype(np.float32)  # 10 seconds of audio
         mock_loader_instance = MagicMock()
         mock_loader_instance.return_value = mock_audio
         mock_loader.return_value = mock_loader_instance
@@ -46,7 +49,7 @@ class TestBPMDetector:
             try:
                 result = self.detector.detect_bpm(tmp_path)
             finally:
-                os.unlink(tmp_path)
+                Path(tmp_path).unlink()
 
             assert result["bpm"] == 128.0
             assert result["confidence"] == 0.95
@@ -58,7 +61,7 @@ class TestBPMDetector:
     def test_detect_bpm_low_confidence_with_agreement(self, mock_loader):
         """Test BPM detection with low confidence but algorithm agreement."""
         # Mock audio loading - essentia requires float32
-        mock_audio = np.random.randn(44100 * 10).astype(np.float32)
+        mock_audio = rng.standard_normal(44100 * 10).astype(np.float32)
         mock_loader_instance = MagicMock()
         mock_loader_instance.return_value = mock_audio
         mock_loader.return_value = mock_loader_instance
@@ -67,35 +70,37 @@ class TestBPMDetector:
         mock_beats = np.array([0.5, 1.0, 1.5, 2.0])
         mock_intervals = np.array([0.5, 0.5, 0.5])
 
-        with patch.object(
-            self.detector.rhythm_extractor,
-            "__call__",
-            return_value=(120.0, mock_beats, 0.6, np.array([]), mock_intervals),
-        ):
+        with (
+            patch.object(
+                self.detector.rhythm_extractor,
+                "__call__",
+                return_value=(120.0, mock_beats, 0.6, np.array([]), mock_intervals),
+            ),
             # Mock Percival estimator with similar BPM
-            with patch.object(
+            patch.object(
                 self.detector.percival_estimator,
                 "__call__",
                 return_value=122.0,  # Within 5 BPM tolerance
-            ):
-                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-                    tmp_path = tmp.name
+            ),
+            tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp,
+        ):
+            tmp_path = tmp.name
 
-                try:
-                    result = self.detector.detect_bpm(tmp_path)
-                finally:
-                    os.unlink(tmp_path)
+            try:
+                result = self.detector.detect_bpm(tmp_path)
+            finally:
+                Path(tmp_path).unlink()
 
-                assert result["bpm"] == 120.0
-                assert result["confidence"] == 0.9  # Boosted due to agreement
-                assert result["algorithm"] == "consensus"
-                assert result["needs_review"] is False
+            assert result["bpm"] == 120.0
+            assert result["confidence"] == 0.9  # Boosted due to agreement
+            assert result["algorithm"] == "consensus"
+            assert result["needs_review"] is False
 
     @patch("services.analysis_service.src.bpm_detector.es.MonoLoader")
     def test_detect_bpm_low_confidence_disagreement(self, mock_loader):
         """Test BPM detection with low confidence and algorithm disagreement."""
         # Mock audio loading - essentia requires float32
-        mock_audio = np.random.randn(44100 * 10).astype(np.float32)
+        mock_audio = rng.standard_normal(44100 * 10).astype(np.float32)
         mock_loader_instance = MagicMock()
         mock_loader_instance.return_value = mock_audio
         mock_loader.return_value = mock_loader_instance
@@ -104,29 +109,31 @@ class TestBPMDetector:
         mock_beats = np.array([0.5, 1.2, 1.8, 2.6])  # Irregular beats
         mock_intervals = np.array([0.7, 0.6, 0.8])  # Unstable intervals
 
-        with patch.object(
-            self.detector.rhythm_extractor,
-            "__call__",
-            return_value=(120.0, mock_beats, 0.5, np.array([]), mock_intervals),
-        ):
+        with (
+            patch.object(
+                self.detector.rhythm_extractor,
+                "__call__",
+                return_value=(120.0, mock_beats, 0.5, np.array([]), mock_intervals),
+            ),
             # Mock Percival estimator with different BPM
-            with patch.object(
+            patch.object(
                 self.detector.percival_estimator,
                 "__call__",
                 return_value=140.0,  # Outside tolerance
-            ):
-                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-                    tmp_path = tmp.name
+            ),
+            tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp,
+        ):
+            tmp_path = tmp.name
 
-                try:
-                    result = self.detector.detect_bpm(tmp_path)
-                finally:
-                    os.unlink(tmp_path)
+            try:
+                result = self.detector.detect_bpm(tmp_path)
+            finally:
+                Path(tmp_path).unlink()
 
-                assert result["bpm"] == 140.0  # Uses fallback due to unstable primary
-                assert result["confidence"] == 0.5
-                assert result["algorithm"] == "fallback"
-                assert result["needs_review"] is True
+            assert result["bpm"] == 140.0  # Uses fallback due to unstable primary
+            assert result["confidence"] == 0.5
+            assert result["algorithm"] == "fallback"
+            assert result["needs_review"] is True
 
     def test_detect_bpm_file_not_found(self):
         """Test BPM detection with non-existent file."""
@@ -148,19 +155,23 @@ class TestBPMDetector:
             with pytest.raises(RuntimeError, match="Loaded audio is empty"):
                 self.detector.detect_bpm(tmp_path)
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
     @patch("services.analysis_service.src.bpm_detector.es.MonoLoader")
     def test_detect_bpm_processing_error(self, mock_loader):
         """Test BPM detection with processing error."""
         # Mock audio loading - essentia requires float32
-        mock_audio = np.random.randn(44100 * 10).astype(np.float32)
+        mock_audio = rng.standard_normal(44100 * 10).astype(np.float32)
         mock_loader_instance = MagicMock()
         mock_loader_instance.return_value = mock_audio
         mock_loader.return_value = mock_loader_instance
 
         # Mock rhythm extractor to raise an exception
-        with patch.object(self.detector.rhythm_extractor, "__call__", side_effect=RuntimeError("Processing failed")):
+        with patch.object(
+            self.detector.rhythm_extractor,
+            "__call__",
+            side_effect=RuntimeError("Processing failed"),
+        ):
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
                 tmp_path = tmp.name
 
@@ -168,7 +179,7 @@ class TestBPMDetector:
                 with pytest.raises(RuntimeError, match="BPM detection failed"):
                     self.detector.detect_bpm(tmp_path)
             finally:
-                os.unlink(tmp_path)
+                Path(tmp_path).unlink()
 
     def test_is_tempo_stable(self):
         """Test tempo stability checking."""
@@ -192,7 +203,7 @@ class TestBPMDetector:
     def test_detect_bpm_with_confidence(self, mock_loader):
         """Test simplified detect_bpm_with_confidence method."""
         # Mock audio loading - essentia requires float32
-        mock_audio = np.random.randn(44100 * 10).astype(np.float32)
+        mock_audio = rng.standard_normal(44100 * 10).astype(np.float32)
         mock_loader_instance = MagicMock()
         mock_loader_instance.return_value = mock_audio
         mock_loader.return_value = mock_loader_instance
@@ -212,7 +223,7 @@ class TestBPMDetector:
             try:
                 result = self.detector.detect_bpm_with_confidence(tmp_path)
             finally:
-                os.unlink(tmp_path)
+                Path(tmp_path).unlink()
 
             assert result["bpm"] == 128.5
             assert result["confidence"] == 0.85
@@ -247,7 +258,7 @@ class TestBPMAccuracy:
         detector = BPMDetector()
 
         # Mock audio loading - essentia requires float32
-        mock_audio = np.random.randn(44100 * 30).astype(np.float32)  # 30 seconds
+        mock_audio = rng.standard_normal(44100 * 30).astype(np.float32)  # 30 seconds
         mock_loader_instance = MagicMock()
         mock_loader_instance.return_value = mock_audio
         mock_loader.return_value = mock_loader_instance
@@ -267,7 +278,7 @@ class TestBPMAccuracy:
             try:
                 result = detector.detect_bpm(tmp_path)
             finally:
-                os.unlink(tmp_path)
+                Path(tmp_path).unlink()
 
             assert abs(result["bpm"] - expected_bpm) <= tolerance
             assert result["confidence"] > 0.8

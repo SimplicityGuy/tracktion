@@ -2,13 +2,13 @@
 
 import asyncio
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
-from ...structured_logging import get_logger
-from ..websocket import manager
+from services.analysis_service.src.api.websocket import manager
+from services.analysis_service.src.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -16,7 +16,7 @@ router = APIRouter(tags=["websocket"])
 
 
 @router.websocket("/v1/ws")
-async def websocket_endpoint(websocket: WebSocket, client_id: Optional[str] = Query(None)) -> None:
+async def websocket_endpoint(websocket: WebSocket, client_id: str | None = Query(None)) -> None:
     """Main WebSocket endpoint for real-time updates.
 
     Args:
@@ -32,7 +32,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: Optional[str] = Qu
     try:
         # Send welcome message
         await manager.send_json(
-            {"type": "welcome", "client_id": client_id, "message": "Connected to Analysis Service WebSocket"}, client_id
+            {
+                "type": "welcome",
+                "client_id": client_id,
+                "message": "Connected to Analysis Service WebSocket",
+            },
+            client_id,
         )
 
         # Handle incoming messages
@@ -59,7 +64,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: Optional[str] = Qu
         manager.disconnect(client_id)
 
 
-async def handle_websocket_message(client_id: str, message: Dict[str, Any]) -> None:
+async def handle_websocket_message(client_id: str, message: dict[str, Any]) -> None:
     """Handle incoming WebSocket messages.
 
     Args:
@@ -86,7 +91,10 @@ async def handle_websocket_message(client_id: str, message: Dict[str, Any]) -> N
                 client_id,
             )
         else:
-            await manager.send_json({"type": "error", "message": "Missing recording_id for subscription"}, client_id)
+            await manager.send_json(
+                {"type": "error", "message": "Missing recording_id for subscription"},
+                client_id,
+            )
 
     elif msg_type == "unsubscribe":
         # Unsubscribe from recording updates
@@ -102,7 +110,10 @@ async def handle_websocket_message(client_id: str, message: Dict[str, Any]) -> N
                 client_id,
             )
         else:
-            await manager.send_json({"type": "error", "message": "Missing recording_id for unsubscription"}, client_id)
+            await manager.send_json(
+                {"type": "error", "message": "Missing recording_id for unsubscription"},
+                client_id,
+            )
 
     elif msg_type == "get_status":
         # Get connection status
@@ -125,7 +136,7 @@ async def handle_websocket_message(client_id: str, message: Dict[str, Any]) -> N
 
 # Event broadcasting functions (to be called from other parts of the application)
 async def broadcast_progress_update(
-    recording_id: str, progress: float, status: str, message: Optional[str] = None
+    recording_id: str, progress: float, status: str, message: str | None = None
 ) -> None:
     """Broadcast progress update for a recording.
 
@@ -147,7 +158,7 @@ async def broadcast_progress_update(
     )
 
 
-async def broadcast_analysis_complete(recording_id: str, results: Dict[str, Any]) -> None:
+async def broadcast_analysis_complete(recording_id: str, results: dict[str, Any]) -> None:
     """Broadcast analysis completion for a recording.
 
     Args:
@@ -155,11 +166,16 @@ async def broadcast_analysis_complete(recording_id: str, results: Dict[str, Any]
         results: Analysis results
     """
     await manager.broadcast_to_recording(
-        recording_id, {"type": "analysis_complete", "results": results, "timestamp": asyncio.get_event_loop().time()}
+        recording_id,
+        {
+            "type": "analysis_complete",
+            "results": results,
+            "timestamp": asyncio.get_event_loop().time(),
+        },
     )
 
 
-async def broadcast_error(recording_id: str, error: str, details: Optional[Dict[str, Any]] = None) -> None:
+async def broadcast_error(recording_id: str, error: str, details: dict[str, Any] | None = None) -> None:
     """Broadcast error for a recording.
 
     Args:
@@ -169,5 +185,10 @@ async def broadcast_error(recording_id: str, error: str, details: Optional[Dict[
     """
     await manager.broadcast_to_recording(
         recording_id,
-        {"type": "error", "error": error, "details": details, "timestamp": asyncio.get_event_loop().time()},
+        {
+            "type": "error",
+            "error": error,
+            "details": details,
+            "timestamp": asyncio.get_event_loop().time(),
+        },
     )

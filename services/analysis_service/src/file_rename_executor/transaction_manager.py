@@ -1,16 +1,17 @@
 """Transaction manager for atomic file rename operations."""
 
 import logging
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Optional, Tuple, Generator, Any
-from uuid import UUID
 from pathlib import Path
+from typing import Any
+from uuid import UUID
 
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from shared.core_types.src.database import DatabaseManager
-from shared.core_types.src.models import RenameProposal, Recording
+from shared.core_types.src.models import Recording, RenameProposal
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class TransactionManager:
         self.db_manager = db_manager
 
     @contextmanager
-    def atomic_rename(self, proposal_id: UUID) -> Generator[Tuple[Session, Any, Any], None, None]:
+    def atomic_rename(self, proposal_id: UUID) -> Generator[tuple[Session, Any, Any]]:
         """Context manager for atomic rename operations.
 
         Provides a transactional context that ensures database updates
@@ -119,7 +120,11 @@ class TransactionManager:
         logger.debug(f"Updated proposal {proposal.id} status to {status}")
 
     def store_rollback_info(
-        self, session: Session, proposal: RenameProposal, original_path: str, original_filename: str
+        self,
+        session: Session,
+        proposal: RenameProposal,
+        original_path: str,
+        original_filename: str,
     ) -> None:
         """Store information needed for rollback.
 
@@ -146,7 +151,7 @@ class TransactionManager:
 
     def validate_rename_preconditions(
         self, session: Session, proposal: RenameProposal, recording: Recording
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Validate preconditions for rename operation.
 
         Args:
@@ -181,7 +186,7 @@ class TransactionManager:
 
     def validate_rollback_preconditions(
         self, session: Session, proposal: RenameProposal, recording: Recording
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Validate preconditions for rollback operation.
 
         Args:

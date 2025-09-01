@@ -1,12 +1,12 @@
 """Metadata management endpoints for Analysis Service."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from ...structured_logging import get_logger
+from services.analysis_service.src.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -16,13 +16,13 @@ router = APIRouter(prefix="/v1/metadata", tags=["metadata"])
 class MetadataUpdate(BaseModel):
     """Request model for metadata update."""
 
-    title: Optional[str] = None
-    artist: Optional[str] = None
-    album: Optional[str] = None
-    genre: Optional[str] = None
-    year: Optional[int] = None
-    track_number: Optional[int] = None
-    custom_fields: Optional[Dict[str, Any]] = {}
+    title: str | None = None
+    artist: str | None = None
+    album: str | None = None
+    genre: str | None = None
+    year: int | None = None
+    track_number: int | None = None
+    custom_fields: dict[str, Any] | None = {}
 
 
 class MetadataResponse(BaseModel):
@@ -31,15 +31,15 @@ class MetadataResponse(BaseModel):
     recording_id: UUID
     title: str
     artist: str
-    album: Optional[str]
-    genre: Optional[str]
-    year: Optional[int]
+    album: str | None
+    genre: str | None
+    year: int | None
     duration: float
     format: str
     bitrate: int
     sample_rate: int
     channels: int
-    custom_fields: Dict[str, Any]
+    custom_fields: dict[str, Any]
 
 
 @router.get("/{recording_id}")
@@ -70,7 +70,7 @@ async def get_metadata(recording_id: UUID) -> MetadataResponse:
 
 
 @router.put("/{recording_id}")
-async def update_metadata(recording_id: UUID, metadata: MetadataUpdate) -> Dict[str, str]:
+async def update_metadata(recording_id: UUID, metadata: MetadataUpdate) -> dict[str, str]:
     """Update metadata for a recording.
 
     Args:
@@ -89,11 +89,15 @@ async def update_metadata(recording_id: UUID, metadata: MetadataUpdate) -> Dict[
     )
 
     # In real implementation, update in database
-    return {"id": str(recording_id), "status": "updated", "message": "Metadata updated successfully"}
+    return {
+        "id": str(recording_id),
+        "status": "updated",
+        "message": "Metadata updated successfully",
+    }
 
 
 @router.post("/{recording_id}/extract")
-async def extract_metadata(recording_id: UUID) -> Dict[str, str]:
+async def extract_metadata(recording_id: UUID) -> dict[str, str]:
     """Trigger metadata extraction for a recording.
 
     Args:
@@ -105,11 +109,15 @@ async def extract_metadata(recording_id: UUID) -> Dict[str, str]:
     logger.info("Triggering metadata extraction", extra={"recording_id": str(recording_id)})
 
     # In real implementation, send extraction message to queue
-    return {"id": str(recording_id), "status": "extracting", "message": "Metadata extraction started"}
+    return {
+        "id": str(recording_id),
+        "status": "extracting",
+        "message": "Metadata extraction started",
+    }
 
 
 @router.post("/{recording_id}/enrich")
-async def enrich_metadata(recording_id: UUID) -> Dict[str, str]:
+async def enrich_metadata(recording_id: UUID) -> dict[str, str]:
     """Enrich metadata using external sources.
 
     Args:
@@ -121,4 +129,8 @@ async def enrich_metadata(recording_id: UUID) -> Dict[str, str]:
     logger.info("Triggering metadata enrichment", extra={"recording_id": str(recording_id)})
 
     # In real implementation, trigger enrichment workflow
-    return {"id": str(recording_id), "status": "enriching", "message": "Metadata enrichment started"}
+    return {
+        "id": str(recording_id),
+        "status": "enriching",
+        "message": "Metadata enrichment started",
+    }

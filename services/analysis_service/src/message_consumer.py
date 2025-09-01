@@ -1,10 +1,14 @@
 """RabbitMQ message consumer for analysis service."""
 
+import contextlib
 import json
 import logging
-import os
 import time
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+from uuid import UUID
 
 import pika
 import pika.exceptions
@@ -26,68 +30,62 @@ from .temporal_analyzer import TemporalAnalyzer
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class MessageConsumerConfig:
+    """Configuration for MessageConsumer."""
+
+    rabbitmq_url: str
+    queue_name: str = "analysis_queue"
+    exchange_name: str = "tracktion_exchange"
+    routing_key: str = "file.analyze"
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    enable_cache: bool = True
+    enable_temporal_analysis: bool = True
+    enable_key_detection: bool = True
+    enable_mood_analysis: bool = True
+    models_dir: str | None = None
+    auto_download_models: bool = True
+    priority_config: PriorityConfig | None = None
+    batch_config: BatchConfig | None = None
+    enable_batch_processing: bool = False
+
+
 class MessageConsumer:
     """Handles RabbitMQ message consumption for file analysis."""
 
     def __init__(
         self,
-        rabbitmq_url: str,
-        queue_name: str = "analysis_queue",
-        exchange_name: str = "tracktion_exchange",
-        routing_key: str = "file.analyze",
-        redis_host: str = "localhost",
-        redis_port: int = 6379,
-        enable_cache: bool = True,
-        enable_temporal_analysis: bool = True,
-        enable_key_detection: bool = True,
-        enable_mood_analysis: bool = True,
-        models_dir: Optional[str] = None,
-        auto_download_models: bool = True,
-        priority_config: Optional[PriorityConfig] = None,
-        batch_config: Optional[BatchConfig] = None,
-        enable_batch_processing: bool = False,
+        config: MessageConsumerConfig,
     ) -> None:
         """Initialize the message consumer.
 
         Args:
-            rabbitmq_url: RabbitMQ connection URL
-            queue_name: Name of the queue to consume from
-            exchange_name: Name of the exchange
-            routing_key: Routing key for message binding
-            redis_host: Redis server hostname for caching
-            redis_port: Redis server port
-            enable_cache: Whether to use Redis caching
-            enable_temporal_analysis: Whether to perform temporal BPM analysis
-            enable_key_detection: Whether to perform musical key detection
-            enable_mood_analysis: Whether to perform mood and genre analysis
-            models_dir: Directory for TensorFlow models
-            auto_download_models: Whether to auto-download missing models
-            priority_config: Configuration for priority queue behavior
-            batch_config: Configuration for batch processing
-            enable_batch_processing: Whether to enable batch processing mode
+            config: MessageConsumerConfig with all configuration settings
         """
-        self.rabbitmq_url = rabbitmq_url
-        self.queue_name = queue_name
-        self.exchange_name = exchange_name
-        self.routing_key = routing_key
-        self.connection: Optional[pika.BlockingConnection] = None
-        self.channel: Optional[BlockingChannel] = None
+        self.config = config
+        self.rabbitmq_url = config.rabbitmq_url
+        self.queue_name = config.queue_name
+        self.exchange_name = config.exchange_name
+        self.routing_key = config.routing_key
+        self.connection: pika.BlockingConnection | None = None
+        self.channel: BlockingChannel | None = None
         self._retry_count = 0
         self._max_retries = 5
         self._base_delay = 2.0
-        self.enable_temporal_analysis = enable_temporal_analysis
-        self.enable_key_detection = enable_key_detection
-        self.enable_mood_analysis = enable_mood_analysis
+        self.enable_temporal_analysis = config.enable_temporal_analysis
+        self.enable_key_detection = config.enable_key_detection
+        self.enable_mood_analysis = config.enable_mood_analysis
 
         # Initialize priority calculator
-        self.priority_config = priority_config or PriorityConfig()
+        self.priority_config = config.priority_config or PriorityConfig()
         self.priority_calculator = PriorityCalculator(self.priority_config)
 
         # Initialize batch processor if enabled
-        self.enable_batch_processing = enable_batch_processing
-        self.batch_processor: Optional[BatchProcessor] = None
-        if enable_batch_processing:
-            batch_config = batch_config or BatchConfig.from_env()
+        self.enable_batch_processing = config.enable_batch_processing
+        self.batch_processor: BatchProcessor | None = None
+        if config.enable_batch_processing:
+            batch_config = config.batch_config or BatchConfig.from_env()
             self.batch_processor = BatchProcessor(
                 process_func=self.process_audio_file,
                 config=batch_config,
@@ -96,18 +94,20 @@ class MessageConsumer:
 
         # Initialize BPM detection components
         self.bpm_detector = BPMDetector()
-        self.temporal_analyzer = TemporalAnalyzer() if enable_temporal_analysis else None
+        self.temporal_analyzer = TemporalAnalyzer() if config.enable_temporal_analysis else None
 
         # Initialize key detection
-        self.key_detector = KeyDetector() if enable_key_detection else None
+        self.key_detector = KeyDetector() if config.enable_key_detection else None
 
         # Initialize mood analysis with model manager
-        self.model_manager: Optional[ModelManager] = None
-        self.mood_analyzer: Optional[MoodAnalyzer] = None
-        if enable_mood_analysis:
+        self.model_manager: ModelManager | None = None
+        self.mood_analyzer: MoodAnalyzer | None = None
+        if config.enable_mood_analysis:
             try:
                 self.model_manager = ModelManager(
-                    models_dir=models_dir, auto_download=auto_download_models, lazy_load=True
+                    models_dir=config.models_dir,
+                    auto_download=config.auto_download_models,
+                    lazy_load=True,
                 )
                 self.mood_analyzer = MoodAnalyzer(model_manager=self.model_manager)
                 logger.info("Initialized mood analyzer with model manager")
@@ -116,23 +116,23 @@ class MessageConsumer:
                 self.mood_analyzer = None
 
         # Initialize cache if enabled
-        self.cache: Optional[AudioCache] = None
-        if enable_cache:
+        self.cache: AudioCache | None = None
+        if config.enable_cache:
             try:
-                self.cache = AudioCache(redis_host=redis_host, redis_port=redis_port)
+                self.cache = AudioCache(redis_host=config.redis_host, redis_port=config.redis_port)
             except Exception as e:
                 logger.warning(f"Failed to initialize cache: {e}. Processing without cache.")
                 self.cache = None
 
         # Initialize storage handler (will be set by tests or main application)
-        self.storage: Optional[Any] = None
+        self.storage: Any | None = None
 
         # Initialize progress tracker
-        self.progress_tracker: Optional[ProgressTracker] = None
+        self.progress_tracker: ProgressTracker | None = None
         try:
             self.progress_tracker = ProgressTracker(
-                redis_host=redis_host,
-                redis_port=redis_port,
+                redis_host=config.redis_host,
+                redis_port=config.redis_port,
                 key_prefix="analysis:progress",
             )
             logger.info("Initialized progress tracker")
@@ -141,7 +141,7 @@ class MessageConsumer:
             self.progress_tracker = None
 
         # Initialize metrics collector
-        self.metrics: Optional[MetricsCollector] = None
+        self.metrics: MetricsCollector | None = None
         try:
             self.metrics = MetricsCollector(
                 service_name="analysis_service",
@@ -164,14 +164,20 @@ class MessageConsumer:
 
                 # Declare priority queue if priority is enabled
                 if self.priority_config.enable_priority:
-                    setup_priority_queue(self.channel, self.queue_name, max_priority=self.priority_config.max_priority)
+                    setup_priority_queue(
+                        self.channel,
+                        self.queue_name,
+                        max_priority=self.priority_config.max_priority,
+                    )
                 else:
                     # Declare regular queue
                     self.channel.queue_declare(queue=self.queue_name, durable=True)
 
                 # Bind queue to exchange
                 self.channel.queue_bind(
-                    exchange=self.exchange_name, queue=self.queue_name, routing_key=self.routing_key
+                    exchange=self.exchange_name,
+                    queue=self.queue_name,
+                    routing_key=self.routing_key,
                 )
 
                 # Set QoS - higher prefetch for batch processing
@@ -191,8 +197,8 @@ class MessageConsumer:
         raise ConnectionError(f"Failed to connect to RabbitMQ after {self._max_retries} attempts")
 
     def process_audio_file(
-        self, file_path: str, recording_id: str, correlation_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, file_path: str, recording_id: str, correlation_id: str | None = None
+    ) -> dict[str, Any]:
         """Process audio file for all analysis features.
 
         Args:
@@ -203,7 +209,7 @@ class MessageConsumer:
         Returns:
             Processing results including BPM, key, and mood data
         """
-        results: Dict[str, Any] = {"recording_id": recording_id, "file_path": file_path}
+        results: dict[str, Any] = {"recording_id": recording_id, "file_path": file_path}
 
         # Add correlation ID to logger for this processing
         correlation_filter = None
@@ -219,14 +225,16 @@ class MessageConsumer:
         overall_start_time = time.perf_counter()
 
         # Check if file exists
-        if not os.path.exists(file_path):
+        if not Path(file_path).exists():
             logger.error(f"Audio file not found: {file_path}")
             results["error"] = f"Audio file not found: {file_path}"
             results["bpm_data"] = None
             # Track failure
             if self.progress_tracker and correlation_id:
                 self.progress_tracker.track_file_completed(
-                    correlation_id, success=False, error_message=f"Audio file not found: {file_path}"
+                    correlation_id,
+                    success=False,
+                    error_message=f"Audio file not found: {file_path}",
                 )
             return results
 
@@ -274,12 +282,22 @@ class MessageConsumer:
             try:
                 # Use performance logger and metrics timer for BPM detection
                 bpm_timer = (
-                    MetricsTimer(self.metrics, "bpm_detection", record_confidence=True, analysis_type="bpm")
+                    MetricsTimer(
+                        self.metrics,
+                        "bpm_detection",
+                        record_confidence=True,
+                        analysis_type="bpm",
+                    )
                     if self.metrics
                     else None
                 )
 
-                with PerformanceLogger(logger, "BPM detection", correlation_id=correlation_id, threshold_ms=5000.0):
+                with PerformanceLogger(
+                    logger,
+                    "BPM detection",
+                    correlation_id=correlation_id,
+                    threshold_ms=5000.0,
+                ):
                     if bpm_timer:
                         bpm_timer.__enter__()
 
@@ -311,7 +329,10 @@ class MessageConsumer:
                 if self.enable_temporal_analysis and self.temporal_analyzer and not bpm_results.get("error"):
                     try:
                         with PerformanceLogger(
-                            logger, "Temporal analysis", correlation_id=correlation_id, threshold_ms=3000.0
+                            logger,
+                            "Temporal analysis",
+                            correlation_id=correlation_id,
+                            threshold_ms=3000.0,
                         ):
                             # Update progress
                             if self.progress_tracker and correlation_id:
@@ -346,7 +367,12 @@ class MessageConsumer:
         # Perform key detection if enabled and not cached
         if self.enable_key_detection and self.key_detector and "key_data" not in results:
             try:
-                with PerformanceLogger(logger, "Key detection", correlation_id=correlation_id, threshold_ms=4000.0):
+                with PerformanceLogger(
+                    logger,
+                    "Key detection",
+                    correlation_id=correlation_id,
+                    threshold_ms=4000.0,
+                ):
                     # Update progress
                     if self.progress_tracker and correlation_id:
                         self.progress_tracker.update_progress(correlation_id, 60.0, "Detecting musical key")
@@ -370,7 +396,11 @@ class MessageConsumer:
 
                     # Cache the key detection results
                     if self.cache:
-                        self.cache.set_key_results(file_path, results["key_data"], confidence=key_result.confidence)
+                        self.cache.set_key_results(
+                            file_path,
+                            results["key_data"],
+                            confidence=key_result.confidence,
+                        )
                 else:
                     results["key_data"] = {"error": "Key detection failed"}
             except Exception as e:
@@ -380,7 +410,12 @@ class MessageConsumer:
         # Perform mood analysis if enabled and not cached
         if self.enable_mood_analysis and self.mood_analyzer and "mood_data" not in results:
             try:
-                with PerformanceLogger(logger, "Mood analysis", correlation_id=correlation_id, threshold_ms=6000.0):
+                with PerformanceLogger(
+                    logger,
+                    "Mood analysis",
+                    correlation_id=correlation_id,
+                    threshold_ms=6000.0,
+                ):
                     # Update progress
                     if self.progress_tracker and correlation_id:
                         self.progress_tracker.update_progress(correlation_id, 80.0, "Analyzing mood and genre")
@@ -406,7 +441,9 @@ class MessageConsumer:
                     # Cache the mood analysis results
                     if self.cache:
                         self.cache.set_mood_results(
-                            file_path, results["mood_data"], confidence=mood_result.overall_confidence
+                            file_path,
+                            results["mood_data"],
+                            confidence=mood_result.overall_confidence,
                         )
                 else:
                     results["mood_data"] = {"error": "Mood analysis failed"}
@@ -417,8 +454,6 @@ class MessageConsumer:
         # Store all results in database
         if self.storage:
             try:
-                from uuid import UUID
-
                 recording_uuid = UUID(recording_id)
 
                 # Store BPM data if available
@@ -469,10 +504,8 @@ class MessageConsumer:
 
             # Get file size if possible
             file_size_mb = None
-            try:
-                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                file_size_mb = Path(file_path).stat().st_size / (1024 * 1024)
 
             # Record file processed metrics
             self.metrics.record_file_processed(
@@ -488,7 +521,7 @@ class MessageConsumer:
 
         return results
 
-    def consume(self, callback: Optional[Callable[[Dict[str, Any], str], None]] = None) -> None:
+    def consume(self, callback: Callable[[dict[str, Any], str], None] | None = None) -> None:
         """Start consuming messages from the queue.
 
         Args:
@@ -498,7 +531,10 @@ class MessageConsumer:
             self.connect()
 
         def message_callback(
-            ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes
+            ch: BlockingChannel,
+            method: Basic.Deliver,
+            properties: BasicProperties,
+            body: bytes,
         ) -> None:
             """Process incoming message."""
             correlation_id = properties.correlation_id or "unknown"
@@ -558,7 +594,7 @@ class MessageConsumer:
                 }
 
                 # Add BPM data to log
-                if "bpm_data" in results and results["bpm_data"]:
+                if results.get("bpm_data"):
                     log_extras["bpm"] = results["bpm_data"].get("bpm")
                     log_extras["bpm_confidence"] = results["bpm_data"].get("confidence")
 
@@ -575,7 +611,10 @@ class MessageConsumer:
                 logger.info("Message processed successfully", extra=log_extras)
 
             except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON in message: {e}", extra={"correlation_id": correlation_id})
+                logger.error(
+                    f"Invalid JSON in message: {e}",
+                    extra={"correlation_id": correlation_id},
+                )
                 # Reject message without requeue (bad format)
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
@@ -585,17 +624,27 @@ class MessageConsumer:
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
             except ValueError as e:
-                logger.error(f"Invalid message format: {e}", extra={"correlation_id": correlation_id})
+                logger.error(
+                    f"Invalid message format: {e}",
+                    extra={"correlation_id": correlation_id},
+                )
                 # Don't requeue - message format is wrong
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
             except Exception as e:
-                logger.error(f"Error processing message: {e}", extra={"correlation_id": correlation_id})
+                logger.error(
+                    f"Error processing message: {e}",
+                    extra={"correlation_id": correlation_id},
+                )
                 # Requeue message for retry
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
         if self.channel:
-            self.channel.basic_consume(queue=self.queue_name, on_message_callback=message_callback, auto_ack=False)
+            self.channel.basic_consume(
+                queue=self.queue_name,
+                on_message_callback=message_callback,
+                auto_ack=False,
+            )
 
         logger.info("Starting message consumption...")
         try:

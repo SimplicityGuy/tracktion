@@ -285,7 +285,11 @@ class TestFallbackCache:
 
         # Mock get method to return data for fallback keys
         def mock_get(key):
-            if key in ["cache:fallback:fallback_key", "cache:archive:fallback_key", "cache:backup:fallback_key"]:
+            if key in [
+                "cache:fallback:fallback_key",
+                "cache:archive:fallback_key",
+                "cache:backup:fallback_key",
+            ]:
                 # Create a simplified item dict without extra fields that might cause parsing issues
                 item_dict = {
                     "key": "fallback_key",
@@ -444,7 +448,7 @@ class TestFallbackCache:
         # Mock primary cache hit
         mock_redis.get.side_effect = lambda key: {
             "cache:primary:test_key": json.dumps(cached_item.to_dict()),
-        }.get(key, None)
+        }.get(key)
 
         item = await fallback_cache._get_from_redis("test_key")
 
@@ -464,7 +468,7 @@ class TestFallbackCache:
         # Mock fallback cache hit (primary miss)
         mock_redis.get.side_effect = lambda key: {
             "cache:fallback:test_key": json.dumps(cached_item.to_dict()),
-        }.get(key, None)
+        }.get(key)
 
         item = await fallback_cache._get_from_redis("test_key")
 
@@ -515,7 +519,7 @@ class TestFallbackCache:
         # Mock fallback cache hit
         mock_redis.get.side_effect = lambda key: {
             "cache:fallback:test_key": json.dumps(fallback_item.to_dict()),
-        }.get(key, None)
+        }.get(key)
 
         data = await fallback_cache._get_fallback_data("test_key")
 
@@ -532,7 +536,7 @@ class TestFallbackCache:
 
         mock_redis.get.side_effect = lambda key: {
             "cache:fallback:test_key": json.dumps(old_item.to_dict()),
-        }.get(key, None)
+        }.get(key)
 
         data = await fallback_cache._get_fallback_data("test_key")
 

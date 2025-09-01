@@ -434,11 +434,7 @@ class ServiceHealthMonitor:
         latencies = monitor.get_latency_percentiles()
         active_count = monitor.get_active_request_count()
 
-        is_healthy = (
-            error_rate < 50
-            and latencies.get("p95", 0) < 10000  # 10 seconds in ms
-            and active_count < 10
-        )
+        is_healthy = error_rate < 50 and latencies.get("p95", 0) < 10000 and active_count < 10  # 10 seconds in ms
 
         self._health_status[service_name] = is_healthy
         return is_healthy
@@ -478,7 +474,7 @@ def get_correlation_propagator() -> CorrelationIdPropagator:
     Returns:
         Global correlation ID propagator instance
     """
-    global _correlation_propagator
+    global _correlation_propagator  # noqa: PLW0603 - Module-level singleton pattern for correlation propagator
     if _correlation_propagator is None:
         _correlation_propagator = CorrelationIdPropagator()
     return _correlation_propagator
@@ -490,7 +486,7 @@ def get_health_monitor() -> ServiceHealthMonitor:
     Returns:
         Global service health monitor instance
     """
-    global _health_monitor
+    global _health_monitor  # noqa: PLW0603 - Module-level singleton pattern for health monitor
     if _health_monitor is None:
         _health_monitor = ServiceHealthMonitor()
     return _health_monitor

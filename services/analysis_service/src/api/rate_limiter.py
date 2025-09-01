@@ -8,9 +8,10 @@ and request queuing for the API.
 import asyncio
 import time
 from collections import defaultdict, deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any
 
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -109,8 +110,7 @@ class TokenBucket:
                 return 0.0
 
             needed = tokens - self.tokens
-            wait_time = needed / self.rate
-            return wait_time
+            return needed / self.rate
 
 
 class SlidingWindowCounter:
@@ -163,7 +163,7 @@ class SlidingWindowCounter:
 
             oldest = self.requests[0]
             reset_time = (oldest + self.window_size) - time.time()
-            return max(0.0, reset_time)  # type: ignore[no-any-return]
+            return max(0.0, reset_time)  # type: ignore[no-any-return]  # max() with float args returns float
 
 
 class RequestQueue:
@@ -195,10 +195,10 @@ class RequestQueue:
         try:
             await asyncio.wait_for(self.queue.put(request_id), timeout=1.0)
             return True
-        except (asyncio.TimeoutError, asyncio.QueueFull):
+        except (TimeoutError, asyncio.QueueFull):
             return False
 
-    async def dequeue(self) -> Optional[str]:
+    async def dequeue(self) -> str | None:
         """
         Get next request from queue.
 
@@ -207,7 +207,7 @@ class RequestQueue:
         """
         try:
             return await asyncio.wait_for(self.queue.get(), timeout=0.1)
-        except (asyncio.TimeoutError, asyncio.QueueEmpty):
+        except (TimeoutError, asyncio.QueueEmpty):
             return None
 
     def is_full(self) -> bool:
@@ -224,7 +224,7 @@ class AsyncRateLimiter:
     Async rate limiter with multiple strategies and backpressure.
     """
 
-    def __init__(self, config: Optional[RateLimitConfig] = None):
+    def __init__(self, config: RateLimitConfig | None = None):
         """
         Initialize rate limiter.
 
@@ -234,15 +234,16 @@ class AsyncRateLimiter:
         self.config = config or RateLimitConfig()
 
         # Rate limiters by client ID
-        self.limiters: Dict[str, Any] = {}
+        self.limiters: dict[str, Any] = {}
 
         # Connection tracking
-        self.connections: Dict[str, int] = defaultdict(int)
+        self.connections: dict[str, int] = defaultdict(int)
         self.total_connections = 0
 
         # Request queue for backpressure
         self.request_queue = RequestQueue(
-            max_size=self.config.max_queue_size, timeout=self.config.queue_timeout_seconds
+            max_size=self.config.max_queue_size,
+            timeout=self.config.queue_timeout_seconds,
         )
 
         # Statistics
@@ -284,16 +285,15 @@ class AsyncRateLimiter:
         """
         if self.config.strategy == RateLimitStrategy.TOKEN_BUCKET:
             return TokenBucket(rate=self.config.requests_per_second, capacity=self.config.burst_size)
-        elif self.config.strategy == RateLimitStrategy.SLIDING_WINDOW:
+        if self.config.strategy == RateLimitStrategy.SLIDING_WINDOW:
             return SlidingWindowCounter(
                 window_size=60.0,  # 1 minute window
                 max_requests=self.config.requests_per_minute,
             )
-        else:
-            # Default to token bucket
-            return TokenBucket(rate=self.config.requests_per_second, capacity=self.config.burst_size)
+        # Default to token bucket
+        return TokenBucket(rate=self.config.requests_per_second, capacity=self.config.burst_size)
 
-    async def check_rate_limit(self, request: Request) -> Tuple[bool, Optional[float]]:
+    async def check_rate_limit(self, request: Request) -> tuple[bool, float | None]:
         """
         Check if request is within rate limits.
 
@@ -398,7 +398,7 @@ class AsyncRateLimiter:
 
         return queued
 
-    def get_rate_limit_headers(self, allowed: bool, retry_after: Optional[float] = None) -> Dict[str, str]:
+    def get_rate_limit_headers(self, allowed: bool, retry_after: float | None = None) -> dict[str, str]:
         """
         Get rate limit headers for response.
 
@@ -415,7 +415,10 @@ class AsyncRateLimiter:
         headers = {
             f"{self.config.header_prefix}-Limit": str(self.config.requests_per_minute),
             f"{self.config.header_prefix}-Remaining": str(
-                max(0, self.config.requests_per_minute - self.stats["total_requests"] % self.config.requests_per_minute)
+                max(
+                    0,
+                    self.config.requests_per_minute - self.stats["total_requests"] % self.config.requests_per_minute,
+                )
             ),
             f"{self.config.header_prefix}-Reset": str(int(time.time() + 60)),
         }
@@ -425,7 +428,7 @@ class AsyncRateLimiter:
 
         return headers
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get rate limiter statistics.
 
@@ -445,7 +448,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     Middleware for applying rate limiting to all requests.
     """
 
-    def __init__(self, app: Any, config: Optional[RateLimitConfig] = None):
+    def __init__(self, app: Any, config: RateLimitConfig | None = None):
         """
         Initialize middleware.
 
@@ -470,7 +473,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Check connection limit
         if not await self.limiter.check_connection_limit(request):
             return JSONResponse(
-                status_code=503, content={"error": "Connection limit exceeded"}, headers={"Retry-After": "60"}
+                status_code=503,
+                content={"error": "Connection limit exceeded"},
+                headers={"Retry-After": "60"},
             )
 
         try:
@@ -486,7 +491,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                         headers = self.limiter.get_rate_limit_headers(False, retry_after)
                         return JSONResponse(
                             status_code=429,
-                            content={"error": "Rate limit exceeded", "retry_after": retry_after},
+                            content={
+                                "error": "Rate limit exceeded",
+                                "retry_after": retry_after,
+                            },
                             headers=headers,
                         )
 
@@ -497,7 +505,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     headers = self.limiter.get_rate_limit_headers(False, retry_after)
                     return JSONResponse(
                         status_code=429,
-                        content={"error": "Rate limit exceeded", "retry_after": retry_after},
+                        content={
+                            "error": "Rate limit exceeded",
+                            "retry_after": retry_after,
+                        },
                         headers=headers,
                     )
 
@@ -509,7 +520,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             for key, value in headers.items():
                 response.headers[key] = value
 
-            return response  # type: ignore[no-any-return]
+            return response  # Rate limiter response type
 
         finally:
             # Release connection
@@ -518,7 +529,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 # Decorator for per-endpoint rate limiting
 def rate_limit(
-    requests_per_minute: int = 60, strategy: RateLimitStrategy = RateLimitStrategy.TOKEN_BUCKET
+    requests_per_minute: int = 60,
+    strategy: RateLimitStrategy = RateLimitStrategy.TOKEN_BUCKET,
 ) -> Callable[[Callable], Callable]:
     """
     Decorator for applying rate limiting to specific endpoints.

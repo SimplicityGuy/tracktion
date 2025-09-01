@@ -1,9 +1,10 @@
 """FastAPI dependencies for authentication."""
 
 import logging
-from typing import Optional, Callable
-from fastapi import Header, HTTPException, status, Depends, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from collections.abc import Callable
+
+from fastapi import HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .authentication import AuthenticationManager
 from .models import User
@@ -12,21 +13,22 @@ logger = logging.getLogger(__name__)
 
 # Global authentication manager instance
 # In production, this would be injected via dependency injection
-auth_manager: Optional[AuthenticationManager] = None
+auth_manager: AuthenticationManager | None = None
 
 
 def get_auth_manager() -> AuthenticationManager:
     """Get authentication manager instance."""
     if auth_manager is None:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Authentication manager not initialized"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication manager not initialized",
         )
     return auth_manager
 
 
 def set_auth_manager(manager: AuthenticationManager) -> None:
     """Set authentication manager instance."""
-    global auth_manager
+    global auth_manager  # noqa: PLW0603  # Global state necessary for dependency injection pattern
     auth_manager = manager
 
 
@@ -35,8 +37,8 @@ security = HTTPBearer(auto_error=False)
 
 
 async def authenticate_request(
-    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-    authorization: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    authorization: HTTPAuthorizationCredentials | None,  # Will be injected via Depends in route
+    x_api_key: str | None = None,
 ) -> User:
     """Authenticate API request via API key or JWT token.
 
@@ -74,7 +76,9 @@ async def authenticate_request(
     )
 
 
-async def authenticate_user(authorization: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> User:
+async def authenticate_user(
+    authorization: HTTPAuthorizationCredentials | None,  # Will be injected via Depends in route
+) -> User:
     """Authenticate user via JWT token only (for web dashboard).
 
     Args:
@@ -116,14 +120,15 @@ async def require_tier(required_tier: str) -> Callable[[User], User]:
         Dependency function that checks user tier
     """
 
-    def check_tier(user: User = Depends(authenticate_request)) -> User:
+    def check_tier(user: User) -> User:  # Will be injected via Depends in route
         tier_hierarchy = {"free": 0, "premium": 1, "enterprise": 2}
         user_level = tier_hierarchy.get(user.tier.value, 0)
         required_level = tier_hierarchy.get(required_tier, 999)
 
         if user_level < required_level:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail=f"Tier '{required_tier}' or higher required"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Tier '{required_tier}' or higher required",
             )
         return user
 
@@ -140,7 +145,9 @@ async def require_permission(permission: str) -> Callable[[User], User]:
         Dependency function that checks user permission
     """
 
-    def check_permission(user: User = Depends(authenticate_request)) -> User:
+    def check_permission(
+        user: User,  # Will be injected via Depends in route
+    ) -> User:
         # For now, we'll check permissions when API keys are implemented with them
         # This would integrate with the permissions system
         return user

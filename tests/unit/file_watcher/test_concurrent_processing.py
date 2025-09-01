@@ -7,7 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiofiles  # type: ignore
 import pytest_asyncio
 
-from services.file_watcher.src.async_file_watcher import AsyncFileEventHandler, AsyncFileWatcherService
+from services.file_watcher.src.async_file_watcher import (
+    AsyncFileEventHandler,
+    AsyncFileWatcherService,
+)
 from services.file_watcher.src.async_message_publisher import AsyncMessagePublisher
 
 
@@ -90,7 +93,7 @@ class TestConcurrentProcessing:
         await asyncio.gather(*tasks)
         total_time = time.time() - start
 
-        # With concurrent processing, 20 files × 0.05s should take ~0.1-0.2s (not 1s)
+        # With concurrent processing, 20 files x 0.05s should take ~0.1-0.2s (not 1s)
         # (because semaphore allows 10 concurrent, so 2 batches)
         assert total_time < 0.5, f"Concurrent processing took too long: {total_time}s"
         assert len(end_times) == 20, "Not all files were processed"
@@ -156,16 +159,19 @@ class TestConcurrentProcessing:
         mock_publisher.publish_file_event = track_calls
 
         # Mock environment and create service
-        with patch.dict("os.environ", {"DATA_DIR": str(tmp_path)}):
-            with patch(
-                "services.file_watcher.src.async_file_watcher.AsyncMessagePublisher", return_value=mock_publisher
-            ):
-                service = AsyncFileWatcherService()
-                service.publisher = mock_publisher
-                await mock_publisher.connect()
+        with (
+            patch.dict("os.environ", {"DATA_DIR": str(tmp_path)}),
+            patch(
+                "services.file_watcher.src.async_file_watcher.AsyncMessagePublisher",
+                return_value=mock_publisher,
+            ),
+        ):
+            service = AsyncFileWatcherService()
+            service.publisher = mock_publisher
+            await mock_publisher.connect()
 
-                # Perform scan
-                await service.scan_existing_files()
+            # Perform scan
+            await service.scan_existing_files()
 
         # Verify all files were processed
         assert len(call_times) == 150, f"Expected 150 calls, got {len(call_times)}"
@@ -258,7 +264,7 @@ class TestConcurrentProcessing:
 
         # Verify Future was added to processing_tasks
         assert len(handler.processing_tasks) == 1
-        assert isinstance(list(handler.processing_tasks)[0], asyncio.Future)
+        assert isinstance(next(iter(handler.processing_tasks)), asyncio.Future)
 
         # Wait for the task to complete
         await handler.wait_for_tasks()

@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from services.analysis_service.src.cue_handler.exceptions import CueParsingError
 from services.analysis_service.src.cue_handler.models import (
     CueSheet,
     CueTime,
@@ -119,7 +120,6 @@ FILE "audio.wav" WAVE
             cue_path.write_text("INVALID CUE CONTENT")
 
             # Mock parser to raise error
-            from services.analysis_service.src.cue_handler.exceptions import CueParsingError
 
             with patch.object(validator.parser, "parse", side_effect=CueParsingError("Parse failed")):
                 result = validator.validate(str(cue_path))
@@ -153,18 +153,33 @@ class TestValidationResult:
         result = ValidationResult(file_path="test.cue", is_valid=True)
 
         # Add error
-        error = ValidationIssue(severity=Severity.ERROR, line_number=10, category="syntax", message="Test error")
+        error = ValidationIssue(
+            severity=Severity.ERROR,
+            line_number=10,
+            category="syntax",
+            message="Test error",
+        )
         result.add_issue(error)
         assert not result.is_valid
         assert len(result.errors) == 1
 
         # Add warning
-        warning = ValidationIssue(severity=Severity.WARNING, line_number=20, category="timing", message="Test warning")
+        warning = ValidationIssue(
+            severity=Severity.WARNING,
+            line_number=20,
+            category="timing",
+            message="Test warning",
+        )
         result.add_issue(warning)
         assert len(result.warnings) == 1
 
         # Add info
-        info = ValidationIssue(severity=Severity.INFO, line_number=30, category="compatibility", message="Test info")
+        info = ValidationIssue(
+            severity=Severity.INFO,
+            line_number=30,
+            category="compatibility",
+            message="Test info",
+        )
         result.add_issue(info)
         assert len(result.info) == 1
 
@@ -215,7 +230,11 @@ class TestValidationResult:
 
         result.add_issue(
             ValidationIssue(
-                severity=Severity.ERROR, line_number=10, category="syntax", message="Test error", suggestion="Fix it"
+                severity=Severity.ERROR,
+                line_number=10,
+                category="syntax",
+                message="Test error",
+                suggestion="Fix it",
             )
         )
 
@@ -293,10 +312,10 @@ class TestSyntaxValidation:
         with tempfile.TemporaryDirectory() as tmpdir:
             cue_path = Path(tmpdir) / "test.cue"
             long_title = "A" * 100
-            cue_content = f'''FILE "audio.wav" WAVE
+            cue_content = f"""FILE "audio.wav" WAVE
   TRACK 01 AUDIO
     TITLE "{long_title}"
-    INDEX 01 00:00:00'''
+    INDEX 01 00:00:00"""
             cue_path.write_text(cue_content)
 
             # Create sheet with long title
@@ -354,11 +373,15 @@ class TestAudioDurationValidation:
             audio_path.write_bytes(b"fake")
 
             # Mock audio analyzer to return 3 minutes duration
-            with patch.object(validator.parser, "parse", return_value=sheet):
-                with patch.object(
-                    validator.audio_analyzer, "analyze_durations", return_value=(180000, 600000)
-                ):  # 3 min audio, 10 min CUE
-                    result = validator.validate(str(cue_path))
+            with (
+                patch.object(validator.parser, "parse", return_value=sheet),
+                patch.object(
+                    validator.audio_analyzer,
+                    "analyze_durations",
+                    return_value=(180000, 600000),
+                ),
+            ):  # 3 min audio, 10 min CUE
+                result = validator.validate(str(cue_path))
 
             assert any("duration" in e.message.lower() and "differs" in e.message for e in result.errors)
 
@@ -408,6 +431,7 @@ FILE "audio2.wav" WAVE
 
     def test_format_compatibility_report(self, validator):
         """Test format compatibility reporting."""
+
         with tempfile.TemporaryDirectory() as tmpdir:
             cue_path = Path(tmpdir) / "test.cue"
             cue_path.write_text('FILE "audio.wav" WAVE\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00')

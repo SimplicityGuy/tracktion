@@ -224,7 +224,11 @@ class TestResilientExtractor:
     def test_extract_with_fallback_all_fail(self, extractor, sample_html):
         """Test extraction when all strategies fail."""
         soup = BeautifulSoup(sample_html, "html.parser")
-        strategies = [CSSStrategy(".nonexistent"), XPathStrategy("//missing/text()"), TextStrategy("not found")]
+        strategies = [
+            CSSStrategy(".nonexistent"),
+            XPathStrategy("//missing/text()"),
+            TextStrategy("not found"),
+        ]
 
         result = extractor.extract_with_fallback(soup, strategies, "missing")
 
@@ -276,21 +280,28 @@ class TestResilientExtractor:
         """Test quality score calculation."""
         # High quality data
         data1 = ExtractedData(
-            data={"field1": "value1", "field2": "value2"}, quality_score=0.9, partial_extraction=False
+            data={"field1": "value1", "field2": "value2"},
+            quality_score=0.9,
+            partial_extraction=False,
         )
         score1 = extractor.calculate_quality_score(data1)
         assert score1 == 0.9
 
         # Partial extraction with missing fields
         data2 = ExtractedData(
-            data={"field1": "value1"}, quality_score=0.8, partial_extraction=True, missing_fields=["field2", "field3"]
+            data={"field1": "value1"},
+            quality_score=0.8,
+            partial_extraction=True,
+            missing_fields=["field2", "field3"],
         )
         score2 = extractor.calculate_quality_score(data2)
         assert score2 < 0.8  # Penalized for missing fields and partial extraction
 
         # Data with errors
         data3 = ExtractedData(
-            data={"field1": "value1"}, quality_score=0.7, extraction_errors=["error1", "error2", "error3"]
+            data={"field1": "value1"},
+            quality_score=0.7,
+            extraction_errors=["error1", "error2", "error3"],
         )
         score3 = extractor.calculate_quality_score(data3)
         assert score3 < 0.7  # Penalized for errors

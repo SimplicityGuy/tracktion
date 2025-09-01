@@ -1,12 +1,13 @@
 """Recording management endpoints for Analysis Service."""
 
-from typing import Any, Dict, List, Optional
+import uuid
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 from pydantic import BaseModel
 
-from ...structured_logging import get_logger
+from services.analysis_service.src.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -17,8 +18,8 @@ class RecordingRequest(BaseModel):
     """Request model for recording analysis."""
 
     file_path: str
-    priority: Optional[int] = 5
-    metadata: Optional[Dict[str, Any]] = {}
+    priority: int | None = 5
+    metadata: dict[str, Any] | None = {}
 
 
 class RecordingResponse(BaseModel):
@@ -28,11 +29,11 @@ class RecordingResponse(BaseModel):
     file_path: str
     status: str
     priority: int
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
-async def submit_recording(request: RecordingRequest) -> Dict[str, Any]:
+async def submit_recording(request: RecordingRequest) -> dict[str, Any]:
     """Submit a recording for analysis.
 
     Args:
@@ -42,8 +43,6 @@ async def submit_recording(request: RecordingRequest) -> Dict[str, Any]:
         Submission confirmation with recording ID
     """
     # In real implementation, submit to message queue for processing
-    import uuid
-
     recording_id = uuid.uuid4()
 
     logger.info(
@@ -55,7 +54,11 @@ async def submit_recording(request: RecordingRequest) -> Dict[str, Any]:
         },
     )
 
-    return {"id": str(recording_id), "status": "queued", "message": "Recording submitted for analysis"}
+    return {
+        "id": str(recording_id),
+        "status": "queued",
+        "message": "Recording submitted for analysis",
+    }
 
 
 @router.get("/{recording_id}")
@@ -80,10 +83,10 @@ async def get_recording_status(recording_id: UUID) -> RecordingResponse:
 
 @router.get("")
 async def list_recordings(
-    status: Optional[str] = Query(None, description="Filter by status"),
+    status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
-) -> List[RecordingResponse]:
+) -> list[RecordingResponse]:
     """List recordings with optional filtering.
 
     Args:
@@ -95,8 +98,6 @@ async def list_recordings(
         List of recordings
     """
     # In real implementation, query from database
-    import uuid
-
     return [
         RecordingResponse(
             id=uuid.uuid4(),
@@ -110,7 +111,7 @@ async def list_recordings(
 
 
 @router.delete("/{recording_id}")
-async def cancel_recording(recording_id: UUID) -> Dict[str, str]:
+async def cancel_recording(recording_id: UUID) -> dict[str, str]:
     """Cancel a recording analysis.
 
     Args:
@@ -122,4 +123,8 @@ async def cancel_recording(recording_id: UUID) -> Dict[str, str]:
     logger.info("Cancelling recording analysis", extra={"recording_id": str(recording_id)})
 
     # In real implementation, send cancellation message
-    return {"id": str(recording_id), "status": "cancelled", "message": "Recording analysis cancelled"}
+    return {
+        "id": str(recording_id),
+        "status": "cancelled",
+        "message": "Recording analysis cancelled",
+    }

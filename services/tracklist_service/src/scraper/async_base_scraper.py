@@ -7,7 +7,7 @@ Provides async session management, rate limiting, circuit breaker, and anti-dete
 import asyncio
 import random
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 import structlog
@@ -19,8 +19,7 @@ from shared.utils.async_http_client import (
     RetryHandler,
     get_global_http_factory,
 )
-
-from ..config import get_config
+from src.config import get_config
 
 logger = structlog.get_logger(__name__)
 
@@ -73,9 +72,9 @@ class AsyncScraperBase:
         self,
         url: str,
         method: str = "GET",
-        params: Optional[Dict[str, Any]] = None,
-        data: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> httpx.Response:
         """Make an async HTTP request with retry logic, circuit breaker, and rate limiting.
 
@@ -109,7 +108,7 @@ class AsyncScraperBase:
             request_headers.update(headers)
 
         try:
-            response = await self.http_client.request_with_circuit_breaker(
+            return await self.http_client.request_with_circuit_breaker(
                 service_name=self.service_name,
                 method=method,
                 url=url,
@@ -117,7 +116,6 @@ class AsyncScraperBase:
                 data=data,
                 headers=request_headers,
             )
-            return response
         except Exception as e:
             logger.error(
                 "Request failed",
@@ -139,7 +137,7 @@ class AsyncScraperBase:
         """
         return BeautifulSoup(html_content, "lxml")
 
-    async def get_page(self, url: str, params: Optional[Dict[str, Any]] = None) -> BeautifulSoup:
+    async def get_page(self, url: str, params: dict[str, Any] | None = None) -> BeautifulSoup:
         """Get a page and return parsed HTML.
 
         Args:
@@ -179,8 +177,7 @@ class AsyncScraperBase:
                 return await self.get_page(url)
 
         tasks = [_fetch_one(url) for url in urls]
-        results = await asyncio.gather(*tasks, return_exceptions=False)
-        return results
+        return await asyncio.gather(*tasks, return_exceptions=False)
 
     def rotate_user_agent(self) -> None:
         """Rotate to a new random user agent."""
@@ -190,4 +187,3 @@ class AsyncScraperBase:
     async def close(self) -> None:
         """Close the HTTP client sessions."""
         # The global factory will handle cleanup
-        pass

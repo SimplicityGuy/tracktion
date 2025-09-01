@@ -8,7 +8,9 @@ from uuid import uuid4
 import pytest
 
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
-from services.tracklist_service.src.services.catalog_search_service import CatalogSearchService
+from services.tracklist_service.src.services.catalog_search_service import (
+    CatalogSearchService,
+)
 from services.tracklist_service.src.services.draft_service import DraftService
 from services.tracklist_service.src.services.timing_service import TimingService
 
@@ -24,17 +26,16 @@ class TestPerformance:
     @pytest.fixture
     def large_tracklist(self):
         """Create a large tracklist for performance testing."""
-        tracks = []
-        for i in range(100):  # 100 tracks
-            tracks.append(
-                TrackEntry(
-                    position=i + 1,
-                    start_time=timedelta(minutes=i * 3),
-                    end_time=timedelta(minutes=(i + 1) * 3),
-                    artist=f"Artist {i}",
-                    title=f"Track {i}",
-                )
+        tracks = [
+            TrackEntry(
+                position=i + 1,
+                start_time=timedelta(minutes=i * 3),
+                end_time=timedelta(minutes=(i + 1) * 3),
+                artist=f"Artist {i}",
+                title=f"Track {i}",
             )
+            for i in range(100)  # 100 tracks
+        ]
         return Tracklist(
             id=uuid4(),
             audio_file_id=uuid4(),

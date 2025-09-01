@@ -17,6 +17,13 @@ from services.tracklist_service.src.api.developer_endpoints import (
     ApiKeyResponse,
     CreateKeyRequest,
     KeyUsageResponse,
+    create_api_key,
+    get_key_usage_analytics,
+    get_usage_summary,
+    get_usage_tracker,
+    list_api_keys,
+    revoke_api_key,
+    rotate_api_key,
 )
 from services.tracklist_service.src.auth.models import ApiKey, User, UserTier
 
@@ -74,9 +81,7 @@ class TestDeveloperEndpoints:
         mock_usage_tracker.get_usage_stats = AsyncMock(return_value=self.usage_stats)
         mock_tracker.return_value = mock_usage_tracker
 
-        # Import and test the endpoint
-        from services.tracklist_service.src.api.developer_endpoints import list_api_keys
-
+        # Test the endpoint
         result = await list_api_keys(include_inactive=False, user=self.user)
 
         assert len(result) == 1
@@ -95,8 +100,6 @@ class TestDeveloperEndpoints:
         mock_auth_manager = MagicMock()
         mock_auth_manager._api_keys = {}
         mock_auth.return_value = mock_auth_manager
-
-        from services.tracklist_service.src.api.developer_endpoints import list_api_keys
 
         result = await list_api_keys(include_inactive=False, user=self.user)
 
@@ -118,10 +121,11 @@ class TestDeveloperEndpoints:
 
         mock_user.return_value = self.user
         mock_auth_manager = MagicMock()
-        mock_auth_manager._api_keys = {"test-raw-key": self.api_key, "inactive-raw-key": inactive_key}
+        mock_auth_manager._api_keys = {
+            "test-raw-key": self.api_key,
+            "inactive-raw-key": inactive_key,
+        }
         mock_auth.return_value = mock_auth_manager
-
-        from services.tracklist_service.src.api.developer_endpoints import list_api_keys
 
         # Without inactive keys
         result = await list_api_keys(include_inactive=False, user=self.user)
@@ -144,13 +148,16 @@ class TestDeveloperEndpoints:
         mock_auth_manager = MagicMock()
         mock_auth_manager._api_keys = {}  # No existing keys
         mock_auth_manager.generate_api_key.return_value = self.api_key
-        mock_auth_manager._get_default_permissions.return_value = {"read": True, "write": True}
+        mock_auth_manager._get_default_permissions.return_value = {
+            "read": True,
+            "write": True,
+        }
         mock_auth.return_value = mock_auth_manager
 
-        from services.tracklist_service.src.api.developer_endpoints import create_api_key
-
         request = CreateKeyRequest(
-            name="New Test Key", description="Test description", permissions={"read": True, "write": True}
+            name="New Test Key",
+            description="Test description",
+            permissions={"read": True, "write": True},
         )
 
         # Mock the key storage after generation
@@ -182,8 +189,6 @@ class TestDeveloperEndpoints:
         mock_auth_manager._api_keys = existing_keys
         mock_auth.return_value = mock_auth_manager
 
-        from services.tracklist_service.src.api.developer_endpoints import create_api_key
-
         request = CreateKeyRequest(name="Excess Key")
 
         with pytest.raises(HTTPException) as exc_info:
@@ -202,14 +207,20 @@ class TestDeveloperEndpoints:
         mock_user.return_value = free_user
         mock_auth_manager = MagicMock()
         mock_auth_manager._api_keys = {}
-        mock_auth_manager._get_default_permissions.return_value = {"read": True, "write": False, "admin": False}
+        mock_auth_manager._get_default_permissions.return_value = {
+            "read": True,
+            "write": False,
+            "admin": False,
+        }
         mock_auth.return_value = mock_auth_manager
-
-        from services.tracklist_service.src.api.developer_endpoints import create_api_key
 
         request = CreateKeyRequest(
             name="Invalid Permissions Key",
-            permissions={"read": True, "write": True, "admin": True},  # Free tier can't have write/admin
+            permissions={
+                "read": True,
+                "write": True,
+                "admin": True,
+            },  # Free tier can't have write/admin
         )
 
         with pytest.raises(HTTPException) as exc_info:
@@ -239,8 +250,6 @@ class TestDeveloperEndpoints:
         mock_auth_manager.generate_api_key.return_value = new_key
         mock_auth.return_value = mock_auth_manager
 
-        from services.tracklist_service.src.api.developer_endpoints import rotate_api_key
-
         # Add new key to manager after generation
         mock_auth_manager._api_keys["new-raw-key"] = new_key
 
@@ -264,8 +273,6 @@ class TestDeveloperEndpoints:
         mock_auth_manager._api_keys = {}
         mock_auth.return_value = mock_auth_manager
 
-        from services.tracklist_service.src.api.developer_endpoints import rotate_api_key
-
         with pytest.raises(HTTPException) as exc_info:
             await rotate_api_key(key_id="nonexistent-key", user=self.user)
 
@@ -276,14 +283,17 @@ class TestDeveloperEndpoints:
     @patch("services.tracklist_service.src.api.developer_endpoints.get_auth_manager")
     async def test_rotate_api_key_inactive(self, mock_auth, mock_user):
         """Test rotating inactive API key."""
-        inactive_key = ApiKey(key_id="inactive-key", user_id=self.user.id, key_hash="hash", is_active=False)
+        inactive_key = ApiKey(
+            key_id="inactive-key",
+            user_id=self.user.id,
+            key_hash="hash",
+            is_active=False,
+        )
 
         mock_user.return_value = self.user
         mock_auth_manager = MagicMock()
         mock_auth_manager._api_keys = {"inactive-raw-key": inactive_key}
         mock_auth.return_value = mock_auth_manager
-
-        from services.tracklist_service.src.api.developer_endpoints import rotate_api_key
 
         with pytest.raises(HTTPException) as exc_info:
             await rotate_api_key(key_id="inactive-key", user=self.user)
@@ -299,8 +309,6 @@ class TestDeveloperEndpoints:
         mock_auth_manager = MagicMock()
         mock_auth_manager._api_keys = {"test-raw-key": self.api_key}
         mock_auth.return_value = mock_auth_manager
-
-        from services.tracklist_service.src.api.developer_endpoints import revoke_api_key
 
         response = await revoke_api_key(key_id="test-key-123", user=self.user)
 
@@ -322,8 +330,6 @@ class TestDeveloperEndpoints:
         mock_auth_manager._api_keys = {}
         mock_auth.return_value = mock_auth_manager
 
-        from services.tracklist_service.src.api.developer_endpoints import revoke_api_key
-
         with pytest.raises(HTTPException) as exc_info:
             await revoke_api_key(key_id="nonexistent-key", user=self.user)
 
@@ -344,8 +350,6 @@ class TestDeveloperEndpoints:
         mock_usage_tracker.get_usage_stats = AsyncMock(return_value=self.usage_stats)
         mock_tracker.return_value = mock_usage_tracker
 
-        from services.tracklist_service.src.api.developer_endpoints import get_key_usage_analytics
-
         result = await get_key_usage_analytics(key_id="test-key-123", period="day", user=self.user)
 
         assert isinstance(result, KeyUsageResponse)
@@ -363,8 +367,6 @@ class TestDeveloperEndpoints:
         mock_auth_manager = MagicMock()
         mock_auth_manager._api_keys = {}
         mock_auth.return_value = mock_auth_manager
-
-        from services.tracklist_service.src.api.developer_endpoints import get_key_usage_analytics
 
         with pytest.raises(HTTPException) as exc_info:
             await get_key_usage_analytics(key_id="nonexistent-key", period="day", user=self.user)
@@ -389,8 +391,6 @@ class TestDeveloperEndpoints:
         mock_usage_tracker = MagicMock()
         mock_usage_tracker.get_usage_stats = AsyncMock(return_value=self.usage_stats)
         mock_tracker.return_value = mock_usage_tracker
-
-        from services.tracklist_service.src.api.developer_endpoints import get_usage_summary
 
         response = await get_usage_summary(period="month", user=self.user)
 
@@ -498,8 +498,6 @@ class TestDeveloperEndpointsEdgeCases:
         mock_auth_manager._get_default_permissions.return_value = {"read": True}
         mock_auth.return_value = mock_auth_manager
 
-        from services.tracklist_service.src.api.developer_endpoints import create_api_key
-
         request = CreateKeyRequest(name="Expiring Key", expires_in_days=30)
 
         # Mock the key storage
@@ -517,8 +515,6 @@ class TestDeveloperEndpointsEdgeCases:
     async def test_usage_tracker_initialization_error(self, mock_tracker):
         """Test handling of usage tracker initialization errors."""
         mock_tracker.side_effect = ConnectionError("Redis connection failed")
-
-        from services.tracklist_service.src.api.developer_endpoints import get_usage_tracker
 
         # Should handle gracefully in production
         with pytest.raises(ConnectionError):

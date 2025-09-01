@@ -122,17 +122,19 @@ FILE "test.wav" WAVE
         mock_cuesheet.performer = "Test Artist"
         mock_cuesheet.encoding = "UTF-8"
 
-        with patch.object(converter.parser, "parse", return_value=mock_cuesheet):
-            with patch("services.analysis_service.src.cue_handler.converter.get_generator") as mock_get_gen:
-                mock_generator = Mock()
-                mock_generator.generate_from_cuesheet.return_value = "CDJ formatted content"
-                mock_get_gen.return_value = Mock(return_value=mock_generator)
+        with (
+            patch.object(converter.parser, "parse", return_value=mock_cuesheet),
+            patch("services.analysis_service.src.cue_handler.converter.get_generator") as mock_get_gen,
+        ):
+            mock_generator = Mock()
+            mock_generator.generate_from_cuesheet.return_value = "CDJ formatted content"
+            mock_get_gen.return_value = Mock(return_value=mock_generator)
 
-                report = converter.convert(sample_cue_file, CueFormat.CDJ, output_file)
+            report = converter.convert(sample_cue_file, CueFormat.CDJ, output_file)
 
-                assert report.source_file == str(sample_cue_file)
-                assert report.target_format == CueFormat.CDJ
-                assert report.target_file == str(output_file)
+            assert report.source_file == str(sample_cue_file)
+            assert report.target_format == CueFormat.CDJ
+            assert report.target_file == str(output_file)
 
     def test_batch_conversion(self, converter, temp_dir):
         """Test batch conversion of multiple files."""
@@ -140,10 +142,12 @@ FILE "test.wav" WAVE
         files = []
         for i in range(3):
             cue_file = temp_dir / f"test{i}.cue"
-            cue_file.write_text(f"""TITLE "Album {i}"
+            cue_file.write_text(
+                f"""TITLE "Album {i}"
 FILE "test{i}.wav" WAVE
   TRACK 01 AUDIO
-    INDEX 01 00:00:00""")
+    INDEX 01 00:00:00"""
+            )
             files.append(cue_file)
 
         # Mock parser and generator
@@ -154,19 +158,24 @@ FILE "test{i}.wav" WAVE
         mock_cuesheet.title = "Test"
         mock_cuesheet.performer = "Artist"
 
-        with patch.object(converter.parser, "parse", return_value=mock_cuesheet):
-            with patch("services.analysis_service.src.cue_handler.converter.get_generator") as mock_get_gen:
-                mock_generator = Mock()
-                mock_generator.generate_from_cuesheet.return_value = "converted content"
-                mock_get_gen.return_value = Mock(return_value=mock_generator)
+        with (
+            patch.object(converter.parser, "parse", return_value=mock_cuesheet),
+            patch("services.analysis_service.src.cue_handler.converter.get_generator") as mock_get_gen,
+        ):
+            mock_generator = Mock()
+            mock_generator.generate_from_cuesheet.return_value = "converted content"
+            mock_get_gen.return_value = Mock(return_value=mock_generator)
 
-                # Use list of files instead of glob pattern
-                batch_report = converter.batch_convert(
-                    files, CueFormat.TRAKTOR, output_dir=temp_dir / "output", parallel=False
-                )
+            # Use list of files instead of glob pattern
+            batch_report = converter.batch_convert(
+                files,
+                CueFormat.TRAKTOR,
+                output_dir=temp_dir / "output",
+                parallel=False,
+            )
 
-                assert batch_report.total_files == 3
-                assert len(batch_report.reports) == 3
+            assert batch_report.total_files == 3
+            assert len(batch_report.reports) == 3
 
     def test_dry_run_mode(self, converter, sample_cue_file, temp_dir):
         """Test dry-run mode doesn't write files."""
@@ -194,16 +203,18 @@ FILE "test{i}.wav" WAVE
 
         mock_validation = ValidationResult(file_path=str(output_file), is_valid=True)
 
-        with patch.object(converter.parser, "parse", return_value=mock_cuesheet):
-            with patch("services.analysis_service.src.cue_handler.converter.get_generator") as mock_get_gen:
-                mock_generator = Mock()
-                mock_generator.generate_from_cuesheet.return_value = "content"
-                mock_get_gen.return_value = Mock(return_value=mock_generator)
+        with (
+            patch.object(converter.parser, "parse", return_value=mock_cuesheet),
+            patch("services.analysis_service.src.cue_handler.converter.get_generator") as mock_get_gen,
+        ):
+            mock_generator = Mock()
+            mock_generator.generate_from_cuesheet.return_value = "content"
+            mock_get_gen.return_value = Mock(return_value=mock_generator)
 
-                with patch.object(converter.validator, "validate", return_value=mock_validation):
-                    report = converter.convert(sample_cue_file, CueFormat.REKORDBOX, output_file)
+            with patch.object(converter.validator, "validate", return_value=mock_validation):
+                report = converter.convert(sample_cue_file, CueFormat.REKORDBOX, output_file)
 
-                    assert report.validation_result == mock_validation
+                assert report.validation_result == mock_validation
 
     def test_metadata_preservation_calculation(self):
         """Test metadata preservation calculation."""
@@ -222,7 +233,12 @@ FILE "test{i}.wav" WAVE
         # Add some changes
         report.add_change(ConversionChange(change_type="removed", command="PREGAP", original_value="00:02:00"))
         report.add_change(
-            ConversionChange(change_type="modified", command="FLAGS", original_value="DCP", new_value="COPY")
+            ConversionChange(
+                change_type="modified",
+                command="FLAGS",
+                original_value="DCP",
+                new_value="COPY",
+            )
         )
 
         report.calculate_metadata_preservation()
@@ -232,22 +248,33 @@ FILE "test{i}.wav" WAVE
     def test_custom_conversion_rules(self, converter, sample_cue_file, temp_dir):
         """Test conversion with custom rules."""
         output_file = temp_dir / "custom.cue"
-        custom_rules = {"limit_tracks": 50, "encoding": "UTF-16", "custom_field": "test"}
+        custom_rules = {
+            "limit_tracks": 50,
+            "encoding": "UTF-16",
+            "custom_field": "test",
+        }
 
         mock_cuesheet = Mock()
         mock_cuesheet.tracks = []
         mock_cuesheet.files = []
         mock_cuesheet.rem_comments = {}
 
-        with patch.object(converter.parser, "parse", return_value=mock_cuesheet):
-            with patch("services.analysis_service.src.cue_handler.converter.get_generator") as mock_get_gen:
-                mock_generator = Mock()
-                mock_generator.generate_from_cuesheet.return_value = "content"
-                mock_get_gen.return_value = Mock(return_value=mock_generator)
+        with (
+            patch.object(converter.parser, "parse", return_value=mock_cuesheet),
+            patch("services.analysis_service.src.cue_handler.converter.get_generator") as mock_get_gen,
+        ):
+            mock_generator = Mock()
+            mock_generator.generate_from_cuesheet.return_value = "content"
+            mock_get_gen.return_value = Mock(return_value=mock_generator)
 
-                report = converter.convert(sample_cue_file, CueFormat.TRAKTOR, output_file, custom_rules=custom_rules)
+            report = converter.convert(
+                sample_cue_file,
+                CueFormat.TRAKTOR,
+                output_file,
+                custom_rules=custom_rules,
+            )
 
-                assert report.source_file == str(sample_cue_file)
+            assert report.source_file == str(sample_cue_file)
 
     def test_get_supported_formats(self, converter):
         """Test getting list of supported formats."""
@@ -445,7 +472,10 @@ class TestConversionReport:
         )
 
         change = ConversionChange(
-            change_type="removed", command="PREGAP", original_value="00:02:00", reason="Not supported"
+            change_type="removed",
+            command="PREGAP",
+            original_value="00:02:00",
+            reason="Not supported",
         )
 
         report.add_change(change)

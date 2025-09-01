@@ -117,12 +117,19 @@ class ConnectionPoolManager:
             pool=30.0,  # Max time to wait for connection from pool
         )
 
-        client = httpx.AsyncClient(
-            base_url=base_url,
-            limits=limits,
-            timeout=timeout,
-            http2=True,  # Enable HTTP/2 for better multiplexing
-        )
+        if base_url is not None:
+            client = httpx.AsyncClient(
+                base_url=base_url,
+                limits=limits,
+                timeout=timeout,
+                http2=True,  # Enable HTTP/2 for better multiplexing
+            )
+        else:
+            client = httpx.AsyncClient(
+                limits=limits,
+                timeout=timeout,
+                http2=True,  # Enable HTTP/2 for better multiplexing
+            )
 
         self._pools[service_name] = client
         self._pool_stats[service_name] = PoolStatistics()
@@ -187,7 +194,7 @@ class ConnectionPoolManager:
                 success = response.status_code < 500
             else:
                 # If no base URL, consider pool healthy
-                success = True  # type: ignore[assignment]
+                success = True
 
             if success:
                 pool_health_checks.labels(service=service_name, status="success").inc()
@@ -203,7 +210,7 @@ class ConnectionPoolManager:
             # Update metrics
             self._update_metrics(service_name)
 
-            return success
+            return success  # type: ignore[no-any-return] # Boolean value from health check comparison, known to be bool
 
         except Exception as e:
             pool_health_checks.labels(service=service_name, status="error").inc()
@@ -298,10 +305,9 @@ class ConnectionPoolManager:
         )
 
         # Make parallel HEAD requests to establish connections
-        tasks = []
-        for _ in range(min(num_connections, self.min_connections)):
-            if client.base_url:
-                tasks.append(client.head("/", timeout=5.0))
+        tasks = [
+            client.head("/", timeout=5.0) for _ in range(min(num_connections, self.min_connections)) if client.base_url
+        ]
 
         if tasks:
             try:
@@ -430,7 +436,7 @@ def get_global_pool_manager() -> ConnectionPoolManager:
     Returns:
         Global connection pool manager instance
     """
-    global _global_pool_manager
+    global _global_pool_manager  # noqa: PLW0603 - Module-level singleton pattern for pool manager
     if _global_pool_manager is None:
         _global_pool_manager = ConnectionPoolManager()
     return _global_pool_manager
@@ -438,7 +444,7 @@ def get_global_pool_manager() -> ConnectionPoolManager:
 
 async def cleanup_global_pool_manager() -> None:
     """Cleanup the global connection pool manager."""
-    global _global_pool_manager
+    global _global_pool_manager  # noqa: PLW0603 - Module-level singleton pattern for pool manager
     if _global_pool_manager:
         await _global_pool_manager.close_all_pools()
         _global_pool_manager = None

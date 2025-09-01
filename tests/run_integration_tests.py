@@ -30,7 +30,11 @@ def run_tests():
     if not audio_files:
         print("⚠️  No test audio files found. Generating them now...")
         try:
-            subprocess.run([sys.executable, "tests/fixtures/generate_test_audio.py"], cwd=project_root, check=True)
+            subprocess.run(
+                [sys.executable, "tests/fixtures/generate_test_audio.py"],
+                cwd=project_root,
+                check=True,
+            )
             print("✅ Test audio files generated successfully")
         except subprocess.CalledProcessError as e:
             print(f"❌ Failed to generate test audio files: {e}")
@@ -52,6 +56,7 @@ def run_tests():
                 "--durations=10",  # Show 10 slowest tests
                 "--color=yes",  # Colored output
             ],
+            check=False,
             cwd=project_root,
             capture_output=True,
             text=True,
@@ -74,9 +79,8 @@ def run_tests():
         if result.returncode == 0:
             print("\n✅ All integration tests passed!")
             return True
-        else:
-            print(f"\n❌ Tests failed with exit code {result.returncode}")
-            return False
+        print(f"\n❌ Tests failed with exit code {result.returncode}")
+        return False
 
     except subprocess.CalledProcessError as e:
         print(f"❌ Failed to run tests: {e}")
@@ -94,7 +98,16 @@ def run_unit_tests():
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", "tests/unit/analysis_service/", "-v", "--tb=short", "--color=yes"],
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "tests/unit/analysis_service/",
+                "-v",
+                "--tb=short",
+                "--color=yes",
+            ],
+            check=False,
             cwd=project_root,
             capture_output=True,
             text=True,
@@ -130,6 +143,7 @@ def generate_test_report():
                 "--cov-report=html:htmlcov",
                 "-q",  # Quiet mode for coverage report
             ],
+            check=False,
             cwd=project_root,
             capture_output=True,
             text=True,

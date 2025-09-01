@@ -6,10 +6,10 @@ the actual audio file duration and detects potential timing issues.
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
+from typing import Any
 
-from ..models.cue_file import ValidationResult
-from ..models.tracklist import Tracklist
+from src.models.cue_file import ValidationResult
+from src.models.tracklist import Tracklist
 
 
 class AudioValidationService:
@@ -20,7 +20,6 @@ class AudioValidationService:
         # For now, this is a placeholder implementation
         # In production, you would integrate with audio analysis libraries
         # like librosa, pydub, or ffmpeg for actual audio duration detection
-        pass
 
     async def validate_audio_duration(
         self, audio_file_path: str, tracklist: Tracklist, tolerance_seconds: float = 2.0
@@ -37,7 +36,7 @@ class AudioValidationService:
             Validation result with timing analysis
         """
         warnings = []
-        metadata: Dict[str, Any] = {}
+        metadata: dict[str, Any] = {}
 
         try:
             # Get actual audio duration
@@ -105,10 +104,13 @@ class AudioValidationService:
 
         except Exception as e:
             return ValidationResult(
-                valid=False, error=f"Audio validation failed: {str(e)}", audio_duration=None, tracklist_duration=None
+                valid=False,
+                error=f"Audio validation failed: {e!s}",
+                audio_duration=None,
+                tracklist_duration=None,
             )
 
-    async def get_audio_duration(self, audio_file_path: str) -> Optional[float]:
+    async def get_audio_duration(self, audio_file_path: str) -> float | None:
         """
         Get the duration of an audio file in seconds.
 
@@ -134,15 +136,17 @@ class AudioValidationService:
             # This allows testing without actual audio libraries
             if audio_file_path.endswith((".mp3", ".wav", ".flac")):
                 return 420.0  # Mock 7 minute duration
-            else:
-                return None
+            return None
 
         except Exception:
             return None
 
     async def validate_track_timings(
-        self, tracklist: Tracklist, audio_duration_seconds: float, tolerance_seconds: float = 1.0
-    ) -> List[str]:
+        self,
+        tracklist: Tracklist,
+        audio_duration_seconds: float,
+        tolerance_seconds: float = 1.0,
+    ) -> list[str]:
         """
         Validate individual track timing consistency.
 
@@ -194,7 +198,7 @@ class AudioValidationService:
 
         return warnings
 
-    def validate_track_sequence(self, tracklist: Tracklist) -> List[str]:
+    def validate_track_sequence(self, tracklist: Tracklist) -> list[str]:
         """
         Validate that tracks are in correct sequence without gaps or overlaps.
 
@@ -234,7 +238,7 @@ class AudioValidationService:
 
         return warnings
 
-    async def suggest_timing_corrections(self, tracklist: Tracklist, audio_file_path: str) -> Dict[str, Any]:
+    async def suggest_timing_corrections(self, tracklist: Tracklist, audio_file_path: str) -> dict[str, Any]:
         """
         Suggest corrections for timing issues in tracklist.
 
@@ -245,7 +249,7 @@ class AudioValidationService:
         Returns:
             Dictionary with correction suggestions
         """
-        suggestions: Dict[str, Any] = {"corrections": [], "metadata": {}}
+        suggestions: dict[str, Any] = {"corrections": [], "metadata": {}}
 
         try:
             audio_duration = await self.get_audio_duration(audio_file_path)
@@ -293,7 +297,7 @@ class AudioValidationService:
 
         return suggestions
 
-    def estimate_track_durations(self, tracklist: Tracklist, audio_duration_seconds: float) -> List[Dict[str, Any]]:
+    def estimate_track_durations(self, tracklist: Tracklist, audio_duration_seconds: float) -> list[dict[str, Any]]:
         """
         Estimate track durations when end times are missing.
 
@@ -308,9 +312,9 @@ class AudioValidationService:
         sorted_tracks = sorted(tracklist.tracks, key=lambda t: t.position)
 
         for i, track in enumerate(sorted_tracks):
-            estimate: Dict[str, Union[int, float, str]] = {
+            estimate: dict[str, int | float | str] = {
                 "track_position": track.position,
-                "start_time": float(track.start_time.total_seconds()) if track.start_time else 0.0,
+                "start_time": (float(track.start_time.total_seconds()) if track.start_time else 0.0),
             }
 
             # If we have an end time, use it

@@ -6,6 +6,7 @@ Tests the complete flow from URL to parsed tracklist data.
 
 import asyncio
 import json
+import time
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -15,10 +16,18 @@ from aio_pika import IncomingMessage
 
 from services.tracklist_service.src.cache.redis_cache import RedisCache
 from services.tracklist_service.src.messaging.tracklist_handler import TracklistMessageHandler
-from services.tracklist_service.src.models.tracklist_models import (
+from services.tracklist_service.src.models.tracklist import (
     Track,
     Tracklist,
     TracklistRequest,
+)
+from services.tracklist_service.src.resilience.error_handler import (
+    CircuitBreaker,
+    ParseError,
+    ScrapingError,
+    TracklistNotFoundError,
+    async_retry,
+    retry,
 )
 from services.tracklist_service.src.scraper.tracklist_scraper import TracklistScraper
 
@@ -152,17 +161,19 @@ class TestTracklistRetrievalIntegration:
         mock_message.ack = AsyncMock()
 
         # Mock cache operations
-        with patch.object(handler._cache, "get", AsyncMock(return_value=None)):
-            with patch.object(handler._cache, "set", AsyncMock(return_value=True)):
-                # Mock scraper
-                mock_tracklist = Tracklist(
-                    url=request.url,
-                    dj_name="Test DJ",
-                    tracks=[],
-                )
-                with patch.object(handler._scraper, "scrape_tracklist", return_value=mock_tracklist):
-                    # Process message
-                    await handler.process_tracklist_request(mock_message)
+        with (
+            patch.object(handler._cache, "get", AsyncMock(return_value=None)),
+            patch.object(handler._cache, "set", AsyncMock(return_value=True)),
+        ):
+            # Mock scraper
+            mock_tracklist = Tracklist(
+                url=request.url,
+                dj_name="Test DJ",
+                tracks=[],
+            )
+            with patch.object(handler._scraper, "scrape_tracklist", return_value=mock_tracklist):
+                # Process message
+                await handler.process_tracklist_request(mock_message)
 
         # Verify message was acknowledged
         mock_message.ack.assert_called_once()
@@ -170,12 +181,6 @@ class TestTracklistRetrievalIntegration:
     @pytest.mark.asyncio
     async def test_error_handling_workflow(self):
         """Test error handling throughout the retrieval workflow."""
-        from services.tracklist_service.src.resilience.error_handler import (
-            CircuitBreaker,
-            ParseError,
-            TracklistNotFoundError,
-            retry,
-        )
 
         # Test custom exceptions
         with pytest.raises(TracklistNotFoundError) as exc_info:
@@ -213,7 +218,6 @@ class TestTracklistRetrievalIntegration:
                 breaker.call(failing_function)
 
         # Third call should trigger circuit breaker
-        from services.tracklist_service.src.resilience.error_handler import ScrapingError
 
         with pytest.raises(ScrapingError) as exc_info:
             breaker.call(failing_function)
@@ -260,7 +264,6 @@ class TestPerformance:
             mock_request.return_value = mock_response
 
             # Measure parsing time
-            import time
 
             scraper = TracklistScraper()
 
@@ -390,7 +393,6 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_network_timeout(self):
         """Test handling of network timeouts."""
-        from services.tracklist_service.src.resilience.error_handler import async_retry
 
         call_count = 0
 

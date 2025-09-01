@@ -1,10 +1,10 @@
 """Version management service for tracklist versioning."""
 
-from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.tracklist_service.src.models.synchronization import TracklistVersion
@@ -27,8 +27,8 @@ class VersionService:
         tracklist_id: UUID,
         change_type: str,
         change_summary: str,
-        created_by: Optional[str] = None,
-        tracks_snapshot: Optional[List[Dict[str, Any]]] = None,
+        created_by: str | None = None,
+        tracks_snapshot: list[dict[str, Any]] | None = None,
     ) -> TracklistVersion:
         """Create a new version of a tracklist.
 
@@ -55,19 +55,19 @@ class VersionService:
 
         # Mark previous version as not current
         if current_version:
-            current_version.is_current = False  # type: ignore[assignment]
+            current_version.is_current = False
             self.session.add(current_version)
 
         # Create new version
         version = TracklistVersion(
             tracklist_id=tracklist_id,
             version_number=new_version_number,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             created_by=created_by or "system",
             change_type=change_type,
             change_summary=change_summary,
             tracks_snapshot=tracks_snapshot,
-            version_metadata={"timestamp": datetime.now(timezone.utc).isoformat()},
+            version_metadata={"timestamp": datetime.now(UTC).isoformat()},
             is_current=True,
         )
 
@@ -77,7 +77,7 @@ class VersionService:
 
         return version
 
-    async def get_latest_version(self, tracklist_id: UUID) -> Optional[TracklistVersion]:
+    async def get_latest_version(self, tracklist_id: UUID) -> TracklistVersion | None:
         """Get the latest version of a tracklist.
 
         Args:
@@ -87,12 +87,15 @@ class VersionService:
             Latest version or None
         """
         query = select(TracklistVersion).where(
-            and_(TracklistVersion.tracklist_id == tracklist_id, TracklistVersion.is_current.is_(True))
+            and_(
+                TracklistVersion.tracklist_id == tracklist_id,
+                TracklistVersion.is_current.is_(True),
+            )
         )
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy returns model but typed as Any
 
-    async def get_version(self, tracklist_id: UUID, version_number: int) -> Optional[TracklistVersion]:
+    async def get_version(self, tracklist_id: UUID, version_number: int) -> TracklistVersion | None:
         """Get a specific version of a tracklist.
 
         Args:
@@ -103,12 +106,15 @@ class VersionService:
             Version or None
         """
         query = select(TracklistVersion).where(
-            and_(TracklistVersion.tracklist_id == tracklist_id, TracklistVersion.version_number == version_number)
+            and_(
+                TracklistVersion.tracklist_id == tracklist_id,
+                TracklistVersion.version_number == version_number,
+            )
         )
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy returns model but typed as Any
 
-    async def list_versions(self, tracklist_id: UUID, limit: int = 50, offset: int = 0) -> List[TracklistVersion]:
+    async def list_versions(self, tracklist_id: UUID, limit: int = 50, offset: int = 0) -> list[TracklistVersion]:
         """List versions for a tracklist.
 
         Args:
@@ -154,20 +160,20 @@ class VersionService:
             tracklist_id=tracklist_id,
             change_type="rollback",
             change_summary=f"Rolled back to version {version_number}",
-            tracks_snapshot=version.tracks_snapshot,  # type: ignore[arg-type]
+            tracks_snapshot=version.tracks_snapshot,
         )
 
         # Update the tracklist with the rolled back tracks
-        tracklist.tracks = version.tracks_snapshot  # type: ignore[assignment]
-        tracklist.updated_at = datetime.now(timezone.utc)
+        tracklist.tracks = version.tracks_snapshot
+        tracklist.updated_at = datetime.now(UTC)
 
         self.session.add(tracklist)
         await self.session.commit()
         await self.session.refresh(tracklist)
 
-        return tracklist
+        return tracklist  # type: ignore[no-any-return]  # SQLAlchemy model after refresh typed as Any
 
-    async def get_version_diff(self, tracklist_id: UUID, version1: int, version2: int) -> Dict[str, Any]:
+    async def get_version_diff(self, tracklist_id: UUID, version1: int, version2: int) -> dict[str, Any]:
         """Get differences between two versions.
 
         Args:
@@ -193,8 +199,8 @@ class VersionService:
         modified = []
 
         # Create position-based lookup
-        tracks1_by_pos = {t.get("position"): t for t in tracks1}  # type: ignore[attr-defined]
-        tracks2_by_pos = {t.get("position"): t for t in tracks2}  # type: ignore[attr-defined]
+        tracks1_by_pos = {t.get("position"): t for t in tracks1}
+        tracks2_by_pos = {t.get("position"): t for t in tracks2}
 
         # Find added and modified
         for pos, track in tracks2_by_pos.items():
@@ -228,9 +234,8 @@ class VersionService:
         Returns:
             Number of versions deleted
         """
-        from datetime import timedelta
 
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=keep_days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=keep_days)
 
         # Get versions to keep by count
         keep_versions_query = (
@@ -247,7 +252,7 @@ class VersionService:
             and_(
                 TracklistVersion.tracklist_id == tracklist_id,
                 TracklistVersion.created_at < cutoff_date,
-                TracklistVersion.id.notin_(keep_ids) if keep_ids else True,  # type: ignore[arg-type]
+                TracklistVersion.id.notin_(keep_ids) if keep_ids else True,
                 TracklistVersion.is_current.is_(False),
             )
         )

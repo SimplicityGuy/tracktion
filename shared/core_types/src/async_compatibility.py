@@ -1,13 +1,14 @@
 """Async/Sync compatibility layer for database operations."""
 
 import asyncio
-import logging
-from typing import Any, Callable, Optional, TypeVar, Union
-from functools import wraps
 import inspect
+import logging
+from collections.abc import Callable
+from functools import wraps
+from typing import Any, TypeVar
 
 from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,10 @@ class DatabaseCompatibilityLayer:
     """Provides compatibility between sync and async database operations."""
 
     def __init__(
-        self, database_url: str, use_async: bool = True, feature_flag_callback: Optional[Callable[[], bool]] = None
+        self,
+        database_url: str,
+        use_async: bool = True,
+        feature_flag_callback: Callable[[], bool] | None = None,
     ) -> None:
         """Initialize compatibility layer.
 
@@ -46,7 +50,6 @@ class DatabaseCompatibilityLayer:
 
         # Create session factories
         self.sync_session_factory = sessionmaker(bind=self.sync_engine)
-        from sqlalchemy.ext.asyncio import async_sessionmaker
 
         self.async_session_factory = async_sessionmaker(bind=self.async_engine)
 
@@ -76,7 +79,7 @@ class DatabaseCompatibilityLayer:
         """
         return self.sync_session_factory()
 
-    def get_session(self) -> Union[Session, AsyncSession]:
+    def get_session(self) -> Session | AsyncSession:
         """Get appropriate session based on current mode.
 
         Returns:
@@ -99,10 +102,9 @@ class DatabaseCompatibilityLayer:
         """
         if inspect.iscoroutinefunction(func):
             return await func(*args, **kwargs)
-        else:
-            # Run sync function in thread pool
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, func, *args, **kwargs)
+        # Run sync function in thread pool
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, func, *args, **kwargs)
 
     def execute_sync(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute a sync function.
@@ -118,8 +120,7 @@ class DatabaseCompatibilityLayer:
         if inspect.iscoroutinefunction(func):
             # Run async function synchronously
             return asyncio.run(func(*args, **kwargs))
-        else:
-            return func(*args, **kwargs)
+        return func(*args, **kwargs)
 
     def execute(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute function in appropriate mode.
@@ -135,15 +136,14 @@ class DatabaseCompatibilityLayer:
         if self.should_use_async():
             if inspect.iscoroutinefunction(func):
                 return asyncio.run(func(*args, **kwargs))
-            else:
-                # Wrap sync function for async execution
-                async def wrapper() -> Any:
-                    loop = asyncio.get_event_loop()
-                    return await loop.run_in_executor(None, func, *args, **kwargs)
 
-                return asyncio.run(wrapper())
-        else:
-            return self.execute_sync(func, *args, **kwargs)
+            # Wrap sync function for async execution
+            async def wrapper() -> Any:
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(None, func, *args, **kwargs)
+
+            return asyncio.run(wrapper())
+        return self.execute_sync(func, *args, **kwargs)
 
     def close(self) -> None:
         """Close all database connections."""
@@ -171,12 +171,11 @@ def compatibility_wrapper(use_async: bool = True) -> Callable[..., Any]:
                     return await loop.run_in_executor(None, func, *args, **kwargs)
 
                 return asyncio.run(async_wrapper())
-            elif not use_async and inspect.iscoroutinefunction(func):
+            if not use_async and inspect.iscoroutinefunction(func):
                 # Convert async function to sync
                 return asyncio.run(func(*args, **kwargs))
-            else:
-                # Execute as-is
-                return func(*args, **kwargs)
+            # Execute as-is
+            return func(*args, **kwargs)
 
         # Handle async functions properly
         if inspect.iscoroutinefunction(func):
@@ -185,9 +184,8 @@ def compatibility_wrapper(use_async: bool = True) -> Callable[..., Any]:
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 if use_async:
                     return await func(*args, **kwargs)
-                else:
-                    # This branch shouldn't normally be hit for async functions
-                    return await func(*args, **kwargs)
+                # This branch shouldn't normally be hit for async functions
+                return await func(*args, **kwargs)
 
             return async_wrapper
 
@@ -254,8 +252,7 @@ class RepositoryCompatibilityMixin:
         """
         if self.compat.should_use_async():
             return asyncio.run(self._execute_async(operation, *args, **kwargs))
-        else:
-            return self._execute_sync(operation, *args, **kwargs)
+        return self._execute_sync(operation, *args, **kwargs)
 
 
 # Feature flag management
@@ -268,7 +265,7 @@ def set_async_mode(enabled: bool) -> None:
     Args:
         enabled: Whether to enable async mode
     """
-    global _ASYNC_ENABLED
+    global _ASYNC_ENABLED  # noqa: PLW0603 - Module-level singleton pattern for async mode setting
     _ASYNC_ENABLED = enabled
     logger.info(f"Async mode set to: {enabled}")
 

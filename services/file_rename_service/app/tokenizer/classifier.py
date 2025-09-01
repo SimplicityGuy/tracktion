@@ -6,6 +6,13 @@ import re
 
 from .models import Token, TokenCategory
 
+# Constants
+CONFIDENCE_DIFFERENCE_THRESHOLD = 0.2  # Minimum confidence difference for clear winner
+MIN_YEAR = 1900  # Minimum valid year for date tokens
+MAX_YEAR = 2100  # Maximum valid year for date tokens
+MAX_TRACK_NUMBER = 99  # Maximum typical track number
+MAX_FORMAT_ABBREVIATION_LENGTH = 5  # Maximum length for format abbreviations
+
 
 class TokenClassifier:
     """Classifies tokens into categories with confidence scoring."""
@@ -34,21 +41,31 @@ class TokenClassifier:
             ],
             TokenCategory.VENUE: [
                 (
-                    re.compile(r"\b(Theatre|Theater|Arena|Stadium|Hall|Club|Ballroom|Pavilion|Center|Centre)\b", re.I),
+                    re.compile(
+                        r"\b(Theatre|Theater|Arena|Stadium|Hall|Club|Ballroom|Pavilion|Center|Centre)\b",
+                        re.I,
+                    ),
                     0.95,
                 ),  # Higher confidence for venue keywords
-                (re.compile(r"^(The\s+)?\w+\s+(Room|Stage|Lounge|Bar|Pub)$", re.I), 0.85),
+                (
+                    re.compile(r"^(The\s+)?\w+\s+(Room|Stage|Lounge|Bar|Pub)$", re.I),
+                    0.85,
+                ),
                 (re.compile(r"^\w+\'s(\s+\w+)?$", re.I), 0.75),  # "X's" or "X's Y"
                 (
                     re.compile(
-                        r"\w+\s+(Theatre|Theater|Arena|Stadium|Hall|Club|Ballroom|Pavilion|Center|Centre)", re.I
+                        r"\w+\s+(Theatre|Theater|Arena|Stadium|Hall|Club|Ballroom|Pavilion|Center|Centre)",
+                        re.I,
                     ),
                     0.92,
                 ),  # "X Arena" format - high confidence
             ],
             TokenCategory.DATE: [
                 (re.compile(r"^\d{4}$"), 0.6),  # Year only
-                (re.compile(r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)", re.I), 0.8),  # Month names
+                (
+                    re.compile(r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)", re.I),
+                    0.8,
+                ),  # Month names
                 (re.compile(r"^\d{1,2}(st|nd|rd|th)$", re.I), 0.7),  # Day with suffix
             ],
             TokenCategory.QUALITY: [
@@ -64,7 +81,10 @@ class TokenClassifier:
             TokenCategory.TOUR: [
                 (re.compile(r"\b\d{4}\s*tour\b", re.I), 0.95),
                 (re.compile(r"\b(world|european|american|asian)\s*tour\b", re.I), 0.9),
-                (re.compile(r"\b(spring|summer|fall|autumn|winter)\s*\d{4}\b", re.I), 0.85),
+                (
+                    re.compile(r"\b(spring|summer|fall|autumn|winter)\s*\d{4}\b", re.I),
+                    0.85,
+                ),
             ],
         }
 
@@ -125,7 +145,11 @@ class TokenClassifier:
         return best_category, best_confidence
 
     def _adjust_confidence_with_context(
-        self, text: str, category: TokenCategory, confidence: float, context: list[Token]
+        self,
+        text: str,
+        category: TokenCategory,
+        confidence: float,
+        context: list[Token],
     ) -> float:
         """
         Adjust confidence based on surrounding context.
@@ -183,7 +207,10 @@ class TokenClassifier:
         sorted_candidates = sorted(candidates, key=lambda c: c[1], reverse=True)
 
         # If top confidence is significantly higher, use it
-        if len(sorted_candidates) > 1 and sorted_candidates[0][1] - sorted_candidates[1][1] > 0.2:
+        if (
+            len(sorted_candidates) > 1
+            and sorted_candidates[0][1] - sorted_candidates[1][1] > CONFIDENCE_DIFFERENCE_THRESHOLD
+        ):
             return sorted_candidates[0][0]
 
         # Check ambiguous resolution rules
@@ -237,9 +264,9 @@ class TokenClassifier:
         # Check if it looks like a number (possible track/year)
         if value.isdigit():
             num = int(value)
-            if 1900 <= num <= 2100:
+            if MIN_YEAR <= num <= MAX_YEAR:
                 return TokenCategory.DATE
-            elif 1 <= num <= 99:
+            if 1 <= num <= MAX_TRACK_NUMBER:
                 return TokenCategory.TRACK
 
         # Check for common patterns
@@ -247,7 +274,7 @@ class TokenClassifier:
             return None  # Special characters, likely not a valid token
 
         # If mostly uppercase, might be an abbreviation or format
-        if value.isupper() and len(value) <= 5:
+        if value.isupper() and len(value) <= MAX_FORMAT_ABBREVIATION_LENGTH:
             return TokenCategory.FORMAT
 
         # Default to artist for proper-looking names

@@ -1,23 +1,25 @@
 """Adaptive parser framework with self-healing capabilities."""
 
+import asyncio
+import contextlib
+import hashlib
 import json
 import logging
-import asyncio
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+
 from bs4 import BeautifulSoup
-import hashlib
 
 from services.tracklist_service.src.scrapers.resilient_extractor import (
-    ResilientExtractor,
-    ExtractionStrategy,
     CSSStrategy,
-    XPathStrategy,
-    TextStrategy,
-    RegexStrategy,
     ExtractedData,
+    ExtractionStrategy,
+    RegexStrategy,
+    ResilientExtractor,
+    TextStrategy,
+    XPathStrategy,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,11 +33,11 @@ class ParserVersion:
     created_at: datetime
     success_rate: float = 0.0
     usage_count: int = 0
-    strategies: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    strategies: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     active: bool = True
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "version": self.version,
@@ -57,7 +59,7 @@ class ExtractionPattern:
     selector: str
     success_count: int = 0
     failure_count: int = 0
-    last_success: Optional[datetime] = None
+    last_success: datetime | None = None
     confidence: float = 0.0
 
     @property
@@ -89,14 +91,14 @@ class ABTestResult:
 
     test_id: str
     field: str
-    strategy_a: Dict[str, Any]
-    strategy_b: Dict[str, Any]
-    winner: Optional[str] = None
+    strategy_a: dict[str, Any]
+    strategy_b: dict[str, Any]
+    winner: str | None = None
     a_success_rate: float = 0.0
     b_success_rate: float = 0.0
     sample_size: int = 0
     confidence_level: float = 0.0
-    metadata: Dict[str, Any] = field(default_factory=dict)  # type: ignore
+    metadata: dict[str, Any] = field(default_factory=dict)  # type: ignore
 
 
 class AdaptiveParser:
@@ -104,7 +106,7 @@ class AdaptiveParser:
 
     def __init__(
         self,
-        config_path: Optional[Path] = None,
+        config_path: Path | None = None,
         learning_enabled: bool = True,
         hot_reload_interval: int = 60,
     ):
@@ -118,14 +120,14 @@ class AdaptiveParser:
         self.config_path = config_path or Path("config/parser_config.json")
         self.learning_enabled = learning_enabled
         self.hot_reload_interval = hot_reload_interval
-        self._config: Dict[str, Any] = {}
-        self._config_hash: Optional[str] = None
-        self._patterns: Dict[str, List[ExtractionPattern]] = {}
-        self._versions: Dict[str, ParserVersion] = {}
+        self._config: dict[str, Any] = {}
+        self._config_hash: str | None = None
+        self._patterns: dict[str, list[ExtractionPattern]] = {}
+        self._versions: dict[str, ParserVersion] = {}
         self._current_version = "1.0.0"
         self._extractor = ResilientExtractor()
-        self._hot_reload_tasks: List[asyncio.Task[Any]] = []
-        self._ab_tests: Dict[str, ABTestResult] = {}
+        self._hot_reload_tasks: list[asyncio.Task[Any]] = []
+        self._ab_tests: dict[str, ABTestResult] = {}
 
         # Load initial configuration
         self._load_config()
@@ -133,7 +135,7 @@ class AdaptiveParser:
     def _load_config(self) -> None:
         """Load configuration from file."""
         if self.config_path.exists():
-            with open(self.config_path, "r") as f:
+            with self.config_path.open() as f:
                 content = f.read()
                 self._config = json.loads(content)
                 self._config_hash = hashlib.md5(content.encode()).hexdigest()
@@ -150,7 +152,7 @@ class AdaptiveParser:
                 strategies=self._config.get("strategies", {}),
             )
 
-    def _get_default_config(self) -> Dict[str, Any]:
+    def _get_default_config(self) -> dict[str, Any]:
         """Get default parser configuration."""
         return {
             "version": "1.0.0",
@@ -159,11 +161,21 @@ class AdaptiveParser:
                     "title": [
                         {"type": "CSS", "selector": ".result-title"},
                         {"type": "CSS", "selector": "h3 a"},
-                        {"type": "XPath", "selector": "//div[@class='result']//a/text()"},
+                        {
+                            "type": "XPath",
+                            "selector": "//div[@class='result']//a/text()",
+                        },
                     ],
                     "url": [
-                        {"type": "CSS", "selector": ".result-link", "attribute": "href"},
-                        {"type": "XPath", "selector": "//a[@class='result-link']/@href"},
+                        {
+                            "type": "CSS",
+                            "selector": ".result-link",
+                            "attribute": "href",
+                        },
+                        {
+                            "type": "XPath",
+                            "selector": "//a[@class='result-link']/@href",
+                        },
                     ],
                     "date": [
                         {"type": "CSS", "selector": ".result-date"},
@@ -173,7 +185,10 @@ class AdaptiveParser:
                 "tracklist": {
                     "tracks": [
                         {"type": "CSS", "selector": ".track-item"},
-                        {"type": "XPath", "selector": "//div[@class='tracklist']//div[@class='track']"},
+                        {
+                            "type": "XPath",
+                            "selector": "//div[@class='tracklist']//div[@class='track']",
+                        },
                     ],
                     "time": [
                         {"type": "CSS", "selector": ".track-time"},
@@ -197,12 +212,12 @@ class AdaptiveParser:
         """Save configuration to file."""
         try:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.config_path, "w") as f:
+            with Path(self.config_path).open("w") as f:
                 json.dump(self._config, f, indent=2)
-        except (OSError, IOError) as e:
+        except OSError as e:
             logger.error(f"Failed to save configuration: {e}")
 
-    def learn_patterns(self, successful_extractions: List[dict[str, Any]]) -> None:
+    def learn_patterns(self, successful_extractions: list[dict[str, Any]]) -> None:
         """Learn from successful extractions.
 
         Args:
@@ -294,7 +309,7 @@ class AdaptiveParser:
             return False
 
         try:
-            with open(self.config_path, "r") as f:
+            with self.config_path.open() as f:
                 content = f.read()
                 new_hash = hashlib.md5(content.encode()).hexdigest()
 
@@ -333,13 +348,11 @@ class AdaptiveParser:
         """Stop hot reload monitoring."""
         for task in self._hot_reload_tasks:
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
         self._hot_reload_tasks.clear()
 
-    def ab_test_strategies(self, strategies: List[ExtractionStrategy]) -> ABTestResult:
+    def ab_test_strategies(self, strategies: list[ExtractionStrategy]) -> ABTestResult:
         """Run A/B test on extraction strategies.
 
         Args:
@@ -387,11 +400,10 @@ class AdaptiveParser:
                 test.a_success_rate = (test.a_success_rate * (test.sample_size - 1) + 1) / test.sample_size
             else:
                 test.a_success_rate = (test.a_success_rate * (test.sample_size - 1)) / test.sample_size
+        elif success:
+            test.b_success_rate = (test.b_success_rate * (test.sample_size - 1) + 1) / test.sample_size
         else:
-            if success:
-                test.b_success_rate = (test.b_success_rate * (test.sample_size - 1) + 1) / test.sample_size
-            else:
-                test.b_success_rate = (test.b_success_rate * (test.sample_size - 1)) / test.sample_size
+            test.b_success_rate = (test.b_success_rate * (test.sample_size - 1)) / test.sample_size
 
         # Determine winner if enough samples
         if test.sample_size >= self._config.get("ab_testing", {}).get("sample_size", 100):
@@ -407,8 +419,12 @@ class AdaptiveParser:
                 )
 
     def start_ab_test(
-        self, field: str, strategy_a: Dict[str, Any], strategy_b: Dict[str, Any], sample_size: int = 100
-    ) -> Optional[ABTestResult]:
+        self,
+        field: str,
+        strategy_a: dict[str, Any],
+        strategy_b: dict[str, Any],
+        sample_size: int = 100,
+    ) -> ABTestResult | None:
         """Start A/B test for strategies.
 
         Args:
@@ -455,13 +471,12 @@ class AdaptiveParser:
                 test.a_success_rate = (test.a_success_rate * (test.sample_size - 1) + 1) / test.sample_size
             else:
                 test.a_success_rate = (test.a_success_rate * (test.sample_size - 1)) / test.sample_size
+        elif success:
+            test.b_success_rate = (test.b_success_rate * (test.sample_size - 1) + 1) / test.sample_size
         else:
-            if success:
-                test.b_success_rate = (test.b_success_rate * (test.sample_size - 1) + 1) / test.sample_size
-            else:
-                test.b_success_rate = (test.b_success_rate * (test.sample_size - 1)) / test.sample_size
+            test.b_success_rate = (test.b_success_rate * (test.sample_size - 1)) / test.sample_size
 
-    def get_active_ab_tests(self) -> List[ABTestResult]:
+    def get_active_ab_tests(self) -> list[ABTestResult]:
         """Get list of active A/B tests.
 
         Returns:
@@ -496,14 +511,13 @@ class AdaptiveParser:
         diff = abs(rate_a - rate_b)
         if diff > 0.2:
             return 0.99
-        elif diff > 0.1:
+        if diff > 0.1:
             return 0.95
-        elif diff > 0.05:
+        if diff > 0.05:
             return 0.90
-        else:
-            return 0.80
+        return 0.80
 
-    def get_strategies_for_field(self, page_type: str, field: str) -> List[ExtractionStrategy]:
+    def get_strategies_for_field(self, page_type: str, field: str) -> list[ExtractionStrategy]:
         """Get extraction strategies for a field.
 
         Args:
@@ -516,12 +530,11 @@ class AdaptiveParser:
         strategies = []
 
         # Get configured strategies
-        if page_type in self._config.get("strategies", {}):
-            if field in self._config["strategies"][page_type]:
-                for strategy_config in self._config["strategies"][page_type][field]:
-                    strategy = self._create_strategy(strategy_config)
-                    if strategy:
-                        strategies.append(strategy)
+        if page_type in self._config.get("strategies", {}) and field in self._config["strategies"][page_type]:
+            for strategy_config in self._config["strategies"][page_type][field]:
+                strategy = self._create_strategy(strategy_config)
+                if strategy:
+                    strategies.append(strategy)
 
         # Add learned patterns
         pattern_key = f"{page_type}.{field}"
@@ -539,7 +552,7 @@ class AdaptiveParser:
 
         return strategies
 
-    def _create_strategy(self, config: Dict[str, Any]) -> Optional[ExtractionStrategy]:
+    def _create_strategy(self, config: dict[str, Any]) -> ExtractionStrategy | None:
         """Create extraction strategy from configuration.
 
         Args:
@@ -557,18 +570,18 @@ class AdaptiveParser:
 
         if strategy_type == "CSS":
             return CSSStrategy(selector, attribute)
-        elif strategy_type == "XPATH":
+        if strategy_type == "XPATH":
             return XPathStrategy(selector)
-        elif strategy_type == "TEXT":
+        if strategy_type == "TEXT":
             context = config.get("context")
             return TextStrategy(selector, context)
-        elif strategy_type == "REGEX":
+        if strategy_type == "REGEX":
             group = config.get("group", 0)
             return RegexStrategy(selector, group)
 
         return None
 
-    def create_version(self, version: str, strategies: Dict[str, Any]) -> ParserVersion:
+    def create_version(self, version: str, strategies: dict[str, Any]) -> ParserVersion:
         """Create a new parser version.
 
         Args:
@@ -606,7 +619,7 @@ class AdaptiveParser:
         logger.info(f"Rolled back to version {version}")
         return True
 
-    def get_version_history(self) -> List[ParserVersion]:
+    def get_version_history(self) -> list[ParserVersion]:
         """Get parser version history.
 
         Returns:
@@ -651,7 +664,7 @@ class AdaptiveParser:
         self._save_config()
         logger.info(f"Rolled back to version {version}")
 
-    def _create_strategy_from_config(self, config: Dict[str, Any]) -> Optional[ExtractionStrategy]:
+    def _create_strategy_from_config(self, config: dict[str, Any]) -> ExtractionStrategy | None:
         """Create extraction strategy from configuration.
 
         Args:
@@ -669,20 +682,19 @@ class AdaptiveParser:
         try:
             if strategy_type == "CSS":
                 return CSSStrategy(selector=selector, attribute=config.get("attribute", "text"))
-            elif strategy_type == "XPATH":
+            if strategy_type == "XPATH":
                 return XPathStrategy(selector=selector)
-            elif strategy_type == "TEXT":
+            if strategy_type == "TEXT":
                 return TextStrategy(pattern=selector, context=config.get("context"))
-            elif strategy_type == "REGEX":
+            if strategy_type == "REGEX":
                 return RegexStrategy(pattern=selector, group=config.get("group", 0))
-            else:
-                logger.warning(f"Unknown strategy type: {strategy_type}")
-                return None
+            logger.warning(f"Unknown strategy type: {strategy_type}")
+            return None
         except Exception as e:
             logger.error(f"Failed to create strategy: {e}")
             return None
 
-    def parse_with_adaptation(self, soup: BeautifulSoup, page_type: str, fields: List[str]) -> ExtractedData:
+    def parse_with_adaptation(self, soup: BeautifulSoup, page_type: str, fields: list[str]) -> ExtractedData:
         """Parse with adaptive strategies.
 
         Args:
@@ -790,9 +802,8 @@ class AdaptiveParser:
             return self._versions[self._current_version]
 
         # Return default version if no current version set
-        default_version = ParserVersion(
+        return ParserVersion(
             version="default",
             created_at=datetime.now(UTC),
             strategies=self._config.get("strategies", {}),
         )
-        return default_version

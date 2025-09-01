@@ -28,7 +28,10 @@ def mock_redis():
 @pytest.fixture
 def aggregator(mock_redis):
     """Create ResultAggregator instance with mock Redis."""
-    with patch("services.tracklist_service.src.aggregation.result_aggregator.Redis", return_value=mock_redis):
+    with patch(
+        "services.tracklist_service.src.aggregation.result_aggregator.Redis",
+        return_value=mock_redis,
+    ):
         agg = ResultAggregator()
         yield agg
 
@@ -64,7 +67,9 @@ class TestAggregationRule:
     def test_initialization(self):
         """Test rule initialization."""
         rule = AggregationRule(
-            field_path="data.price", aggregation_type=AggregationType.AVERAGE, output_name="avg_price"
+            field_path="data.price",
+            aggregation_type=AggregationType.AVERAGE,
+            output_name="avg_price",
         )
 
         assert rule.field_path == "data.price"
@@ -93,7 +98,10 @@ class TestResultAggregator:
 
     def test_initialization(self, mock_redis):
         """Test aggregator initialization."""
-        with patch("services.tracklist_service.src.aggregation.result_aggregator.Redis", return_value=mock_redis):
+        with patch(
+            "services.tracklist_service.src.aggregation.result_aggregator.Redis",
+            return_value=mock_redis,
+        ):
             agg = ResultAggregator()
 
         assert agg.redis == mock_redis
@@ -157,9 +165,17 @@ class TestResultAggregator:
     @pytest.mark.asyncio
     async def test_apply_aggregation_rule_count(self, aggregator):
         """Test COUNT aggregation."""
-        results = [{"data": {"price": 100}}, {"data": {"price": 200}}, {"data": {"price": 300}}]
+        results = [
+            {"data": {"price": 100}},
+            {"data": {"price": 200}},
+            {"data": {"price": 300}},
+        ]
 
-        rule = AggregationRule(field_path="data.price", aggregation_type=AggregationType.COUNT, output_name="count")
+        rule = AggregationRule(
+            field_path="data.price",
+            aggregation_type=AggregationType.COUNT,
+            output_name="count",
+        )
 
         value = await aggregator._apply_aggregation_rule(results, rule)
         assert value == 3
@@ -167,9 +183,17 @@ class TestResultAggregator:
     @pytest.mark.asyncio
     async def test_apply_aggregation_rule_sum(self, aggregator):
         """Test SUM aggregation."""
-        results = [{"data": {"price": 100}}, {"data": {"price": 200}}, {"data": {"price": 300}}]
+        results = [
+            {"data": {"price": 100}},
+            {"data": {"price": 200}},
+            {"data": {"price": 300}},
+        ]
 
-        rule = AggregationRule(field_path="data.price", aggregation_type=AggregationType.SUM, output_name="total")
+        rule = AggregationRule(
+            field_path="data.price",
+            aggregation_type=AggregationType.SUM,
+            output_name="total",
+        )
 
         value = await aggregator._apply_aggregation_rule(results, rule)
         assert value == 600
@@ -177,9 +201,17 @@ class TestResultAggregator:
     @pytest.mark.asyncio
     async def test_apply_aggregation_rule_average(self, aggregator):
         """Test AVERAGE aggregation."""
-        results = [{"data": {"price": 100}}, {"data": {"price": 200}}, {"data": {"price": 300}}]
+        results = [
+            {"data": {"price": 100}},
+            {"data": {"price": 200}},
+            {"data": {"price": 300}},
+        ]
 
-        rule = AggregationRule(field_path="data.price", aggregation_type=AggregationType.AVERAGE, output_name="avg")
+        rule = AggregationRule(
+            field_path="data.price",
+            aggregation_type=AggregationType.AVERAGE,
+            output_name="avg",
+        )
 
         value = await aggregator._apply_aggregation_rule(results, rule)
         assert value == 200
@@ -187,7 +219,11 @@ class TestResultAggregator:
     @pytest.mark.asyncio
     async def test_apply_aggregation_rule_with_filter(self, aggregator):
         """Test aggregation with filter."""
-        results = [{"data": {"price": 100}}, {"data": {"price": -50}}, {"data": {"price": 200}}]
+        results = [
+            {"data": {"price": 100}},
+            {"data": {"price": -50}},
+            {"data": {"price": 200}},
+        ]
 
         rule = AggregationRule(
             field_path="data.price",
@@ -257,7 +293,12 @@ class TestResultAggregator:
         """Test finding numeric fields in nested dict."""
         data = {
             "id": "123",
-            "data": {"price": 100.5, "quantity": 5, "name": "Product", "metrics": {"views": 1000, "clicks": 50}},
+            "data": {
+                "price": 100.5,
+                "quantity": 5,
+                "name": "Product",
+                "metrics": {"views": 1000, "clicks": 50},
+            },
         }
 
         fields = aggregator._find_numeric_fields(data)

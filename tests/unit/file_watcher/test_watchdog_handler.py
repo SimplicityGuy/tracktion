@@ -1,7 +1,5 @@
 """Unit tests for watchdog event handler."""
 
-import os
-
 # Import the handler to test
 import sys
 import tempfile
@@ -18,7 +16,10 @@ from watchdog.events import (
     FileMovedEvent,
 )
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "services" / "file_watcher" / "src"))
+sys.path.insert(
+    0,
+    str(Path(__file__).parent.parent.parent.parent / "services" / "file_watcher" / "src"),
+)
 from watchdog_handler import TracktionEventHandler
 
 
@@ -181,7 +182,7 @@ class TestTracktionEventHandler:
             assert "size_bytes" in file_info
             assert "modified_time" in file_info
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
     def test_send_event_publisher_failure(self, handler, mock_publisher):
         """Test handling of publisher failure."""

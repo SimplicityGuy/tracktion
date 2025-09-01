@@ -5,17 +5,24 @@ import hmac
 import json
 import logging
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Dict, List, Optional, Any
-from ipaddress import IPv4Address, IPv6Address, AddressValueError
-import redis.asyncio as redis
+from ipaddress import AddressValueError, IPv4Address, IPv6Address
+from typing import Any
 
+import redis.asyncio as redis
 from fastapi import Request, Response
 
-from .models import SecurityConfig, IPAccessRule, AccessRuleType, AuditLog, AuditEventType
-from .abuse_detector import AbuseDetector, AbuseScore  # type: ignore[attr-defined]
-from ..auth.models import User
+from src.auth.models import User
+
+from .abuse_detector import AbuseDetector, AbuseScore
+from .models import (
+    AccessRuleType,
+    AuditEventType,
+    AuditLog,
+    IPAccessRule,
+    SecurityConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +30,7 @@ logger = logging.getLogger(__name__)
 class SecurityManager:
     """Comprehensive security management system."""
 
-    def __init__(self, redis_client: redis.Redis, config: Optional[SecurityConfig] = None):
+    def __init__(self, redis_client: redis.Redis, config: SecurityConfig | None = None):
         """Initialize security manager.
 
         Args:
@@ -42,7 +49,7 @@ class SecurityManager:
     async def verify_request_signature(
         self,
         request: Request,
-        secret: Optional[str] = None,
+        secret: str | None = None,
         timestamp_header: str = "X-Timestamp",
         signature_header: str = "X-Signature",
     ) -> bool:
@@ -68,8 +75,8 @@ class SecurityManager:
 
             # Check timestamp age
             try:
-                request_time = datetime.fromtimestamp(float(timestamp), timezone.utc)
-                age = (datetime.now(timezone.utc) - request_time).total_seconds()
+                request_time = datetime.fromtimestamp(float(timestamp), UTC)
+                age = (datetime.now(UTC) - request_time).total_seconds()
 
                 if age > self.config.max_signature_age:
                     logger.warning(f"Request signature too old: {age}s from {self._get_client_ip(request)}")
@@ -101,7 +108,10 @@ class SecurityManager:
             if not is_valid:
                 logger.warning(f"Invalid signature from {self._get_client_ip(request)}")
                 await self.log_security_violation(
-                    request, None, "invalid_signature", {"expected_format": "HMAC-SHA256", "timestamp": timestamp}
+                    request,
+                    None,
+                    "invalid_signature",
+                    {"expected_format": "HMAC-SHA256", "timestamp": timestamp},
                 )
 
             return is_valid
@@ -110,7 +120,7 @@ class SecurityManager:
             logger.error(f"Error verifying request signature: {e}")
             return False
 
-    async def check_ip_access(self, ip: str, user: Optional[User] = None) -> bool:
+    async def check_ip_access(self, ip: str, user: User | None = None) -> bool:
         """Check if IP address is allowed access.
 
         Args:
@@ -132,7 +142,7 @@ class SecurityManager:
                 return False
 
             # Get IP access rules from Redis
-            hgetall_result = await self.redis.hgetall(f"{self.ip_rules_key}:{normalized_ip}")  # type: ignore
+            hgetall_result = await self.redis.hgetall(f"{self.ip_rules_key}:{normalized_ip}")
             rules_data = dict(hgetall_result) if hgetall_result else {}
 
             if rules_data:
@@ -141,14 +151,13 @@ class SecurityManager:
                 # Check if rule is active and not expired
                 if not rule.is_active or rule.is_expired():
                     # Clean up expired/inactive rule
-                    await self.redis.hdel(self.ip_rules_key, normalized_ip)  # type: ignore
-                else:
-                    # Apply rule
-                    if rule.rule_type == AccessRuleType.BLACKLIST:
-                        logger.info(f"IP {ip} blocked by blacklist rule: {rule.reason}")
-                        return False
-                    elif rule.rule_type == AccessRuleType.WHITELIST:
-                        return True
+                    await self.redis.hdel(self.ip_rules_key, normalized_ip)
+                # Apply rule
+                elif rule.rule_type == AccessRuleType.BLACKLIST:
+                    logger.info(f"IP {ip} blocked by blacklist rule: {rule.reason}")
+                    return False
+                elif rule.rule_type == AccessRuleType.WHITELIST:
+                    return True
 
             # Check global whitelist mode
             if self.config.ip_whitelist_enabled:
@@ -174,9 +183,9 @@ class SecurityManager:
         self,
         ip: str,
         rule_type: AccessRuleType,
-        user_id: Optional[str] = None,
-        reason: Optional[str] = None,
-        expires_in_hours: Optional[int] = None,
+        user_id: str | None = None,
+        reason: str | None = None,
+        expires_in_hours: int | None = None,
     ) -> IPAccessRule:
         """Add IP access rule.
 
@@ -194,24 +203,28 @@ class SecurityManager:
             # Normalize IP
             try:
                 normalized_ip = str(IPv4Address(ip)) if "." in ip else str(IPv6Address(ip))
-            except AddressValueError:
-                raise ValueError(f"Invalid IP address format: {ip}")
+            except AddressValueError as e:
+                raise ValueError(f"Invalid IP address format: {ip}") from e
 
             # Create rule
             expires_at = None
             if expires_in_hours:
-                expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_in_hours)
+                expires_at = datetime.now(UTC) + timedelta(hours=expires_in_hours)
 
             rule = IPAccessRule(
-                ip_address=normalized_ip, rule_type=rule_type, user_id=user_id, reason=reason, expires_at=expires_at
+                ip_address=normalized_ip,
+                rule_type=rule_type,
+                user_id=user_id,
+                reason=reason,
+                expires_at=expires_at,
             )
 
             # Store in Redis
-            await self.redis.hset(f"{self.ip_rules_key}:{normalized_ip}", mapping=rule.to_dict())  # type: ignore
+            await self.redis.hset(f"{self.ip_rules_key}:{normalized_ip}", mapping=rule.to_dict())
 
             # Set expiration if specified
             if expires_at:
-                ttl = int((expires_at - datetime.now(timezone.utc)).total_seconds())
+                ttl = int((expires_at - datetime.now(UTC)).total_seconds())
                 await self.redis.expire(f"{self.ip_rules_key}:{normalized_ip}", ttl)
 
             logger.info(f"Added {rule_type.value} rule for IP {ip}: {reason}")
@@ -234,17 +247,16 @@ class SecurityManager:
             # Normalize IP
             try:
                 normalized_ip = str(IPv4Address(ip)) if "." in ip else str(IPv6Address(ip))
-            except AddressValueError:
-                raise ValueError(f"Invalid IP address format: {ip}")
+            except AddressValueError as e:
+                raise ValueError(f"Invalid IP address format: {ip}") from e
 
             result = await self.redis.delete(f"{self.ip_rules_key}:{normalized_ip}")
 
             if result > 0:
                 logger.info(f"Removed IP rule for {ip}")
                 return True
-            else:
-                logger.info(f"No IP rule found for {ip}")
-                return False
+            logger.info(f"No IP rule found for {ip}")
+            return False
 
         except Exception as e:
             logger.error(f"Error removing IP rule for {ip}: {e}")
@@ -273,7 +285,11 @@ class SecurityManager:
         return await self.abuse_detector.analyze_user_behavior(user, request)
 
     async def auto_block_user(
-        self, user: User, reason: str, duration_hours: int = 24, abuse_score: Optional[AbuseScore] = None
+        self,
+        user: User,
+        reason: str,
+        duration_hours: int = 24,
+        abuse_score: AbuseScore | None = None,
     ) -> None:
         """Automatically block user for security violations.
 
@@ -284,13 +300,13 @@ class SecurityManager:
             abuse_score: Abuse score that triggered the block
         """
         try:
-            block_until = datetime.now(timezone.utc) + timedelta(hours=duration_hours)
+            block_until = datetime.now(UTC) + timedelta(hours=duration_hours)
 
             # Store block in Redis
             block_data = {
                 "user_id": user.id,
                 "reason": reason,
-                "blocked_at": datetime.now(timezone.utc).isoformat(),
+                "blocked_at": datetime.now(UTC).isoformat(),
                 "blocked_until": block_until.isoformat(),
                 "abuse_score": abuse_score.to_dict() if abuse_score else None,
             }
@@ -298,10 +314,10 @@ class SecurityManager:
             await self.redis.hset(
                 f"{self.blocked_users_key}:{user.id}",
                 mapping={k: json.dumps(v) if isinstance(v, dict) else str(v) for k, v in block_data.items()},
-            )  # type: ignore
+            )
 
             # Set expiration
-            ttl = int((block_until - datetime.now(timezone.utc)).total_seconds())
+            ttl = int((block_until - datetime.now(UTC)).total_seconds())
             await self.redis.expire(f"{self.blocked_users_key}:{user.id}", ttl)
 
             logger.warning(f"Auto-blocked user {user.id} for {duration_hours}h: {reason}")
@@ -309,7 +325,7 @@ class SecurityManager:
         except Exception as e:
             logger.error(f"Error auto-blocking user {user.id}: {e}")
 
-    async def is_user_blocked(self, user: User) -> tuple[bool, Optional[str]]:
+    async def is_user_blocked(self, user: User) -> tuple[bool, str | None]:
         """Check if user is currently blocked.
 
         Args:
@@ -319,7 +335,7 @@ class SecurityManager:
             Tuple of (is_blocked, reason)
         """
         try:
-            hgetall_result = await self.redis.hgetall(f"{self.blocked_users_key}:{user.id}")  # type: ignore
+            hgetall_result = await self.redis.hgetall(f"{self.blocked_users_key}:{user.id}")
             block_data = dict(hgetall_result) if hgetall_result else {}
 
             if not block_data:
@@ -329,7 +345,7 @@ class SecurityManager:
             blocked_until_str = block_data.get("blocked_until")
             if blocked_until_str:
                 blocked_until = datetime.fromisoformat(blocked_until_str)
-                if datetime.now(timezone.utc) > blocked_until:
+                if datetime.now(UTC) > blocked_until:
                     # Block expired, clean up
                     await self.redis.delete(f"{self.blocked_users_key}:{user.id}")
                     return False, None
@@ -345,9 +361,9 @@ class SecurityManager:
         self,
         request: Request,
         response: Response,
-        user: Optional[User] = None,
-        api_key_id: Optional[str] = None,
-        jwt_token_id: Optional[str] = None,
+        user: User | None = None,
+        api_key_id: str | None = None,
+        jwt_token_id: str | None = None,
     ) -> None:
         """Log API access for audit trail.
 
@@ -374,7 +390,7 @@ class SecurityManager:
                 status_code=response.status_code,
                 api_key_id=api_key_id,
                 jwt_token_id=jwt_token_id,
-                authentication_method="api_key" if api_key_id else "jwt" if jwt_token_id else "none",
+                authentication_method=("api_key" if api_key_id else "jwt" if jwt_token_id else "none"),
             )
 
             # Add request/response size if available
@@ -382,24 +398,31 @@ class SecurityManager:
                 audit_log.request_size = len(request._body)
 
             # Store in Redis with day-based partitioning
-            date_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            date_key = datetime.now(UTC).strftime("%Y-%m-%d")
             log_key = f"{self.audit_logs_key}:{date_key}:{audit_log.event_id}"
 
-            await self.redis.hset(log_key, mapping=audit_log.to_dict())  # type: ignore
+            await self.redis.hset(log_key, mapping=audit_log.to_dict())
 
             # Set expiration (90 days)
             await self.redis.expire(log_key, 90 * 24 * 3600)
 
             # Add to sorted set for time-based queries
-            timestamp = datetime.now(timezone.utc).timestamp()
-            await self.redis.zadd(f"{self.audit_logs_key}:timeline:{date_key}", {audit_log.event_id: timestamp})
+            timestamp = datetime.now(UTC).timestamp()
+            await self.redis.zadd(
+                f"{self.audit_logs_key}:timeline:{date_key}",
+                {audit_log.event_id: timestamp},
+            )
             await self.redis.expire(f"{self.audit_logs_key}:timeline:{date_key}", 90 * 24 * 3600)
 
         except Exception as e:
             logger.error(f"Error logging API access: {e}")
 
     async def log_security_violation(
-        self, request: Request, user: Optional[User], violation_type: str, details: Dict[str, Any]
+        self,
+        request: Request,
+        user: User | None,
+        violation_type: str,
+        details: dict[str, Any],
     ) -> None:
         """Log security violation.
 
@@ -428,16 +451,17 @@ class SecurityManager:
             audit_log.add_tag(violation_type)
 
             # Store with higher priority (shorter key for faster access)
-            date_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            date_key = datetime.now(UTC).strftime("%Y-%m-%d")
             log_key = f"{self.audit_logs_key}:violations:{date_key}:{audit_log.event_id}"
 
-            await self.redis.hset(log_key, mapping=audit_log.to_dict())  # type: ignore
+            await self.redis.hset(log_key, mapping=audit_log.to_dict())
             await self.redis.expire(log_key, 90 * 24 * 3600)
 
             # Add to violations timeline
-            timestamp = datetime.now(timezone.utc).timestamp()
+            timestamp = datetime.now(UTC).timestamp()
             await self.redis.zadd(
-                f"{self.audit_logs_key}:violations:timeline:{date_key}", {audit_log.event_id: timestamp}
+                f"{self.audit_logs_key}:violations:timeline:{date_key}",
+                {audit_log.event_id: timestamp},
             )
             await self.redis.expire(f"{self.audit_logs_key}:violations:timeline:{date_key}", 90 * 24 * 3600)
 
@@ -446,12 +470,12 @@ class SecurityManager:
 
     async def get_audit_logs(
         self,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        event_type: Optional[AuditEventType] = None,
-        user_id: Optional[str] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        event_type: AuditEventType | None = None,
+        user_id: str | None = None,
         limit: int = 100,
-    ) -> List[AuditLog]:
+    ) -> list[AuditLog]:
         """Retrieve audit logs with filters.
 
         Args:
@@ -466,11 +490,11 @@ class SecurityManager:
         """
         try:
             if not start_date:
-                start_date = datetime.now(timezone.utc) - timedelta(days=1)
+                start_date = datetime.now(UTC) - timedelta(days=1)
             if not end_date:
-                end_date = datetime.now(timezone.utc)
+                end_date = datetime.now(UTC)
 
-            logs: List[AuditLog] = []
+            logs: list[AuditLog] = []
             current_date = start_date.date()
             end_date_date = end_date.date()
 
@@ -486,7 +510,7 @@ class SecurityManager:
 
                 for log_id in log_ids:
                     log_key = f"{self.audit_logs_key}:{date_key}:{log_id}"
-                    hgetall_result = await self.redis.hgetall(log_key)  # type: ignore
+                    hgetall_result = await self.redis.hgetall(log_key)
                     log_data = dict(hgetall_result) if hgetall_result else {}
 
                     if log_data:
@@ -529,7 +553,7 @@ class SecurityManager:
 
         return "unknown"
 
-    async def _get_active_rules(self, rule_type: AccessRuleType) -> List[IPAccessRule]:
+    async def _get_active_rules(self, rule_type: AccessRuleType) -> list[IPAccessRule]:
         """Get all active rules of specified type."""
         try:
             # In a production system, this would query a database
@@ -538,7 +562,7 @@ class SecurityManager:
             pattern = f"{self.ip_rules_key}:*"
 
             async for key in self.redis.scan_iter(match=pattern):
-                hgetall_result = await self.redis.hgetall(key)  # type: ignore
+                hgetall_result = await self.redis.hgetall(key)
                 rule_data = dict(hgetall_result) if hgetall_result else {}
                 if rule_data:
                     rule = IPAccessRule.from_dict(rule_data)
@@ -551,7 +575,7 @@ class SecurityManager:
             logger.error(f"Error getting active {rule_type.value} rules: {e}")
             return []
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Check security manager health.
 
         Returns:
@@ -575,7 +599,10 @@ class SecurityManager:
                     "abuse_detection_enabled": self.config.abuse_detection_enabled,
                     "audit_logging_enabled": self.config.audit_logging_enabled,
                 },
-                "stats": {"ip_rules": ip_rules_count, "blocked_users": blocked_users_count},
+                "stats": {
+                    "ip_rules": ip_rules_count,
+                    "blocked_users": blocked_users_count,
+                },
             }
 
         except Exception as e:

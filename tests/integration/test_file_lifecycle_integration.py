@@ -30,8 +30,8 @@ class TestFileLifecycleIntegration:
             conn.execute(text("CREATE TABLE IF NOT EXISTS pg_extension (extname TEXT)"))
             conn.commit()
 
-        SessionLocal = sessionmaker(bind=engine)
-        session = SessionLocal()
+        session_local = sessionmaker(bind=engine)
+        session = session_local()
         yield session
         session.close()
 
@@ -104,7 +104,10 @@ class TestFileLifecycleIntegration:
         """Test file deletion with cascade cleanup."""
         # Create test data
         recording = Recording(
-            file_path="/music/to_delete.mp3", file_name="to_delete.mp3", sha256_hash="hash123", xxh128_hash="hash456"
+            file_path="/music/to_delete.mp3",
+            file_name="to_delete.mp3",
+            sha256_hash="hash123",
+            xxh128_hash="hash456",
         )
         db_session.add(recording)
         db_session.commit()
@@ -142,7 +145,12 @@ class TestFileLifecycleIntegration:
         old_path = "/music/old_location/song.mp3"
         new_path = "/music/new_location/song.mp3"
 
-        recording = Recording(file_path=old_path, file_name="song.mp3", sha256_hash="samehash", xxh128_hash="samehash2")
+        recording = Recording(
+            file_path=old_path,
+            file_name="song.mp3",
+            sha256_hash="samehash",
+            xxh128_hash="samehash2",
+        )
         db_session.add(recording)
         db_session.commit()
 
@@ -173,7 +181,10 @@ class TestFileLifecycleIntegration:
         new_path = "/music/new_name.mp3"
 
         recording = Recording(
-            file_path=old_path, file_name="old_name.mp3", sha256_hash="renamehash", xxh128_hash="renamehash2"
+            file_path=old_path,
+            file_name="old_name.mp3",
+            sha256_hash="renamehash",
+            xxh128_hash="renamehash2",
         )
         db_session.add(recording)
         db_session.commit()
@@ -237,7 +248,10 @@ class TestFileLifecycleIntegration:
         """Test detection of orphaned records."""
         # Create a recording
         recording = Recording(
-            file_path="/music/parent.mp3", file_name="parent.mp3", sha256_hash="parenthash", xxh128_hash="parenthash2"
+            file_path="/music/parent.mp3",
+            file_name="parent.mp3",
+            sha256_hash="parenthash",
+            xxh128_hash="parenthash2",
         )
         db_session.add(recording)
         db_session.commit()
@@ -266,7 +280,10 @@ class TestFileLifecycleIntegration:
         async def create_recording(path: str, session: Session):
             """Simulate concurrent recording creation."""
             recording = Recording(
-                file_path=path, file_name=Path(path).name, sha256_hash=f"hash_{path}", xxh128_hash=f"xxhash_{path}"
+                file_path=path,
+                file_name=Path(path).name,
+                sha256_hash=f"hash_{path}",
+                xxh128_hash=f"xxhash_{path}",
             )
             session.add(recording)
             session.commit()
@@ -278,7 +295,10 @@ class TestFileLifecycleIntegration:
         # Note: SQLAlchemy sessions aren't thread-safe, so we simulate concurrency
         for path in paths:
             recording = Recording(
-                file_path=path, file_name=Path(path).name, sha256_hash=f"hash_{path}", xxh128_hash=f"xxhash_{path}"
+                file_path=path,
+                file_name=Path(path).name,
+                sha256_hash=f"hash_{path}",
+                xxh128_hash=f"xxhash_{path}",
             )
             db_session.add(recording)
 
@@ -377,7 +397,7 @@ class TestFileLifecycleIntegration:
             db_session.commit()
         except Exception:
             db_session.rollback()
-            pass  # Expected with proper FK constraints
+            # Expected with proper FK constraints
 
 
 class TestServiceIntegration:

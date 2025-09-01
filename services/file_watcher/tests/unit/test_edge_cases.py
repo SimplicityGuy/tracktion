@@ -1,7 +1,7 @@
 """Test edge cases for async file watcher."""
 
 import asyncio
-import os
+import contextlib
 import tempfile
 import time
 from pathlib import Path
@@ -66,7 +66,7 @@ class TestEdgeCases:
             mock_publisher.publish_file_event.assert_called_once()
 
         finally:
-            os.unlink(large_file)
+            Path(large_file).unlink()
 
     async def test_concurrent_same_file_access(self) -> None:
         """Test multiple events for the same file."""
@@ -107,7 +107,7 @@ class TestEdgeCases:
             assert call_count == 4
 
         finally:
-            os.unlink(test_file)
+            Path(test_file).unlink()
 
     async def test_rabbitmq_connection_failure(self) -> None:
         """Test handling of RabbitMQ connection failures."""
@@ -117,10 +117,8 @@ class TestEdgeCases:
         with patch("src.async_message_publisher.aio_pika.connect_robust") as mock_connect:
             mock_connect.side_effect = Exception("Connection refused")
 
-            try:
+            with contextlib.suppress(Exception):
                 await publisher.connect()
-            except Exception:
-                pass  # Expected
 
             # Publish should return False when not connected
             result = await publisher.publish_file_event("created", "/test.mp3", "test")
@@ -153,8 +151,8 @@ class TestEdgeCases:
         async def capture_event(*args: Any, **kwargs: Any) -> bool:
             published_events.append(kwargs)
             # Delete file after first event
-            if os.path.exists(temp_file):
-                os.unlink(temp_file)
+            if Path(temp_file).exists():
+                Path(temp_file).unlink()
             return True
 
         mock_publisher.publish_file_event = capture_event
@@ -229,12 +227,17 @@ class TestEdgeCases:
             mock_publisher.publish_file_event = count_events
             mock_publisher.connect = AsyncMock()
 
-            with patch.dict("os.environ", {"DATA_DIR": str(base_dir)}):
-                with patch("src.async_file_watcher.AsyncMessagePublisher", return_value=mock_publisher):
-                    service = AsyncFileWatcherService()
-                    service.publisher = mock_publisher
+            with (
+                patch.dict("os.environ", {"DATA_DIR": str(base_dir)}),
+                patch(
+                    "src.async_file_watcher.AsyncMessagePublisher",
+                    return_value=mock_publisher,
+                ),
+            ):
+                service = AsyncFileWatcherService()
+                service.publisher = mock_publisher
 
-                    await service.scan_existing_files()
+                await service.scan_existing_files()
 
             assert event_count == 250, f"Expected 250 events, got {event_count}"
 

@@ -1,9 +1,9 @@
 """Service for handling file lifecycle events (created, modified, deleted, moved, renamed)."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,10 +27,10 @@ class FileLifecycleService:
     async def handle_file_created(
         self,
         file_path: str,
-        sha256_hash: Optional[str] = None,
-        xxh128_hash: Optional[str] = None,
-        file_size: Optional[int] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        sha256_hash: str | None = None,
+        xxh128_hash: str | None = None,
+        file_size: int | None = None,
+    ) -> tuple[bool, str | None]:
         """Handle file creation event.
 
         Args:
@@ -55,7 +55,7 @@ class FileLifecycleService:
                 if existing.file_path != file_path:
                     existing.file_path = file_path
                     existing.file_name = Path(file_path).name
-                    existing.updated_at = datetime.now(timezone.utc)
+                    existing.updated_at = datetime.now(UTC)
                     logger.info(f"Updated existing recording path: {file_path}")
             else:
                 # Create new recording
@@ -81,10 +81,10 @@ class FileLifecycleService:
     async def handle_file_modified(
         self,
         file_path: str,
-        sha256_hash: Optional[str] = None,
-        xxh128_hash: Optional[str] = None,
-        file_size: Optional[int] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        sha256_hash: str | None = None,
+        xxh128_hash: str | None = None,
+        file_size: int | None = None,
+    ) -> tuple[bool, str | None]:
         """Handle file modification event.
 
         Args:
@@ -111,7 +111,7 @@ class FileLifecycleService:
                 if file_size is not None:
                     recording.file_size = file_size
 
-                recording.updated_at = datetime.now(timezone.utc)
+                recording.updated_at = datetime.now(UTC)
                 recording.processing_status = "pending"  # Mark for reprocessing
 
                 logger.info(f"Updated recording for modified file: {file_path}")
@@ -127,7 +127,7 @@ class FileLifecycleService:
             await self.session.rollback()
             return False, str(e)
 
-    async def handle_file_deleted(self, file_path: str, soft_delete: bool = True) -> Tuple[bool, Optional[str]]:
+    async def handle_file_deleted(self, file_path: str, soft_delete: bool = True) -> tuple[bool, str | None]:
         """Handle file deletion event.
 
         Args:
@@ -146,7 +146,7 @@ class FileLifecycleService:
             if recording:
                 if soft_delete:
                     # Soft delete - just mark as deleted
-                    recording.deleted_at = datetime.now(timezone.utc)
+                    recording.deleted_at = datetime.now(UTC)
                     recording.processing_status = "deleted"
                     logger.info(f"Soft deleted recording: {file_path}")
                 else:
@@ -169,9 +169,9 @@ class FileLifecycleService:
         self,
         old_path: str,
         new_path: str,
-        sha256_hash: Optional[str] = None,
-        xxh128_hash: Optional[str] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        sha256_hash: str | None = None,
+        xxh128_hash: str | None = None,
+    ) -> tuple[bool, str | None]:
         """Handle file move event.
 
         Args:
@@ -193,7 +193,7 @@ class FileLifecycleService:
                 # Update path
                 recording.file_path = new_path
                 recording.file_name = Path(new_path).name
-                recording.updated_at = datetime.now(timezone.utc)
+                recording.updated_at = datetime.now(UTC)
 
                 # Update hashes if provided (file content might have changed)
                 if sha256_hash:
@@ -219,9 +219,9 @@ class FileLifecycleService:
         self,
         old_path: str,
         new_path: str,
-        sha256_hash: Optional[str] = None,
-        xxh128_hash: Optional[str] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        sha256_hash: str | None = None,
+        xxh128_hash: str | None = None,
+    ) -> tuple[bool, str | None]:
         """Handle file rename event.
 
         This is essentially the same as move, but kept separate for clarity.
@@ -237,7 +237,7 @@ class FileLifecycleService:
         """
         return await self.handle_file_moved(old_path, new_path, sha256_hash, xxh128_hash)
 
-    async def recover_soft_deleted(self, file_path: str) -> Tuple[bool, Optional[str]]:
+    async def recover_soft_deleted(self, file_path: str) -> tuple[bool, str | None]:
         """Recover a soft-deleted file.
 
         Args:
@@ -256,7 +256,7 @@ class FileLifecycleService:
                 # Restore the recording
                 recording.deleted_at = None
                 recording.processing_status = "pending"
-                recording.updated_at = datetime.now(timezone.utc)
+                recording.updated_at = datetime.now(UTC)
                 logger.info(f"Recovered soft-deleted recording: {file_path}")
             else:
                 logger.warning(f"No soft-deleted recording found for: {file_path}")
@@ -280,9 +280,7 @@ class FileLifecycleService:
             Number of records deleted
         """
         try:
-            from datetime import timedelta
-
-            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
+            cutoff_date = datetime.now(UTC) - timedelta(days=days_old)
 
             # Find old soft-deleted recordings
             query = select(Recording).where(Recording.deleted_at.is_not(None), Recording.deleted_at < cutoff_date)

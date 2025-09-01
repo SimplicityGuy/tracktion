@@ -5,6 +5,7 @@ Tests the CPU optimizer, error handler, and message queue integration.
 """
 
 import asyncio
+import contextlib
 import json
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
+from services.analysis_service.src.async_audio_analysis import AudioAnalysisResult
 from services.analysis_service.src.async_cpu_optimizer import (
     AsyncCPUOptimizer,
     CPUProfile,
@@ -30,6 +32,9 @@ from services.analysis_service.src.async_message_integration import (
     AsyncMessageQueueIntegration,
     TaskPriority,
 )
+
+# Create a random number generator
+rng = np.random.default_rng()
 
 
 class TestAsyncCPUOptimizer:
@@ -163,7 +168,7 @@ class TestParallelFFTOptimizer:
     async def test_parallel_stft(self, fft_optimizer):
         """Test parallel STFT computation."""
         # Create test audio
-        audio_data = np.random.randn(44100)  # 1 second
+        audio_data = rng.standard_normal(44100)  # 1 second
 
         result = await fft_optimizer.compute_parallel_stft(audio_data, fft_size=2048, n_parallel=2)
 
@@ -187,7 +192,7 @@ class TestParallelFFTOptimizer:
         results = await fft_optimizer.benchmark_fft_performance(0.1)
 
         assert len(results) > 0
-        for _key, duration in results.items():
+        for duration in results.values():
             assert duration > 0
             assert duration < 10  # Should complete in reasonable time
 
@@ -262,10 +267,8 @@ class TestAsyncErrorHandler:
 
         # Trip the circuit
         for i in range(2):
-            try:
+            with contextlib.suppress(Exception):
                 await error_handler.handle_with_retry(always_fails, task_id=f"test{i}", audio_file="test.mp3")
-            except Exception:
-                pass
 
         assert error_handler.circuit_open
 
@@ -427,7 +430,6 @@ class TestAsyncMessageQueueIntegration:
         assert request.recording_id == "rec123"
         assert request.file_path == "/audio/test.mp3"
         assert "bpm" in request.analysis_types
-        from services.analysis_service.src.async_audio_processor import TaskPriority
 
         assert request.priority == TaskPriority.HIGH
 
@@ -457,7 +459,6 @@ class TestAsyncMessageQueueIntegration:
             integration.batch_messages.append(msg)
 
         # Mock analyzer
-        from services.analysis_service.src.async_audio_analysis import AudioAnalysisResult
 
         integration.analyzer.analyze_audio_complete.return_value = AudioAnalysisResult(
             file_path="/audio/test.mp3",
@@ -474,6 +475,7 @@ class TestAsyncMessageQueueIntegration:
     @pytest.mark.asyncio
     async def test_error_handling_in_batch(self, integration):
         """Test error handling in batch processing."""
+
         # Create failing request
         request = AnalysisRequest(
             recording_id="rec_fail",

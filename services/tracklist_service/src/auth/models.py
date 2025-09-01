@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import Any
 
 
 class UserTier(Enum):
@@ -22,9 +22,9 @@ class User:
     email: str
     tier: UserTier
     is_active: bool = True
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    metadata: Optional[Dict[str, Any]] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -34,12 +34,12 @@ class ApiKey:
     key_id: str
     user_id: str
     key_hash: str  # Store hashed version
-    name: Optional[str] = None
+    name: str | None = None
     is_active: bool = True
-    created_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
-    last_used_at: Optional[datetime] = None
-    permissions: Optional[Dict[str, bool]] = None
+    created_at: datetime | None = None
+    expires_at: datetime | None = None
+    last_used_at: datetime | None = None
+    permissions: dict[str, bool] | None = None
 
 
 @dataclass

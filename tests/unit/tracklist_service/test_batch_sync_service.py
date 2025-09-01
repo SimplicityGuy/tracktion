@@ -1,13 +1,16 @@
 """Unit tests for batch synchronization service."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.tracklist_service.src.models.synchronization import SyncConfiguration, SyncEvent
+from services.tracklist_service.src.models.synchronization import (
+    SyncConfiguration,
+    SyncEvent,
+)
 from services.tracklist_service.src.services.batch_sync_service import (
     BatchProgress,
     BatchStatus,
@@ -20,8 +23,7 @@ from services.tracklist_service.src.services.sync_service import SyncSource, Syn
 @pytest.fixture
 def mock_session():
     """Create a mock database session."""
-    session = AsyncMock(spec=AsyncSession)
-    return session
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
@@ -108,8 +110,7 @@ class TestBatchSyncService:
             # Fail every other sync
             if sample_tracklist_ids.index(tracklist_id) % 2 == 0:
                 return {"status": SyncStatus.COMPLETED.value}
-            else:
-                return {"status": SyncStatus.FAILED.value, "error": "Test error"}
+            return {"status": SyncStatus.FAILED.value, "error": "Test error"}
 
         mock_sync_service.trigger_manual_sync.side_effect = sync_side_effect
 
@@ -203,7 +204,7 @@ class TestBatchSyncService:
 
         assert progress.progress_percentage == 50
 
-        progress.start_time = datetime.utcnow()
+        progress.start_time = datetime.now(UTC)
         assert progress.duration is not None
 
     @pytest.mark.asyncio
@@ -225,14 +226,13 @@ class TestBatchSyncService:
     @pytest.mark.asyncio
     async def test_get_system_load(self, batch_sync_service):
         """Test system load calculation."""
-        with patch("psutil.cpu_percent", return_value=50.0):
-            with patch("psutil.virtual_memory") as mock_memory:
-                mock_memory.return_value.percent = 60.0
+        with patch("psutil.cpu_percent", return_value=50.0), patch("psutil.virtual_memory") as mock_memory:
+            mock_memory.return_value.percent = 60.0
 
-                load = await batch_sync_service._get_system_load()
+            load = await batch_sync_service._get_system_load()
 
-                # (50 * 0.7 + 60 * 0.3) / 100 = 0.53
-                assert 0.5 <= load <= 0.6
+            # (50 * 0.7 + 60 * 0.3) / 100 = 0.53
+            assert 0.5 <= load <= 0.6
 
     @pytest.mark.asyncio
     async def test_get_batch_status(self, batch_sync_service):
@@ -243,7 +243,7 @@ class TestBatchSyncService:
             completed=5,
             successful=3,
             failed=2,
-            start_time=datetime.utcnow(),
+            start_time=datetime.now(UTC),
         )
 
         batch_sync_service.active_batches[batch_id] = progress
@@ -287,8 +287,7 @@ class TestBatchSyncService:
             events.append(event)
 
         # Mock no conflicts for remaining tracklists
-        for _ in sample_tracklist_ids[2:]:
-            events.append(None)
+        events.extend(None for _ in sample_tracklist_ids[2:])
 
         mock_session.execute.side_effect = [
             MagicMock(scalar_one_or_none=MagicMock(return_value=event)) for event in events

@@ -13,8 +13,10 @@ import os
 import queue
 import tempfile
 import time
+import tracemalloc
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
@@ -177,8 +179,7 @@ class TestPipelinePerformance:
         for i in range(0, len(items), batch_size):
             batch = items[i : i + batch_size]
             # Simulate batch processing
-            for item in batch:
-                results.append(mock_process(item))
+            results.extend(mock_process(item) for item in batch)
 
         elapsed_time = time.time() - start_time
         throughput = (len(results) / elapsed_time) * 3600  # Files per hour
@@ -328,20 +329,18 @@ class TestPipelinePerformance:
 
     def test_memory_usage_large_batch(self, temp_files: list[Path]) -> None:
         """Test memory usage with large batch processing."""
-        import tracemalloc
 
         tracemalloc.start()
 
         # Create large batch of items
-        items = []
-        for i in range(10000):
-            items.append(
-                {
-                    "id": i,
-                    "file_path": str(temp_files[i % len(temp_files)]),
-                    "metadata": {"key": f"value_{i}" * 100},  # Some data
-                }
-            )
+        items = [
+            {
+                "id": i,
+                "file_path": str(temp_files[i % len(temp_files)]),
+                "metadata": {"key": f"value_{i}" * 100},  # Some data
+            }
+            for i in range(10000)
+        ]
 
         snapshot1 = tracemalloc.take_snapshot()
 
@@ -356,8 +355,7 @@ class TestPipelinePerformance:
         for i in range(0, len(items), batch_size):
             batch = items[i : i + batch_size]
             # Simulate batch processing
-            for item in batch:
-                results.append(mock_process(item))
+            results.extend(mock_process(item) for item in batch)
 
         snapshot2 = tracemalloc.take_snapshot()
 
@@ -439,10 +437,7 @@ class TestLoadScenarios:
         # Process all items
         processed = 0
         while not queue.empty():
-            batch = []
-            for _ in range(min(batch_size, queue.qsize())):
-                if not queue.empty():
-                    batch.append(queue.get())
+            batch = [queue.get() for _ in range(min(batch_size, queue.qsize())) if not queue.empty()]
 
             if batch:
 
@@ -529,13 +524,10 @@ class TestLoadScenarios:
 
 def run_performance_suite():
     """Run the complete performance test suite and generate report."""
-    import json
-    from datetime import datetime
-
     print("\n" + "=" * 60)
     print("ANALYSIS PIPELINE PERFORMANCE TEST SUITE")
     print("=" * 60)
-    print(f"Test Date: {datetime.now().isoformat()}")
+    print(f"Test Date: {datetime.now(UTC).isoformat()}")
     print(f"Python Version: {os.sys.version}")
     print(f"Platform: {os.sys.platform}")
     print(f"CPU Count: {os.cpu_count()}")
@@ -543,7 +535,7 @@ def run_performance_suite():
 
     # Run tests and collect results
     results = {
-        "test_date": datetime.now().isoformat(),
+        "test_date": datetime.now(UTC).isoformat(),
         "platform": os.sys.platform,
         "cpu_count": os.cpu_count(),
         "tests": {},
@@ -571,7 +563,7 @@ def run_performance_suite():
     report_path = Path("tests/performance/performance_report.json")
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(report_path, "w") as f:
+    with Path(report_path).open("w") as f:
         json.dump(results, f, indent=2)
 
     print(f"\nPerformance report saved to: {report_path}")

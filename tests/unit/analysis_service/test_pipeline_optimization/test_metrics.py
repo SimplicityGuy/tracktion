@@ -2,6 +2,7 @@
 Unit tests for the metrics collection module.
 """
 
+import threading
 import time
 from unittest.mock import Mock, patch
 
@@ -57,9 +58,8 @@ class TestMetricsCollector:
 
     def test_track_processing_time_error(self) -> None:
         """Test tracking failed file processing."""
-        with pytest.raises(ValueError):
-            with self.collector.track_processing_time("wav", "processing"):
-                raise ValueError("Processing failed")
+        with pytest.raises(ValueError), self.collector.track_processing_time("wav", "processing"):
+            raise ValueError("Processing failed")
 
         # Check that error metrics were recorded
         metrics_output = self.collector.get_metrics().decode("utf-8")
@@ -319,9 +319,11 @@ class TestMetricsIntegration:
         for file_type in file_types:
             for status in statuses[:2]:  # Only test success and error
                 if status == "error":
-                    with pytest.raises(RuntimeError):
-                        with self.collector.track_processing_time(file_type, "processing"):
-                            raise RuntimeError("Test error")
+                    with (
+                        pytest.raises(RuntimeError),
+                        self.collector.track_processing_time(file_type, "processing"),
+                    ):
+                        raise RuntimeError("Test error")
                 else:
                     with self.collector.track_processing_time(file_type, status):
                         pass
@@ -334,7 +336,6 @@ class TestMetricsIntegration:
 
     def test_concurrent_metric_updates(self) -> None:
         """Test that metrics can be updated concurrently (thread-safety)."""
-        import threading
 
         def update_metrics() -> None:
             for _ in range(10):

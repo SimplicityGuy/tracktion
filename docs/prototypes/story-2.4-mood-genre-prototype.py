@@ -10,27 +10,24 @@ Dependencies:
 Note: This code is part of research spike Story 2.2 to validate approach.
 """
 
-from os import environ
-
-environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-
-import essentia
-
-essentia.log.infoActive = False
-essentia.log.warningActive = False
-
 from dataclasses import dataclass
 from json import dump, load
-from os import path
+from os import environ
+from pathlib import Path
 from sys import argv
 from typing import Any
 
+import essentia
 import numpy as np
 from essentia.standard import (
     MonoLoader,
     TensorflowPredictMusiCNN,
     TensorflowPredictVGGish,
 )
+
+environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+essentia.log.infoActive = False
+essentia.log.warningActive = False
 
 MODELS_DIRECTORY = "./models"
 
@@ -42,7 +39,7 @@ class Model:
         self.__model_file = model + ".pb"
         self.__classifier = None
 
-        with open(path.join(MODELS_DIRECTORY, self.__metadata_file)) as metadata_file:
+        with Path(MODELS_DIRECTORY, self.__metadata_file).open() as metadata_file:
             self.__metadata = load(metadata_file)
 
         self.__labels = list(map(self.__process_labels, self.__metadata["classes"]))
@@ -75,9 +72,9 @@ class Model:
             return self.__classifier
 
         if "musicnn" in self.__model_file.lower():
-            self.__classifier = TensorflowPredictMusiCNN(graphFilename=path.join(MODELS_DIRECTORY, self.__model_file))
+            self.__classifier = TensorflowPredictMusiCNN(graphFilename=str(Path(MODELS_DIRECTORY) / self.__model_file))
         elif "vggish" in self.__model_file.lower():
-            self.__classifier = TensorflowPredictVGGish(graphFilename=path.join(MODELS_DIRECTORY, self.__model_file))
+            self.__classifier = TensorflowPredictVGGish(graphFilename=str(Path(MODELS_DIRECTORY) / self.__model_file))
         else:
             raise Exception("Unknown classifier.")
 
@@ -218,5 +215,5 @@ if __name__ == "__main__":
         for model_set in model_sets:
             results[model_set.name] = p.predict(model_set)
 
-    with open("predictions.json", "w") as f:
+    with Path("predictions.json").open("w") as f:
         dump(results, f, indent=2, sort_keys=True)

@@ -78,7 +78,10 @@ class TestAsyncAPIIntegration:
                 timeout=40.0,
             )
             # Should timeout or return timeout error
-            assert response.status_code in [status.HTTP_408_REQUEST_TIMEOUT, status.HTTP_504_GATEWAY_TIMEOUT]
+            assert response.status_code in [
+                status.HTTP_408_REQUEST_TIMEOUT,
+                status.HTTP_504_GATEWAY_TIMEOUT,
+            ]
         except httpx.ReadTimeout:
             # Expected timeout
             pass
@@ -89,9 +92,7 @@ class TestAsyncAPIIntegration:
         chunks = []
         async with async_client.stream("GET", "/streaming/ndjson") as response:
             assert response.status_code == status.HTTP_200_OK
-            async for chunk in response.aiter_text():
-                if chunk.strip():
-                    chunks.append(json.loads(chunk))
+            chunks.extend([json.loads(chunk) async for chunk in response.aiter_text() if chunk.strip()])
 
         assert len(chunks) > 0
         for chunk in chunks:

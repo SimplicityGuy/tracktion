@@ -1,6 +1,6 @@
 """Unit tests for quota manager."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -102,7 +102,7 @@ class TestQuotaManager:
     async def test_check_quota_within_limits(self, quota_manager, mock_redis, free_user):
         """Test quota check for user within limits."""
         # Mock existing usage data
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         mock_redis.hmget.return_value = [
             "100",  # daily_used
             "1000",  # monthly_used
@@ -123,7 +123,7 @@ class TestQuotaManager:
     @pytest.mark.asyncio
     async def test_check_quota_warning_threshold(self, quota_manager, mock_redis, free_user):
         """Test quota check when approaching 80% threshold."""
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         mock_redis.hmget.return_value = [
             "800",  # daily_used - at 80%
             "1000",  # monthly_used
@@ -142,7 +142,7 @@ class TestQuotaManager:
     @pytest.mark.asyncio
     async def test_check_quota_critical_threshold(self, quota_manager, mock_redis, free_user):
         """Test quota check when approaching 95% threshold."""
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         mock_redis.hmget.return_value = [
             "950",  # daily_used - at 95%
             "1000",  # monthly_used
@@ -161,7 +161,7 @@ class TestQuotaManager:
     @pytest.mark.asyncio
     async def test_check_quota_exceeded_daily(self, quota_manager, mock_redis, free_user):
         """Test quota check when daily limit is exceeded."""
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         mock_redis.hmget.return_value = [
             "1000",  # daily_used - at limit
             "5000",  # monthly_used - within limit
@@ -180,7 +180,7 @@ class TestQuotaManager:
     @pytest.mark.asyncio
     async def test_check_quota_exceeded_monthly(self, quota_manager, mock_redis, free_user):
         """Test quota check when monthly limit is exceeded."""
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         mock_redis.hmget.return_value = [
             "500",  # daily_used - within limit
             "25000",  # monthly_used - at limit
@@ -200,7 +200,7 @@ class TestQuotaManager:
     async def test_consume_quota_success(self, quota_manager, mock_redis, free_user):
         """Test successful quota consumption."""
         # Mock quota check to allow consumption
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         mock_redis.hmget.return_value = [
             "100",  # daily_used
             "1000",  # monthly_used
@@ -225,7 +225,7 @@ class TestQuotaManager:
     @pytest.mark.asyncio
     async def test_consume_quota_denied(self, quota_manager, mock_redis, free_user):
         """Test quota consumption denial when limits exceeded."""
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         mock_redis.hmget.return_value = [
             "1000",  # daily_used - at limit
             "5000",  # monthly_used
@@ -244,7 +244,7 @@ class TestQuotaManager:
     async def test_quota_auto_reset_daily(self, quota_manager, mock_redis, free_user):
         """Test automatic daily quota reset."""
         # Mock old timestamp (yesterday)
-        yesterday_ts = int((datetime.utcnow() - timedelta(days=1)).timestamp())
+        yesterday_ts = int((datetime.now(UTC) - timedelta(days=1)).timestamp())
         mock_redis.hmget.return_value = [
             "500",  # daily_used
             "2000",  # monthly_used
@@ -263,7 +263,7 @@ class TestQuotaManager:
     async def test_quota_auto_reset_monthly(self, quota_manager, mock_redis, free_user):
         """Test automatic monthly quota reset."""
         # Mock old timestamp (last month)
-        last_month = datetime.utcnow().replace(day=1) - timedelta(days=1)
+        last_month = datetime.now(UTC).replace(day=1) - timedelta(days=1)
         last_month_ts = int(last_month.timestamp())
 
         mock_redis.hmget.return_value = [
@@ -344,7 +344,7 @@ class TestQuotaManager:
     @pytest.mark.asyncio
     async def test_get_quota_stats(self, quota_manager, mock_redis, premium_user):
         """Test getting quota statistics."""
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         mock_redis.hmget.return_value = [
             "2000",  # daily_used
             "50000",  # monthly_used
@@ -400,7 +400,7 @@ class TestQuotaManager:
         # First call - should send alert
         mock_redis.exists.return_value = False  # No alert sent today
 
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         mock_redis.hmget.return_value = [
             "850",  # 85% of daily quota
             "1000",
@@ -421,7 +421,7 @@ class TestQuotaManager:
     @pytest.mark.asyncio
     async def test_premium_user_higher_limits(self, quota_manager, mock_redis, premium_user):
         """Test that premium users get higher limits."""
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         mock_redis.hmget.return_value = [
             "5000",  # daily_used - would exceed free but OK for premium
             "100000",  # monthly_used - would exceed free but OK for premium
@@ -440,7 +440,7 @@ class TestQuotaManager:
     @pytest.mark.asyncio
     async def test_large_quota_consumption(self, quota_manager, mock_redis, free_user):
         """Test consuming large amount of quota at once."""
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         mock_redis.hmget.return_value = [
             "0",  # daily_used - starting fresh
             "0",  # monthly_used

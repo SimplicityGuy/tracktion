@@ -1,15 +1,19 @@
 """Core proposal generation logic for file renaming."""
 
-import logging
-import os
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
-from uuid import UUID
+from __future__ import annotations
 
-from .config import FileRenameProposalConfig
-from .pattern_manager import PatternManager
-from .validator import FilesystemValidator
+import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from .config import FileRenameProposalConfig
+    from .pattern_manager import PatternManager
+    from .validator import FilesystemValidator
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +29,12 @@ class RenameProposal:
     full_proposed_path: str
     confidence_score: float
     status: str = "pending"
-    conflicts: Optional[List[str]] = None
-    warnings: Optional[List[str]] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    metadata_source: Optional[str] = None
-    pattern_used: Optional[str] = None
+    conflicts: list[str] | None = None
+    warnings: list[str] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    metadata_source: str | None = None
+    pattern_used: str | None = None
 
     def __post_init__(self) -> None:
         """Initialize default values."""
@@ -39,9 +43,9 @@ class RenameProposal:
         if self.warnings is None:
             self.warnings = []
         if self.created_at is None:
-            self.created_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
         if self.updated_at is None:
-            self.updated_at = datetime.now(timezone.utc)
+            self.updated_at = datetime.now(UTC)
 
 
 class ProposalGenerator:
@@ -68,7 +72,7 @@ class ProposalGenerator:
         self,
         recording_id: UUID,
         original_path: str,
-        metadata: Dict[str, str],
+        metadata: dict[str, str],
         file_extension: str,
     ) -> RenameProposal:
         """Generate a rename proposal for a single file.
@@ -83,8 +87,9 @@ class ProposalGenerator:
             RenameProposal object with the proposed filename
         """
         # Extract original filename from path
-        original_filename = os.path.basename(original_path)
-        original_dir = os.path.dirname(original_path)
+        path_obj = Path(original_path)
+        original_filename = path_obj.name
+        original_dir = path_obj.parent
 
         # Generate proposed filename using pattern
         proposed_filename = self.pattern_manager.apply_pattern(metadata, file_extension)
@@ -99,7 +104,7 @@ class ProposalGenerator:
             sanitized_filename = f"{sanitized_filename}.{file_extension}"
 
         # Create full proposed path
-        full_proposed_path = os.path.join(original_dir, sanitized_filename)
+        full_proposed_path = str(original_dir / sanitized_filename)
 
         # Calculate confidence score
         confidence_score = self._calculate_confidence(metadata, proposed_filename, sanitized_filename)
@@ -121,7 +126,7 @@ class ProposalGenerator:
 
         return proposal
 
-    def generate_batch_proposals(self, recordings: List[Tuple[UUID, str, Dict[str, str], str]]) -> List[RenameProposal]:
+    def generate_batch_proposals(self, recordings: list[tuple[UUID, str, dict[str, str], str]]) -> list[RenameProposal]:
         """Generate proposals for multiple files.
 
         Args:
@@ -141,18 +146,18 @@ class ProposalGenerator:
                 proposal = RenameProposal(
                     recording_id=recording_id,
                     original_path=path,
-                    original_filename=os.path.basename(path),
+                    original_filename=Path(path).name,
                     proposed_filename="",
                     full_proposed_path="",
                     confidence_score=0.0,
                     status="failed",
-                    warnings=[f"Failed to generate proposal: {str(e)}"],
+                    warnings=[f"Failed to generate proposal: {e!s}"],
                 )
                 proposals.append(proposal)
 
         return proposals
 
-    def _calculate_confidence(self, metadata: Dict[str, str], proposed: str, sanitized: str) -> float:
+    def _calculate_confidence(self, metadata: dict[str, str], proposed: str, sanitized: str) -> float:
         """Calculate confidence score for a proposal.
 
         Args:
@@ -182,11 +187,7 @@ class ProposalGenerator:
         score += quality_score * weights["metadata_quality"]
 
         # Pattern match success (did we have to sanitize much?)
-        if proposed == sanitized:
-            pattern_score = 1.0
-        else:
-            # Calculate similarity between proposed and sanitized
-            pattern_score = 0.8  # Simplified for now
+        pattern_score = 1.0 if proposed == sanitized else 0.8
         score += pattern_score * weights["pattern_match"]
 
         # No conflicts detected yet (will be updated later)
@@ -213,6 +214,6 @@ class ProposalGenerator:
             proposal.warnings.append(f"Full path exceeds maximum length ({self.config.max_path_length} chars)")
 
         # Check if filename was significantly altered during sanitization
-        proposed_base = os.path.splitext(proposal.proposed_filename)[0]
+        proposed_base = Path(proposal.proposed_filename).stem
         if proposed_base == self.config.replacement_char * len(proposed_base):
             proposal.warnings.append("Proposed filename consists entirely of replacement characters")

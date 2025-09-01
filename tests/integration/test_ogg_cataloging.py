@@ -1,7 +1,7 @@
 """Integration tests for OGG file cataloging end-to-end."""
 
+import contextlib
 import json
-import os
 import tempfile
 import uuid
 from datetime import UTC, datetime
@@ -48,10 +48,8 @@ class TestOggCatalogingIntegration:
         yield temp_path
 
         # Cleanup
-        try:
-            os.unlink(temp_path)
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            Path(temp_path).unlink()
 
     def test_ogg_file_discovery_and_publishing(self, mock_rabbitmq_connection, temp_ogg_file):
         """Test that OGG files are discovered and published to RabbitMQ."""
@@ -156,7 +154,9 @@ class TestOggCatalogingIntegration:
 
         # Store the OGG file metadata
         mock_storage_handler.store_metadata(
-            recording_id=recording_id, metadata=ogg_metadata, correlation_id="test-correlation"
+            recording_id=recording_id,
+            metadata=ogg_metadata,
+            correlation_id="test-correlation",
         )
 
         # Simulate a catalog query
@@ -250,12 +250,16 @@ class TestOggCatalogingIntegration:
 
         # Store in catalog
         mock_storage_handler.store_metadata(
-            recording_id=uuid.UUID(recording_id), metadata=metadata, correlation_id=message["correlation_id"]
+            recording_id=uuid.UUID(recording_id),
+            metadata=metadata,
+            correlation_id=message["correlation_id"],
         )
 
         # Update status to processed
         mock_storage_handler.update_recording_status(
-            recording_id=uuid.UUID(recording_id), status="processed", correlation_id=message["correlation_id"]
+            recording_id=uuid.UUID(recording_id),
+            status="processed",
+            correlation_id=message["correlation_id"],
         )
 
         # Verify complete flow
@@ -290,7 +294,9 @@ class TestOggCatalogingIntegration:
             }
 
             mock_storage_handler.store_metadata(
-                recording_id=recording_id, metadata=metadata, correlation_id=f"test-{ext}"
+                recording_id=recording_id,
+                metadata=metadata,
+                correlation_id=f"test-{ext}",
             )
 
             assert mock_storage_handler.store_metadata.called

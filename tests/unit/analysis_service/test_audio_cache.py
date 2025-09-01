@@ -154,7 +154,11 @@ class TestAudioCache:
         """Test retrieving cached temporal results."""
         mock_hash.return_value = "file_hash_123"
 
-        cached_data = {"average_bpm": 128.0, "stability_score": 0.95, "temporal_bpm": []}
+        cached_data = {
+            "average_bpm": 128.0,
+            "stability_score": 0.95,
+            "temporal_bpm": [],
+        }
         self.cache.redis_client.get.return_value = json.dumps(cached_data)
 
         result = self.cache.get_temporal_results("/path/to/audio.mp3")
@@ -189,7 +193,11 @@ class TestAudioCache:
 
     def test_flush_version_cache(self):
         """Test flushing cache for specific version."""
-        self.cache.redis_client.keys.return_value = ["bpm:hash1:1.0", "bpm:hash2:1.0", "temporal:hash3:1.0"]
+        self.cache.redis_client.keys.return_value = [
+            "bpm:hash1:1.0",
+            "bpm:hash2:1.0",
+            "temporal:hash3:1.0",
+        ]
         self.cache.redis_client.delete.return_value = 3
 
         deleted = self.cache.flush_version_cache("1.0")

@@ -116,7 +116,12 @@ class TestCircuitBreaker:
 
     def test_half_open_closes_on_success(self):
         """Test half-open circuit closes on success."""
-        cb = CircuitBreaker("test", failure_threshold=1, recovery_timeout=0.1, expected_exception=ValueError)
+        cb = CircuitBreaker(
+            "test",
+            failure_threshold=1,
+            recovery_timeout=0.1,
+            expected_exception=ValueError,
+        )
 
         def failing_func():
             raise ValueError("Test error")
@@ -142,7 +147,12 @@ class TestCircuitBreaker:
 
     def test_half_open_reopens_on_failure(self):
         """Test half-open circuit reopens on failure."""
-        cb = CircuitBreaker("test", failure_threshold=1, recovery_timeout=0.1, expected_exception=ValueError)
+        cb = CircuitBreaker(
+            "test",
+            failure_threshold=1,
+            recovery_timeout=0.1,
+            expected_exception=ValueError,
+        )
 
         def failing_func():
             raise ValueError("Test error")
@@ -231,7 +241,10 @@ class TestExponentialBackoff:
             return "success"
 
         result = await retry_with_backoff(
-            func, max_attempts=5, backoff=ExponentialBackoff(base_delay=0.01), exceptions=(ValueError,)
+            func,
+            max_attempts=5,
+            backoff=ExponentialBackoff(base_delay=0.01),
+            exceptions=(ValueError,),
         )
 
         assert result == "success"
@@ -249,7 +262,10 @@ class TestExponentialBackoff:
 
         with pytest.raises(ValueError) as exc_info:
             await retry_with_backoff(
-                func, max_attempts=3, backoff=ExponentialBackoff(base_delay=0.01), exceptions=(ValueError,)
+                func,
+                max_attempts=3,
+                backoff=ExponentialBackoff(base_delay=0.01),
+                exceptions=(ValueError,),
             )
 
         assert "Error 3" in str(exc_info.value)

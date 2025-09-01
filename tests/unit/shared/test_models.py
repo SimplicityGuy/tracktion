@@ -1,7 +1,7 @@
 """Unit tests for SQLAlchemy models."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from shared.core_types.src.models import Metadata, Recording, Tracklist
 
@@ -12,7 +12,10 @@ class TestRecordingModel:
     def test_recording_creation(self):
         """Test creating a Recording instance."""
         recording = Recording(
-            file_path="/music/test.mp3", file_name="test.mp3", sha256_hash="abc123", xxh128_hash="def456"
+            file_path="/music/test.mp3",
+            file_name="test.mp3",
+            sha256_hash="abc123",
+            xxh128_hash="def456",
         )
 
         assert recording.file_path == "/music/test.mp3"
@@ -33,7 +36,7 @@ class TestRecordingModel:
     def test_recording_to_dict(self):
         """Test Recording to dictionary conversion."""
         recording = Recording(file_path="/music/test.mp3", file_name="test.mp3", sha256_hash="abc123")
-        recording.created_at = datetime(2025, 1, 1, 12, 0, 0)
+        recording.created_at = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
 
         result = recording.to_dict()
 
@@ -100,7 +103,10 @@ class TestTracklistModel:
         ]
 
         tracklist = Tracklist(
-            recording_id=recording_id, source="1001tracklists.com", tracks=tracks, cue_file_path="/music/test.cue"
+            recording_id=recording_id,
+            source="1001tracklists.com",
+            tracks=tracks,
+            cue_file_path="/music/test.cue",
         )
 
         assert tracklist.recording_id == recording_id

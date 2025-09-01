@@ -1,26 +1,28 @@
 """RabbitMQ event publishers for synchronization events."""
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from aio_pika.abc import AbstractChannel, AbstractExchange
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import aio_pika
-from aio_pika import Message, ExchangeType
+from aio_pika import ExchangeType, Message
 
-from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient
+from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient, RabbitMQConfig
 from services.tracklist_service.src.messaging.sync_message_schemas import (
-    SyncEventMessage,
-    SyncEventType,
+    BatchSyncMessage,
     ConflictDetectedMessage,
-    VersionCreatedMessage,
     CueRegenerationTriggeredMessage,
     SyncCompletedMessage,
+    SyncEventMessage,
+    SyncEventType,
     SyncFailedMessage,
-    BatchSyncMessage,
     SyncStatusUpdateMessage,
+    VersionCreatedMessage,
 )
+
+if TYPE_CHECKING:
+    from aio_pika.abc import AbstractChannel, AbstractExchange
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +30,18 @@ logger = logging.getLogger(__name__)
 class SyncEventPublisher:
     """Publisher for synchronization-related events."""
 
-    def __init__(self, rabbitmq_client: Optional[RabbitMQClient] = None):
+    def __init__(self, rabbitmq_client: RabbitMQClient | None = None):
         """Initialize sync event publisher.
 
         Args:
             rabbitmq_client: RabbitMQ client instance
         """
-        from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQConfig
 
         self.rabbitmq_client = rabbitmq_client or RabbitMQClient(RabbitMQConfig())
         self.exchange_name = "tracklist.sync.events"
         self.exchange_type = ExchangeType.TOPIC
-        self.exchange: Optional[AbstractExchange] = None
-        self.channel: Optional[AbstractChannel] = None
+        self.exchange: AbstractExchange | None = None
+        self.channel: AbstractChannel | None = None
 
     async def connect(self) -> None:
         """Connect to RabbitMQ and setup exchange."""
@@ -129,7 +130,7 @@ class SyncEventPublisher:
         tracklist_id: UUID,
         source: str,
         actor: str = "system",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Publish sync started event.
 
@@ -173,7 +174,7 @@ class SyncEventPublisher:
         changes_applied: int,
         confidence: float,
         actor: str = "system",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Publish sync completed event.
 
@@ -223,7 +224,7 @@ class SyncEventPublisher:
         retry_count: int = 0,
         will_retry: bool = False,
         actor: str = "system",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Publish sync failed event.
 
@@ -269,10 +270,10 @@ class SyncEventPublisher:
     async def publish_conflict_detected(
         self,
         tracklist_id: UUID,
-        conflicts: List[Dict[str, Any]],
+        conflicts: list[dict[str, Any]],
         source: str,
         auto_resolvable: bool = False,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Publish conflict detected event.
 
@@ -318,7 +319,7 @@ class SyncEventPublisher:
         resolution_count: int,
         resolution_strategy: str,
         actor: str = "system",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Publish conflict resolved event.
 
@@ -368,7 +369,7 @@ class SyncEventPublisher:
         change_type: str,
         change_summary: str,
         created_by: str = "system",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Publish version created event.
 
@@ -416,9 +417,9 @@ class SyncEventPublisher:
         tracklist_id: UUID,
         trigger: str,
         priority: str,
-        cue_formats: List[str],
+        cue_formats: list[str],
         actor: str = "system",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Publish CUE regeneration triggered event.
 
@@ -471,11 +472,11 @@ class SyncEventPublisher:
 
     async def publish_batch_sync(
         self,
-        tracklist_ids: List[UUID],
+        tracklist_ids: list[UUID],
         source: str,
         operation: str,
         actor: str = "system",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Publish batch sync event.
 
@@ -520,9 +521,9 @@ class SyncEventPublisher:
         self,
         tracklist_id: UUID,
         status: str,
-        progress: Optional[int] = None,
-        message: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        progress: int | None = None,
+        message: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Publish sync status update.
 
@@ -574,6 +575,7 @@ class SyncEventPublisher:
             routing_key: Routing key for the message
             priority: Message priority (1-10)
         """
+
         if not self.exchange:
             await self.connect()
 
@@ -586,10 +588,10 @@ class SyncEventPublisher:
             content_type="application/json",
             priority=priority,
             delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             message_id=str(message.message_id),
             headers={
-                "event_type": str(message.event_type.value) if hasattr(message, "event_type") else "",
+                "event_type": (str(message.event_type.value) if hasattr(message, "event_type") else ""),
                 "retry_count": 0,
                 "max_retries": 3,
             },

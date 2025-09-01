@@ -10,7 +10,9 @@ from services.analysis_service.src.file_rename_proposal.batch_processor import (
     BatchProcessingJob,
     BatchProcessor,
 )
-from services.analysis_service.src.file_rename_proposal.proposal_generator import RenameProposal
+from services.analysis_service.src.file_rename_proposal.proposal_generator import (
+    RenameProposal,
+)
 
 
 class TestBatchProcessingJob:
@@ -178,7 +180,11 @@ class TestBatchProcessor:
         recording3 = Mock()
         recording3.file_path = "/music/album2/song3.mp3"
 
-        mock_services["recording_repo"].get_by_id.side_effect = [recording1, recording2, recording3]
+        mock_services["recording_repo"].get_by_id.side_effect = [
+            recording1,
+            recording2,
+            recording3,
+        ]
 
         # Setup directory listing
         mock_exists.return_value = True
@@ -216,9 +222,15 @@ class TestBatchProcessor:
         )
         mock_services["proposal_generator"].generate_proposal.return_value = mock_proposal_obj
 
-        mock_services["conflict_detector"].detect_conflicts.return_value = {"conflicts": [], "warnings": []}
+        mock_services["conflict_detector"].detect_conflicts.return_value = {
+            "conflicts": [],
+            "warnings": [],
+        }
 
-        mock_services["confidence_scorer"].calculate_confidence.return_value = (0.95, {})
+        mock_services["confidence_scorer"].calculate_confidence.return_value = (
+            0.95,
+            {},
+        )
 
         mock_proposal = Mock()
         mock_proposal.id = uuid4()
@@ -278,7 +290,10 @@ class TestBatchProcessor:
         mock_services["proposal_repo"].get_pending_proposals.return_value = []
 
         job = BatchProcessingJob("test", [recording_id])
-        job.options = {"enable_conflict_resolution": True, "auto_approve_threshold": 0.9}
+        job.options = {
+            "enable_conflict_resolution": True,
+            "auto_approve_threshold": 0.9,
+        }
 
         result = processor._process_single_recording(recording_id, job, {"/music": {"Artist - Title.mp3"}})
 

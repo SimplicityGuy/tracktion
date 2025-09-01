@@ -1,10 +1,10 @@
 """Audit service for tracking all system changes and activities."""
 
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.tracklist_service.src.models.synchronization import AuditLog
@@ -27,8 +27,8 @@ class AuditService:
         entity_id: UUID,
         action: str,
         actor: str,
-        changes: Dict[str, Any],
-        metadata: Optional[Dict[str, Any]] = None,
+        changes: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
     ) -> AuditLog:
         """Create an audit log entry for a change.
 
@@ -47,7 +47,7 @@ class AuditService:
             entity_type=entity_type,
             entity_id=entity_id,
             action=action,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             actor=actor,
             changes=changes,
             audit_metadata=metadata or {},
@@ -64,9 +64,9 @@ class AuditService:
         tracklist_id: UUID,
         action: str,
         actor: str,
-        before: Optional[Dict[str, Any]] = None,
-        after: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        before: dict[str, Any] | None = None,
+        after: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> AuditLog:
         """Log a tracklist-specific change.
 
@@ -101,8 +101,8 @@ class AuditService:
         cue_file_id: UUID,
         action: str,
         actor: str,
-        changes: Dict[str, Any],
-        metadata: Optional[Dict[str, Any]] = None,
+        changes: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
     ) -> AuditLog:
         """Log a CUE file-specific change.
 
@@ -127,15 +127,15 @@ class AuditService:
 
     async def query_audit_logs(
         self,
-        entity_type: Optional[str] = None,
-        entity_id: Optional[UUID] = None,
-        action: Optional[str] = None,
-        actor: Optional[str] = None,
-        date_from: Optional[datetime] = None,
-        date_to: Optional[datetime] = None,
+        entity_type: str | None = None,
+        entity_id: UUID | None = None,
+        action: str | None = None,
+        actor: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[AuditLog]:
+    ) -> list[AuditLog]:
         """Query audit logs with filters.
 
         Args:
@@ -175,7 +175,7 @@ class AuditService:
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def get_entity_history(self, entity_type: str, entity_id: UUID, limit: int = 50) -> List[AuditLog]:
+    async def get_entity_history(self, entity_type: str, entity_id: UUID, limit: int = 50) -> list[AuditLog]:
         """Get the complete history for a specific entity.
 
         Args:
@@ -189,8 +189,8 @@ class AuditService:
         return await self.query_audit_logs(entity_type=entity_type, entity_id=entity_id, limit=limit)
 
     async def get_actor_activity(
-        self, actor: str, date_from: Optional[datetime] = None, limit: int = 100
-    ) -> List[AuditLog]:
+        self, actor: str, date_from: datetime | None = None, limit: int = 100
+    ) -> list[AuditLog]:
         """Get all activity by a specific actor.
 
         Args:
@@ -212,7 +212,7 @@ class AuditService:
         Returns:
             Number of logs deleted
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=retention_days)
 
         # Get logs to delete
         query = select(AuditLog).where(AuditLog.timestamp < cutoff_date)
@@ -228,8 +228,8 @@ class AuditService:
         return len(logs_to_delete)
 
     async def get_audit_statistics(
-        self, date_from: Optional[datetime] = None, date_to: Optional[datetime] = None
-    ) -> Dict[str, Any]:
+        self, date_from: datetime | None = None, date_to: datetime | None = None
+    ) -> dict[str, Any]:
         """Get statistics about audit logs.
 
         Args:
@@ -239,7 +239,6 @@ class AuditService:
         Returns:
             Dictionary with audit statistics
         """
-        from sqlalchemy import func
 
         # Build base query
         query = select(
@@ -265,7 +264,7 @@ class AuditService:
         rows = result.all()
 
         # Organize statistics
-        stats: Dict[str, Any] = {
+        stats: dict[str, Any] = {
             "total_entries": sum(row.count for row in rows),
             "by_entity_type": {},
             "by_action": {},
@@ -292,7 +291,7 @@ class AuditService:
 
         return stats
 
-    async def enrich_audit_entry(self, audit_log: AuditLog, enrichment_data: Dict[str, Any]) -> AuditLog:
+    async def enrich_audit_entry(self, audit_log: AuditLog, enrichment_data: dict[str, Any]) -> AuditLog:
         """Enrich an existing audit log entry with additional data.
 
         Args:

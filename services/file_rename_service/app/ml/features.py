@@ -52,7 +52,7 @@ class FeatureExtractor:
 
     def extract_features(self, tokens: list[dict[str, Any]], filename: str) -> dict[str, Any]:
         """Extract features from tokenized filename."""
-        features = {}
+        features: dict[str, Any] = {}
 
         # Token-based features
         if self.use_embeddings:
@@ -63,8 +63,7 @@ class FeatureExtractor:
         # Statistical features
         if self.config.get("include_statistics", True):
             stats = self._extract_statistics(tokens, filename)
-            for key, value in stats.items():
-                features[key] = value
+            features.update(stats)
 
         # Metadata features
         if self.config.get("include_metadata", True):
@@ -108,8 +107,8 @@ class FeatureExtractor:
             if token_key in self.vocabulary:
                 # Use hash for consistent random embedding
                 seed = int(hashlib.md5(token_key.encode()).hexdigest()[:8], 16)
-                np.random.seed(seed)
-                embedding = np.random.randn(self.embedding_dim)
+                rng = np.random.default_rng(seed)
+                embedding = rng.standard_normal(self.embedding_dim)
             else:
                 # Unknown token embedding
                 embedding = np.zeros(self.embedding_dim)
@@ -191,21 +190,17 @@ class FeatureExtractor:
                 batch_features["token_encodings"].append(features["token_encoding"])
 
             # Combine statistical features
-            stats = []
-            for key in sorted(features.keys()):
-                if (
-                    key.startswith("num_")
-                    or key.startswith("has_")
-                    or key == "filename_length"
-                    or key == "avg_token_length"
-                ):
-                    stats.append(features[key])
+            stats = [
+                features[key]
+                for key in sorted(features.keys())
+                if key.startswith(("num_", "has_")) or key in {"filename_length", "avg_token_length"}
+            ]
             batch_features["statistics"].append(stats)
 
         # Convert to numpy arrays
         return {
-            "token_encodings": np.array(batch_features["token_encodings"])
-            if batch_features["token_encodings"]
-            else None,
-            "statistics": np.array(batch_features["statistics"]) if batch_features["statistics"] else None,
+            "token_encodings": (
+                np.array(batch_features["token_encodings"]) if batch_features["token_encodings"] else None
+            ),
+            "statistics": (np.array(batch_features["statistics"]) if batch_features["statistics"] else None),
         }

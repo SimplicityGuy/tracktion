@@ -18,15 +18,13 @@ from services.tracklist_service.src.services.draft_service import DraftService
 @pytest.fixture
 def mock_db_session():
     """Create a mock database session."""
-    session = MagicMock()
-    return session
+    return MagicMock()
 
 
 @pytest.fixture
 def mock_redis_client():
     """Create a mock Redis client."""
-    client = MagicMock(spec=redis.Redis)
-    return client
+    return MagicMock(spec=redis.Redis)
 
 
 @pytest.fixture
@@ -198,10 +196,9 @@ class TestDraftService:
             call_count[0] += 1
             if call_count[0] == 1:
                 return mock_query1
-            elif call_count[0] == 2:
+            if call_count[0] == 2:
                 return mock_query2
-            else:
-                return mock_query3
+            return mock_query3
 
         mock_db_session.query.side_effect = query_side_effect
 
@@ -491,7 +488,12 @@ class TestDraftService:
             TrackEntry(position=1, start_time=timedelta(0), artist="Old Artist", title="T1"),
         ]
         new_tracks = [
-            TrackEntry(position=1, start_time=timedelta(0), artist="Different Artist", title="T1"),
+            TrackEntry(
+                position=1,
+                start_time=timedelta(0),
+                artist="Different Artist",
+                title="T1",
+            ),
         ]
 
         result = draft_service._has_significant_changes(old_tracks, new_tracks)

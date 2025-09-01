@@ -3,15 +3,19 @@
 import asyncio
 import json
 import logging
-from typing import Optional, Any
+from typing import Any
 
-from aio_pika import IncomingMessage, ExchangeType
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+from aio_pika import ExchangeType, IncomingMessage
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from services.tracklist_service.src.config import get_config
-from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient, RabbitMQConfig
-from services.tracklist_service.src.services.file_lifecycle_service import FileLifecycleService
+from services.tracklist_service.src.messaging.rabbitmq_client import (
+    RabbitMQClient,
+    RabbitMQConfig,
+)
+from services.tracklist_service.src.services.file_lifecycle_service import (
+    FileLifecycleService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +23,7 @@ logger = logging.getLogger(__name__)
 class FileEventConsumer:
     """Consumer for file lifecycle events from file_watcher service."""
 
-    def __init__(self, rabbitmq_client: Optional[RabbitMQClient] = None):
+    def __init__(self, rabbitmq_client: RabbitMQClient | None = None):
         """Initialize file event consumer.
 
         Args:
@@ -29,16 +33,15 @@ class FileEventConsumer:
         config = get_config()
         rabbitmq_config = RabbitMQConfig()
         self.rabbitmq_client = rabbitmq_client or RabbitMQClient(rabbitmq_config)
-        self.channel: Optional[Any] = None
-        self.queue: Optional[Any] = None
-        self.consumer_tag: Optional[str] = None
+        self.channel: Any | None = None
+        self.queue: Any | None = None
+        self.consumer_tag: str | None = None
 
         # Database setup
         db_url = f"postgresql+asyncpg://{config.database.user}:{config.database.password}@{config.database.host}:{config.database.port}/{config.database.name}"
         self.engine = create_async_engine(db_url, echo=False)
-        self.SessionLocal = sessionmaker(  # type: ignore[call-overload]
+        self.SessionLocal = async_sessionmaker(
             self.engine,
-            class_=AsyncSession,
             expire_on_commit=False,
         )
 
@@ -150,7 +153,8 @@ class FileEventConsumer:
             correlation_id = body.get("correlation_id", "unknown")
 
             logger.info(
-                f"Processing file event: {event_type} for {file_path}", extra={"correlation_id": correlation_id}
+                f"Processing file event: {event_type} for {file_path}",
+                extra={"correlation_id": correlation_id},
             )
 
             # Create database session

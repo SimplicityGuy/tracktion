@@ -8,18 +8,24 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import aio_pika
 from aio_pika import ExchangeType, Message
-from aio_pika.abc import AbstractIncomingMessage
+from aio_pika.abc import (
+    AbstractChannel,
+    AbstractExchange,
+    AbstractIncomingMessage,
+    AbstractQueue,
+    AbstractRobustConnection,
+)
 
-from ..cache.redis_cache import RedisCache
-from ..config import get_config
-from ..models.tracklist_models import TracklistRequest, Tracklist
-from ..scraper.tracklist_scraper import TracklistScraper
+from src.cache.redis_cache import RedisCache
+from src.config import get_config
+from src.models.tracklist_models import Tracklist, TracklistRequest
+from src.scraper.tracklist_scraper import TracklistScraper
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +37,10 @@ class TracklistMessageHandler:
         """Initialize the message handler."""
         self.config = get_config().message_queue
         self._running = False
-        self._connection: Optional[aio_pika.Connection] = None
-        self._channel: Optional[aio_pika.Channel] = None
-        self._exchange: Optional[aio_pika.Exchange] = None
-        self._queue: Optional[aio_pika.Queue] = None
+        self._connection: AbstractRobustConnection | None = None
+        self._channel: AbstractChannel | None = None
+        self._exchange: AbstractExchange | None = None
+        self._queue: AbstractQueue | None = None
         self._scraper = TracklistScraper()
         self._cache = RedisCache()
 
@@ -42,7 +48,7 @@ class TracklistMessageHandler:
         """Establish connection to RabbitMQ."""
         try:
             # Create connection
-            self._connection = await aio_pika.connect_robust(  # type: ignore[assignment]
+            self._connection = await aio_pika.connect_robust(
                 self.config.rabbitmq_url,
                 client_properties={
                     "connection_name": "tracklist-service-retrieval",
@@ -50,18 +56,18 @@ class TracklistMessageHandler:
             )
 
             # Create channel
-            self._channel = await self._connection.channel()  # type: ignore[assignment,union-attr]
-            await self._channel.set_qos(prefetch_count=self.config.prefetch_count)  # type: ignore[union-attr]
+            self._channel = await self._connection.channel()
+            await self._channel.set_qos(prefetch_count=self.config.prefetch_count)
 
             # Declare exchange
-            self._exchange = await self._channel.declare_exchange(  # type: ignore[assignment,union-attr]
+            self._exchange = await self._channel.declare_exchange(
                 self.config.exchange_name,
                 ExchangeType.TOPIC,
                 durable=True,
             )
 
             # Declare tracklist retrieval queue
-            self._queue = await self._channel.declare_queue(  # type: ignore[assignment,union-attr]
+            self._queue = await self._channel.declare_queue(
                 "tracklist.retrieval",
                 durable=True,
                 arguments={
@@ -73,7 +79,7 @@ class TracklistMessageHandler:
 
             # Bind queue to exchange
             if self._exchange:
-                await self._queue.bind(  # type: ignore[union-attr]
+                await self._queue.bind(
                     self._exchange,
                     routing_key="tracklist.retrieval",
                 )
@@ -120,7 +126,7 @@ class TracklistMessageHandler:
                 json.dumps(
                     {
                         "status": "processing",
-                        "started_at": datetime.now(timezone.utc).isoformat(),
+                        "started_at": datetime.now(UTC).isoformat(),
                     }
                 ),
                 ttl=3600,  # 1 hour
@@ -214,16 +220,16 @@ class TracklistMessageHandler:
         self,
         correlation_id: UUID,
         status: str,
-        result: Optional[str] = None,
-        error: Optional[str] = None,
-        processing_time_ms: Optional[int] = None,
+        result: str | None = None,
+        error: str | None = None,
+        processing_time_ms: int | None = None,
         cached: bool = False,
     ) -> None:
         """Update job status in cache."""
         status_key = f"job:status:{correlation_id}"
         status_data = {
             "status": status,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
             "cached": cached,
         }
 
@@ -253,7 +259,7 @@ class TracklistMessageHandler:
             "dj_name": tracklist.dj_name,
             "track_count": len(tracklist.tracks),
             "scraped_at": tracklist.scraped_at.isoformat(),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         message = Message(
@@ -270,7 +276,7 @@ class TracklistMessageHandler:
 
         logger.debug(f"Published completion event for {correlation_id}")
 
-    async def _publish_to_dlq(self, original_message: Dict[str, Any], error: str) -> None:
+    async def _publish_to_dlq(self, original_message: dict[str, Any], error: str) -> None:
         """Publish failed message to dead letter queue."""
         if not self._exchange or not self._channel:
             return
@@ -278,7 +284,7 @@ class TracklistMessageHandler:
         dlq_message = {
             "original_message": original_message,
             "error": error,
-            "failed_at": datetime.now(timezone.utc).isoformat(),
+            "failed_at": datetime.now(UTC).isoformat(),
         }
 
         message = Message(

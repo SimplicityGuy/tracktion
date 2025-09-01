@@ -7,7 +7,7 @@ confidence scoring and fallback algorithms for improved accuracy.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 try:
     import essentia.standard as es
@@ -15,7 +15,7 @@ try:
     ESSENTIA_AVAILABLE = True
 except ImportError:
     ESSENTIA_AVAILABLE = False
-    es = None  # type: ignore
+    es = None
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class BPMDetector:
 
     def __init__(
         self,
-        config: Optional[Any] = None,
+        config: Any | None = None,
         confidence_threshold: float = 0.7,
         agreement_tolerance: float = 5.0,
         sample_rate: int = 44100,
@@ -73,7 +73,7 @@ class BPMDetector:
             f"agreement_tolerance={self.agreement_tolerance}"
         )
 
-    def detect_bpm(self, audio_path: str) -> Dict[str, Any]:
+    def detect_bpm(self, audio_path: str) -> dict[str, Any]:
         """
         Detect BPM from an audio file with confidence scoring.
 
@@ -143,17 +143,16 @@ class BPMDetector:
                     confidence = min(0.9, confidence + 0.3)
                     algorithm_used = "consensus"
                     logger.info(f"Algorithms agree: primary={bpm:.1f}, fallback={bpm_fallback:.1f}")
+                # Algorithms disagree, use the one with more stable tempo
+                elif self._is_tempo_stable(beat_intervals):
+                    # Primary is stable, keep it
+                    needs_review = True
                 else:
-                    # Algorithms disagree, use the one with more stable tempo
-                    if self._is_tempo_stable(beat_intervals):
-                        # Primary is stable, keep it
-                        needs_review = True
-                    else:
-                        # Use fallback
-                        bpm = bpm_fallback
-                        algorithm_used = "fallback"
-                        needs_review = True
-                        logger.warning(f"Algorithms disagree: primary={bpm:.1f}, fallback={bpm_fallback:.1f}")
+                    # Use fallback
+                    bpm = bpm_fallback
+                    algorithm_used = "fallback"
+                    needs_review = True
+                    logger.warning(f"Algorithms disagree: primary={bpm:.1f}, fallback={bpm_fallback:.1f}")
 
             # Flag for review if confidence still low
             if confidence < 0.8:
@@ -172,10 +171,10 @@ class BPMDetector:
             return result
 
         except Exception as e:
-            logger.error(f"BPM detection failed for {audio_path}: {str(e)}")
-            raise RuntimeError(f"BPM detection failed: {str(e)}") from e
+            logger.error(f"BPM detection failed for {audio_path}: {e!s}")
+            raise RuntimeError(f"BPM detection failed: {e!s}") from e
 
-    def _extract_rhythm(self, audio: np.ndarray) -> Tuple[Any, ...]:
+    def _extract_rhythm(self, audio: np.ndarray) -> tuple[Any, ...]:
         """
         Extract rhythm using RhythmExtractor2013.
 
@@ -223,7 +222,7 @@ class BPMDetector:
 
         return bool(cv < threshold)  # Ensure we return a Python bool, not numpy bool
 
-    def detect_bpm_with_confidence(self, audio_path: str) -> Dict[str, Any]:
+    def detect_bpm_with_confidence(self, audio_path: str) -> dict[str, Any]:
         """
         Production-ready BPM detection matching Story 2.2 research pattern.
 
@@ -239,4 +238,8 @@ class BPMDetector:
         result = self.detect_bpm(audio_path)
 
         # Return simplified format matching Story 2.2 pattern
-        return {"bpm": result["bpm"], "confidence": result["confidence"], "needs_review": result["needs_review"]}
+        return {
+            "bpm": result["bpm"],
+            "confidence": result["confidence"],
+            "needs_review": result["needs_review"],
+        }

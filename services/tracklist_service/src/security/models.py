@@ -1,10 +1,10 @@
 """Security-related data models."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Dict, List, Optional, Any
+from datetime import UTC, datetime
 from decimal import Decimal
+from enum import Enum
+from typing import Any
 
 
 class AccessRuleType(Enum):
@@ -55,7 +55,7 @@ class SecurityConfig:
     # IP access control
     default_ip_access: bool = True  # Allow by default
     geo_blocking_enabled: bool = False
-    blocked_countries: Optional[List[str]] = None
+    blocked_countries: list[str] | None = None
 
     def __post_init__(self) -> None:
         if self.blocked_countries is None:
@@ -68,36 +68,36 @@ class IPAccessRule:
 
     ip_address: str
     rule_type: AccessRuleType
-    user_id: Optional[str] = None
-    reason: Optional[str] = None
-    created_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
+    user_id: str | None = None
+    reason: str | None = None
+    created_at: datetime | None = None
+    expires_at: datetime | None = None
     is_active: bool = True
 
     def __post_init__(self) -> None:
         if self.created_at is None:
-            self.created_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
 
     def is_expired(self) -> bool:
         """Check if rule has expired."""
         if not self.expires_at:
             return False
-        return datetime.now(timezone.utc) > self.expires_at
+        return datetime.now(UTC) > self.expires_at
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
         return {
             "ip_address": self.ip_address,
             "rule_type": self.rule_type.value,
             "user_id": self.user_id,
             "reason": self.reason,
-            "created_at": self.created_at.isoformat() if self.created_at is not None else "",
-            "expires_at": self.expires_at.isoformat() if self.expires_at is not None else None,
+            "created_at": (self.created_at.isoformat() if self.created_at is not None else ""),
+            "expires_at": (self.expires_at.isoformat() if self.expires_at is not None else None),
             "is_active": self.is_active,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "IPAccessRule":
+    def from_dict(cls, data: dict[str, Any]) -> "IPAccessRule":
         """Create from dictionary."""
         return cls(
             ip_address=data["ip_address"],
@@ -105,7 +105,7 @@ class IPAccessRule:
             user_id=data.get("user_id"),
             reason=data.get("reason"),
             created_at=datetime.fromisoformat(data["created_at"]),
-            expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
+            expires_at=(datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None),
             is_active=data.get("is_active", True),
         )
 
@@ -116,8 +116,8 @@ class AbuseScore:
 
     user_id: str
     score: Decimal  # 0.0 to 1.0, higher = more suspicious
-    abuse_types: List[AbuseType]
-    details: Dict[str, Any]
+    abuse_types: list[AbuseType]
+    details: dict[str, Any]
     should_block: bool
     recommendation: str
 
@@ -129,7 +129,7 @@ class AbuseScore:
         """Check if this is medium-risk abuse."""
         return Decimal("0.5") <= self.score < Decimal("0.8")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "user_id": self.user_id,
@@ -147,32 +147,32 @@ class AuditLog:
 
     event_id: str
     event_type: AuditEventType
-    user_id: Optional[str]
+    user_id: str | None
     ip_address: str
-    user_agent: Optional[str]
-    endpoint: Optional[str]
-    method: Optional[str]
-    status_code: Optional[int]
+    user_agent: str | None
+    endpoint: str | None
+    method: str | None
+    status_code: int | None
     request_size: int = 0
     response_size: int = 0
     response_time: float = 0.0
 
     # Security-specific fields
-    api_key_id: Optional[str] = None
-    jwt_token_id: Optional[str] = None
+    api_key_id: str | None = None
+    jwt_token_id: str | None = None
     rate_limit_exceeded: bool = False
-    authentication_method: Optional[str] = None
-    security_violation: Optional[str] = None
+    authentication_method: str | None = None
+    security_violation: str | None = None
 
     # Additional context
-    details: Optional[Dict[str, Any]] = None
-    tags: Optional[List[str]] = None
+    details: dict[str, Any] | None = None
+    tags: list[str] | None = None
 
-    timestamp: Optional[datetime] = None
+    timestamp: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.timestamp is None:
-            self.timestamp = datetime.now(timezone.utc)
+            self.timestamp = datetime.now(UTC)
         if self.tags is None:
             self.tags = []
         if self.details is None:
@@ -188,7 +188,7 @@ class AuditLog:
         if self.details is not None:
             self.details[key] = value
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
         return {
             "event_id": self.event_id,
@@ -209,11 +209,11 @@ class AuditLog:
             "security_violation": self.security_violation,
             "details": self.details,
             "tags": self.tags,
-            "timestamp": self.timestamp.isoformat() if self.timestamp is not None else "",
+            "timestamp": (self.timestamp.isoformat() if self.timestamp is not None else ""),
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "AuditLog":
+    def from_dict(cls, data: dict[str, Any]) -> "AuditLog":
         """Create from dictionary."""
         return cls(
             event_id=data["event_id"],

@@ -259,7 +259,13 @@ class TestStructureMonitor:
     def test_load_custom_selectors(self, tmp_path):
         """Test loading custom selector configuration."""
         config_path = tmp_path / "selectors.json"
-        custom_config = {"search": {"critical": [".custom-selector"], "important": [], "optional": []}}
+        custom_config = {
+            "search": {
+                "critical": [".custom-selector"],
+                "important": [],
+                "optional": [],
+            }
+        }
         config_path.write_text(json.dumps(custom_config))
 
         monitor = StructureMonitor(config_path=config_path)

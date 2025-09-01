@@ -1,7 +1,14 @@
 """Security management package for tracklist service."""
 
+from .abuse_detector import AbuseDetector, AbuseScore
+from .models import AuditLog, IPAccessRule, SecurityConfig
 from .security_manager import SecurityManager
-from .abuse_detector import AbuseDetector, AbuseScore  # type: ignore[attr-defined]
-from .models import SecurityConfig, AuditLog, IPAccessRule
 
-__all__ = ["SecurityManager", "AbuseDetector", "AbuseScore", "SecurityConfig", "AuditLog", "IPAccessRule"]
+__all__ = [
+    "AbuseDetector",
+    "AbuseScore",
+    "AuditLog",
+    "IPAccessRule",
+    "SecurityConfig",
+    "SecurityManager",
+]

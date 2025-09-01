@@ -2,11 +2,12 @@
 Tests for CacheService implementation.
 """
 
-import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-from services.cache_service import CacheService, CacheMetrics, CacheConfig
+import pytest
+
+from services.cache_service import CacheConfig, CacheMetrics, CacheService
 
 
 class TestCacheConfig:
@@ -123,7 +124,12 @@ class TestCacheService:
         service = CacheService(cache_config)
 
         format_name = "traktor"
-        capabilities = {"max_tracks": 100, "supports_bpm": True, "supports_keys": True, "supports_cue_points": True}
+        capabilities = {
+            "max_tracks": 100,
+            "supports_bpm": True,
+            "supports_keys": True,
+            "supports_cue_points": True,
+        }
 
         # Test cache miss
         result = await service.get_format_capabilities(format_name)
@@ -214,7 +220,11 @@ class TestCacheService:
         service = CacheService(cache_config)
 
         cue_file_id = uuid4()
-        validation_result = {"valid": True, "warnings": [], "metadata": {"test": "data"}}
+        validation_result = {
+            "valid": True,
+            "warnings": [],
+            "metadata": {"test": "data"},
+        }
 
         # Test cache miss
         result = await service.get_validation_result(cue_file_id)

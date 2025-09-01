@@ -2,6 +2,7 @@
 Main tokenizer implementation for filename analysis.
 """
 
+import re
 import time
 import unicodedata
 from pathlib import Path
@@ -10,6 +11,12 @@ from .classifier import TokenClassifier
 from .models import Token, TokenCategory, TokenizedFilename
 from .patterns import PatternMatcher
 from .vocabulary import VocabularyManager
+
+# Constants
+FILE_EXTENSION_PARTS = 2  # Number of parts when splitting by extension
+MAX_FILE_EXTENSION_LENGTH = 5  # Maximum length for valid file extensions
+CONFIDENCE_THRESHOLD_FOR_UNKNOWN = 0.5  # Minimum confidence to include unknown tokens
+MAX_NOISE_LENGTH = 2  # Maximum length for text considered noise
 
 
 class Tokenizer:
@@ -143,7 +150,7 @@ class Tokenizer:
         if "." in filename:
             # Check if last part after . looks like a file extension (short, alphanumeric)
             parts = filename.rsplit(".", 1)
-            if len(parts) == 2 and len(parts[1]) <= 5 and parts[1].isalnum():
+            if len(parts) == FILE_EXTENSION_PARTS and len(parts[1]) <= MAX_FILE_EXTENSION_LENGTH and parts[1].isalnum():
                 name, ext = parts
                 # Keep extension if it's a format indicator
                 filename = f"{name} {ext}" if ext.upper() in ["FLAC", "MP3", "WAV", "APE", "SHN", "M4A"] else name
@@ -156,7 +163,6 @@ class Tokenizer:
 
         # For dashes, keep them if part of dates, otherwise replace with space
         # Preserve date patterns like 2023-07-14 or 2023.07.14
-        import re
 
         # Check if there are date patterns with dashes
         date_pattern = re.compile(r"\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}")
@@ -181,9 +187,7 @@ class Tokenizer:
             filename = filename.replace("-", " ")
 
         # Normalize whitespace
-        filename = " ".join(filename.split())
-
-        return filename
+        return " ".join(filename.split())
 
     def _process_matches(self, matches: list[tuple[Token, int, int]], text: str) -> list[Token]:
         """
@@ -233,7 +237,7 @@ class Tokenizer:
             # Try to classify
             category, confidence = self.classifier.classify(segment)
 
-            if category != TokenCategory.UNKNOWN or confidence > 0.5:
+            if category != TokenCategory.UNKNOWN or confidence > CONFIDENCE_THRESHOLD_FOR_UNKNOWN:
                 token = Token(
                     value=segment,
                     category=category,
@@ -263,7 +267,7 @@ class Tokenizer:
             return True
 
         # Very short and no alphanumeric
-        return len(text) <= 2 and not any(c.isalnum() for c in text)
+        return len(text) <= MAX_NOISE_LENGTH and not any(c.isalnum() for c in text)
 
     def _calculate_overall_confidence(self, tokens: list[Token]) -> float:
         """
@@ -344,8 +348,8 @@ class Tokenizer:
         return {
             "total_files": len(filenames),
             "total_tokens": sum(r.token_count for r in results),
-            "average_tokens_per_file": sum(r.token_count for r in results) / len(results) if results else 0,
-            "average_confidence": sum(r.confidence_score for r in results) / len(results) if results else 0,
+            "average_tokens_per_file": (sum(r.token_count for r in results) / len(results) if results else 0),
+            "average_confidence": (sum(r.confidence_score for r in results) / len(results) if results else 0),
             "average_coverage": avg_coverage,
             "estimated_accuracy": avg_coverage * 100,  # Rough accuracy estimate
             "category_frequencies": category_freq,

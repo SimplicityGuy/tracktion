@@ -2,22 +2,22 @@
 Tests for CueFileRepository.
 """
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.repository.cue_file_repository import CueFileRepository
 from src.models.cue_file import CueFileDB
+from src.repository.cue_file_repository import CueFileRepository
 
 
 @pytest.fixture
 def mock_session():
     """Create mock async database session."""
-    session = AsyncMock(spec=AsyncSession)
-    return session
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
@@ -39,8 +39,8 @@ def sample_cue_file():
         file_size=2048,
         generation_time_ms=150.5,
         is_active=True,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
 
@@ -79,8 +79,8 @@ class TestCueFileRepository:
             checksum="old123",
             file_size=1024,
             is_active=True,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # Mock the get_cue_files_by_tracklist_and_format call
@@ -156,8 +156,8 @@ class TestCueFileRepository:
                 checksum=f"checksum_{i}",
                 file_size=1024 * i,
                 is_active=True,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             for i in range(3)
         ]
@@ -265,8 +265,8 @@ class TestCueFileRepository:
                 checksum=f"checksum_{i}",
                 file_size=1024 * i,
                 is_active=True,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             for i in range(5)
         ]
@@ -324,8 +324,8 @@ class TestCueFileRepository:
             checksum="latest",
             file_size=2048,
             is_active=True,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         versions = [
@@ -338,8 +338,8 @@ class TestCueFileRepository:
                 checksum=f"checksum_{i}",
                 file_size=1024 * i,
                 is_active=(i == 3),
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             for i in range(1, 4)
         ]

@@ -2,14 +2,16 @@
 
 import logging
 import random
-from dataclasses import dataclass, field
-from datetime import datetime, UTC, timedelta
-from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
 from collections import defaultdict
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from enum import Enum
+from typing import Any
+from urllib.parse import urlparse
 
+import pika
 from redis import Redis
-import pika  # type: ignore[import-untyped]
 
 from services.tracklist_service.src.queue.batch_queue import Job
 
@@ -50,7 +52,7 @@ class RetryPolicy:
     jitter: bool = True  # Add random jitter to delays
 
     # Failure-specific overrides
-    failure_policies: Dict[FailureType, Dict[str, Any]] = field(default_factory=dict)
+    failure_policies: dict[FailureType, dict[str, Any]] = field(default_factory=dict)
 
     def get_delay(self, attempt: int, failure_type: FailureType = FailureType.UNKNOWN) -> float:
         """Calculate delay for retry attempt.
@@ -132,14 +134,19 @@ class FailedJob:
     failure_type: FailureType
     failed_at: datetime
     retry_count: int = 0
-    last_retry: Optional[datetime] = None
-    next_retry: Optional[datetime] = None
+    last_retry: datetime | None = None
+    next_retry: datetime | None = None
 
 
 class CircuitBreaker:
     """Circuit breaker for domain protection."""
 
-    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60, half_open_max_calls: int = 3):
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        recovery_timeout: int = 60,
+        half_open_max_calls: int = 3,
+    ):
         """Initialize circuit breaker.
 
         Args:
@@ -153,7 +160,7 @@ class CircuitBreaker:
 
         self.state = "closed"  # closed, open, half_open
         self.failure_count = 0
-        self.last_failure: Optional[datetime] = None
+        self.last_failure: datetime | None = None
         self.success_count = 0
         self.state_changed_at = datetime.now(UTC)
 
@@ -166,9 +173,8 @@ class CircuitBreaker:
             else:
                 raise Exception("Circuit breaker is open")
 
-        if self.state == "half_open":
-            if self.success_count >= self.half_open_max_calls:
-                self._transition_to_closed()
+        if self.state == "half_open" and self.success_count >= self.half_open_max_calls:
+            self._transition_to_closed()
 
         try:
             result = func(*args, **kwargs)
@@ -192,11 +198,8 @@ class CircuitBreaker:
         self.failure_count += 1
         self.last_failure = datetime.now(UTC)
 
-        if self.state == "half_open":
+        if self.state == "half_open" or (self.state == "closed" and self.failure_count >= self.failure_threshold):
             self._transition_to_open()
-        elif self.state == "closed":
-            if self.failure_count >= self.failure_threshold:
-                self._transition_to_open()
 
     def _transition_to_open(self) -> None:
         """Transition to open state."""
@@ -223,13 +226,13 @@ class CircuitBreaker:
         """Check if circuit is open."""
         return self.state == "open"
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(self) -> dict[str, Any]:
         """Get circuit breaker state."""
         return {
             "state": self.state,
             "failure_count": self.failure_count,
             "success_count": self.success_count,
-            "last_failure": self.last_failure.isoformat() if self.last_failure else None,
+            "last_failure": (self.last_failure.isoformat() if self.last_failure else None),
             "state_changed_at": self.state_changed_at.isoformat(),
         }
 
@@ -242,7 +245,7 @@ class RetryManager:
         redis_host: str = "localhost",
         redis_port: int = 6379,
         rabbitmq_host: str = "localhost",
-        default_policy: Optional[RetryPolicy] = None,
+        default_policy: RetryPolicy | None = None,
     ):
         """Initialize retry manager.
 
@@ -269,16 +272,16 @@ class RetryManager:
         self.default_policy = default_policy or RetryPolicy()
 
         # Domain-specific policies
-        self.domain_policies: Dict[str, RetryPolicy] = {}
+        self.domain_policies: dict[str, RetryPolicy] = {}
 
         # Circuit breakers per domain
-        self.circuit_breakers: Dict[str, CircuitBreaker] = defaultdict(CircuitBreaker)
+        self.circuit_breakers: dict[str, CircuitBreaker] = defaultdict(CircuitBreaker)
 
         # Failed job tracking
-        self.failed_jobs: Dict[str, FailedJob] = {}
+        self.failed_jobs: dict[str, FailedJob] = {}
 
         # Failure statistics
-        self.failure_stats: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        self.failure_stats: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
     def classify_failure(self, error: str) -> FailureType:
         """Classify failure type from error message.
@@ -293,20 +296,19 @@ class RetryManager:
 
         if any(keyword in error_lower for keyword in ["network", "connection", "dns", "ssl"]):
             return FailureType.NETWORK
-        elif any(keyword in error_lower for keyword in ["timeout", "timed out"]):
+        if any(keyword in error_lower for keyword in ["timeout", "timed out"]):
             return FailureType.TIMEOUT
-        elif any(keyword in error_lower for keyword in ["rate limit", "too many requests", "429"]):
+        if any(keyword in error_lower for keyword in ["rate limit", "too many requests", "429"]):
             return FailureType.RATE_LIMIT
-        elif any(keyword in error_lower for keyword in ["unauthorized", "forbidden", "401", "403"]):
+        if any(keyword in error_lower for keyword in ["unauthorized", "forbidden", "401", "403"]):
             return FailureType.AUTH
-        elif any(keyword in error_lower for keyword in ["server error", "internal error", "500", "502", "503"]):
+        if any(keyword in error_lower for keyword in ["server error", "internal error", "500", "502", "503"]):
             return FailureType.SERVER
-        elif any(keyword in error_lower for keyword in ["bad request", "not found", "400", "404"]):
+        if any(keyword in error_lower for keyword in ["bad request", "not found", "400", "404"]):
             return FailureType.CLIENT
-        elif any(keyword in error_lower for keyword in ["parse", "json", "xml", "decode"]):
+        if any(keyword in error_lower for keyword in ["parse", "json", "xml", "decode"]):
             return FailureType.PARSE
-        else:
-            return FailureType.UNKNOWN
+        return FailureType.UNKNOWN
 
     async def handle_failure(self, job: Job, error: str) -> bool:
         """Handle job failure and determine if retry is needed.
@@ -333,7 +335,10 @@ class RetryManager:
         # Get or create failed job record
         if job.id not in self.failed_jobs:
             self.failed_jobs[job.id] = FailedJob(
-                job=job, error=error, failure_type=failure_type, failed_at=datetime.now(UTC)
+                job=job,
+                error=error,
+                failure_type=failure_type,
+                failed_at=datetime.now(UTC),
             )
         else:
             failed_job = self.failed_jobs[job.id]
@@ -375,10 +380,10 @@ class RetryManager:
             "job_id": job.id,
             "batch_id": job.batch_id,
             "url": job.url,
-            "priority": job.priority.value if hasattr(job.priority, "value") else job.priority,
+            "priority": (job.priority.value if hasattr(job.priority, "value") else job.priority),
             "user_id": job.user_id,
             "retry_at": (datetime.now(UTC) + timedelta(seconds=delay)).isoformat(),
-            "retry_count": self.failed_jobs[job.id].retry_count if job.id in self.failed_jobs else 0,
+            "retry_count": (self.failed_jobs[job.id].retry_count if job.id in self.failed_jobs else 0),
         }
 
         # Publish to retry queue
@@ -399,14 +404,14 @@ class RetryManager:
             "retry_count": retry_message["retry_count"],
         }
         # Convert to proper types for Redis
-        redis_retry_data: Dict[str, str] = {k: str(v) for k, v in retry_data.items()}
+        redis_retry_data: dict[str, str] = {k: str(v) for k, v in retry_data.items()}
         self.redis.hset(
             f"retry:{job.id}",
-            mapping=redis_retry_data,  # type: ignore[arg-type]
+            mapping=redis_retry_data,
         )
         self.redis.expire(f"retry:{job.id}", int(delay) + 3600)  # Expire after delay + 1 hour
 
-    async def process_retry_queue(self) -> List[Job]:
+    async def process_retry_queue(self) -> list[Job]:
         """Process jobs ready for retry.
 
         Returns:
@@ -442,11 +447,11 @@ class RetryManager:
             "job_id": job.id,
             "batch_id": job.batch_id,
             "url": job.url,
-            "priority": job.priority.value if hasattr(job.priority, "value") else job.priority,
+            "priority": (job.priority.value if hasattr(job.priority, "value") else job.priority),
             "user_id": job.user_id,
             "failed_at": datetime.now(UTC).isoformat(),
             "final_error": error,
-            "retry_count": self.failed_jobs[job.id].retry_count if job.id in self.failed_jobs else 0,
+            "retry_count": (self.failed_jobs[job.id].retry_count if job.id in self.failed_jobs else 0),
         }
 
         # Publish to DLQ
@@ -454,15 +459,13 @@ class RetryManager:
             exchange="",
             routing_key="dead_letter_queue",
             body=str(dlq_message),
-            properties=pika.BasicProperties(
-                delivery_mode=2  # Persistent
-            ),
+            properties=pika.BasicProperties(delivery_mode=2),  # Persistent
         )
 
         # Store in Redis for analysis
         # Convert to proper types for Redis
-        redis_dlq_data: Dict[str, str] = {k: str(v) for k, v in dlq_message.items()}
-        self.redis.hset(f"dlq:{job.id}", mapping=redis_dlq_data)  # type: ignore[arg-type]
+        redis_dlq_data: dict[str, str] = {k: str(v) for k, v in dlq_message.items()}
+        self.redis.hset(f"dlq:{job.id}", mapping=redis_dlq_data)
 
         # Get retry count before cleanup
         retry_count = self.failed_jobs[job.id].retry_count if job.id in self.failed_jobs else 0
@@ -482,7 +485,6 @@ class RetryManager:
         Returns:
             Domain name
         """
-        from urllib.parse import urlparse
 
         parsed = urlparse(url)
         return parsed.netloc or "unknown"
@@ -496,7 +498,7 @@ class RetryManager:
         """
         self.domain_policies[domain] = policy
 
-    def get_failure_stats(self, domain: Optional[str] = None) -> Dict[str, Any]:
+    def get_failure_stats(self, domain: str | None = None) -> dict[str, Any]:
         """Get failure statistics.
 
         Args:
@@ -510,20 +512,19 @@ class RetryManager:
             return {
                 "domain": domain,
                 "failures": stats,
-                "circuit_breaker": self.circuit_breakers[domain].get_state()
-                if domain in self.circuit_breakers
-                else None,
+                "circuit_breaker": (
+                    self.circuit_breakers[domain].get_state() if domain in self.circuit_breakers else None
+                ),
             }
-        else:
-            return {
-                domain: {
-                    "failures": stats,
-                    "circuit_breaker": self.circuit_breakers[domain].get_state()
-                    if domain in self.circuit_breakers
-                    else None,
-                }
-                for domain, stats in self.failure_stats.items()
+        return {
+            domain: {
+                "failures": stats,
+                "circuit_breaker": (
+                    self.circuit_breakers[domain].get_state() if domain in self.circuit_breakers else None
+                ),
             }
+            for domain, stats in self.failure_stats.items()
+        }
 
     def reset_circuit_breaker(self, domain: str) -> None:
         """Manually reset circuit breaker for domain.
@@ -535,7 +536,7 @@ class RetryManager:
             self.circuit_breakers[domain]._transition_to_closed()
             logger.info(f"Circuit breaker for {domain} manually reset")
 
-    async def recover_stalled_jobs(self, stall_timeout: int = 300) -> List[Job]:
+    async def recover_stalled_jobs(self, stall_timeout: int = 300) -> list[Job]:
         """Recover jobs that have been processing too long.
 
         Args:

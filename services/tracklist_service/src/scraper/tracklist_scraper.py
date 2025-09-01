@@ -8,20 +8,14 @@ tracks, timestamps, transitions, and metadata.
 import hashlib
 import logging
 import re
-from datetime import date, datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, date, datetime
+from typing import Any
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Tag
 
-from ..models.tracklist_models import (
-    CuePoint,
-    Track,
-    Tracklist,
-    TracklistMetadata,
-    Transition,
-    TransitionType,
-)
+from src.models.tracklist_models import CuePoint, Track, Tracklist, TracklistMetadata, Transition, TransitionType
+
 from .base_scraper import ScraperBase
 
 logger = logging.getLogger(__name__)
@@ -84,7 +78,7 @@ class TracklistScraper(ScraperBase):
             tracks=tracks,
             transitions=transitions,
             metadata=metadata,
-            scraped_at=datetime.now(timezone.utc),
+            scraped_at=datetime.now(UTC),
             source_html_hash=html_hash,
         )
 
@@ -97,7 +91,12 @@ class TracklistScraper(ScraperBase):
     def _extract_dj_name(self, soup: BeautifulSoup) -> str:
         """Extract DJ/artist name from the page."""
         # Try multiple selectors for DJ name
-        selectors = ["div.tlHead h1.marL10", "h1.djName", "div.djHeader h1", "meta[property='og:title']"]
+        selectors = [
+            "div.tlHead h1.marL10",
+            "h1.djName",
+            "div.djHeader h1",
+            "meta[property='og:title']",
+        ]
 
         for selector in selectors:
             element = soup.select_one(selector)
@@ -110,15 +109,14 @@ class TracklistScraper(ScraperBase):
                             return content.split("@")[0].strip()
                         return content.strip()
                     return "Unknown DJ"
-                else:
-                    text = element.get_text(strip=True)
-                    if text:
-                        return str(text)
+                text = element.get_text(strip=True)
+                if text:
+                    return str(text)
 
         # Fallback
         return "Unknown DJ"
 
-    def _extract_event_info(self, soup: BeautifulSoup) -> Dict[str, Any]:
+    def _extract_event_info(self, soup: BeautifulSoup) -> dict[str, Any]:
         """Extract event information from the page."""
         info = {}
 
@@ -146,23 +144,30 @@ class TracklistScraper(ScraperBase):
 
         return info
 
-    def _parse_date(self, date_str: str) -> Optional[date]:
+    def _parse_date(self, date_str: str) -> date | None:
         """Parse date string to date object."""
         if not date_str:
             return None
 
         # Try multiple date formats
-        formats = ["%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y", "%B %d, %Y", "%d %B %Y"]
+        formats = [
+            "%Y-%m-%d",
+            "%d-%m-%Y",
+            "%Y/%m/%d",
+            "%d/%m/%Y",
+            "%B %d, %Y",
+            "%d %B %Y",
+        ]
 
         for fmt in formats:
             try:
-                return datetime.strptime(date_str, fmt).date()
+                return datetime.strptime(date_str, fmt).replace(tzinfo=UTC).date()
             except ValueError:
                 continue
 
         return None
 
-    def _extract_tracks(self, soup: BeautifulSoup) -> List[Track]:
+    def _extract_tracks(self, soup: BeautifulSoup) -> list[Track]:
         """Extract all tracks from the tracklist."""
         tracks = []
 
@@ -176,7 +181,7 @@ class TracklistScraper(ScraperBase):
 
         return tracks
 
-    def _parse_track(self, element: Tag, track_number: int) -> Optional[Track]:
+    def _parse_track(self, element: Tag, track_number: int) -> Track | None:
         """Parse individual track from HTML element."""
         try:
             # Extract timestamp/cue point
@@ -222,10 +227,16 @@ class TracklistScraper(ScraperBase):
             logger.debug(f"Failed to parse track {track_number}: {e}")
             return None
 
-    def _extract_timestamp(self, element: Tag, track_number: int) -> Optional[CuePoint]:
+    def _extract_timestamp(self, element: Tag, track_number: int) -> CuePoint | None:
         """Extract timestamp/cue point from track element."""
         # Look for time elements
-        time_selectors = ["span.cue", "div.time", "td.time", "span.trackTime", "div.cueTime"]
+        time_selectors = [
+            "span.cue",
+            "div.time",
+            "td.time",
+            "span.trackTime",
+            "div.cueTime",
+        ]
 
         for selector in time_selectors:
             time_elem = element.select_one(selector)
@@ -233,11 +244,15 @@ class TracklistScraper(ScraperBase):
                 time_str = time_elem.get_text(strip=True)
                 timestamp_ms = self._parse_time_to_ms(time_str)
                 if timestamp_ms is not None:
-                    return CuePoint(track_number=track_number, timestamp_ms=timestamp_ms, formatted_time=time_str)
+                    return CuePoint(
+                        track_number=track_number,
+                        timestamp_ms=timestamp_ms,
+                        formatted_time=time_str,
+                    )
 
         return None
 
-    def _parse_time_to_ms(self, time_str: str) -> Optional[int]:
+    def _parse_time_to_ms(self, time_str: str) -> int | None:
         """Parse time string to milliseconds."""
         if not time_str:
             return None
@@ -264,7 +279,7 @@ class TracklistScraper(ScraperBase):
 
         return None
 
-    def _extract_artist_title(self, element: Tag) -> Tuple[str, str]:
+    def _extract_artist_title(self, element: Tag) -> tuple[str, str]:
         """Extract artist and title from track element."""
         # Try to find artist and title in separate elements
         artist_elem = element.select_one("span.artist, div.artistName, a.artist, td.artist")
@@ -298,7 +313,7 @@ class TracklistScraper(ScraperBase):
 
         return False
 
-    def _extract_remix(self, title: str) -> Optional[str]:
+    def _extract_remix(self, title: str) -> str | None:
         """Extract remix information from track title."""
         # Look for remix patterns in parentheses or brackets
         patterns = [
@@ -313,7 +328,7 @@ class TracklistScraper(ScraperBase):
 
         return None
 
-    def _extract_label(self, element: Tag) -> Optional[str]:
+    def _extract_label(self, element: Tag) -> str | None:
         """Extract record label from track element."""
         label_elem = element.select_one("span.label, div.labelName, a.label, td.label")
 
@@ -322,7 +337,7 @@ class TracklistScraper(ScraperBase):
 
         return None
 
-    def _extract_bpm(self, element: Tag) -> Optional[float]:
+    def _extract_bpm(self, element: Tag) -> float | None:
         """Extract BPM from track element."""
         bpm_elem = element.select_one("span.bpm, div.bpm, td.bpm")
 
@@ -338,7 +353,7 @@ class TracklistScraper(ScraperBase):
 
         return None
 
-    def _extract_key(self, element: Tag) -> Optional[str]:
+    def _extract_key(self, element: Tag) -> str | None:
         """Extract musical key from track element."""
         key_elem = element.select_one("span.key, div.key, td.key")
 
@@ -347,7 +362,7 @@ class TracklistScraper(ScraperBase):
 
         return None
 
-    def _extract_genre(self, element: Tag) -> Optional[str]:
+    def _extract_genre(self, element: Tag) -> str | None:
         """Extract genre from track element."""
         genre_elem = element.select_one("span.genre, div.genre, td.genre")
 
@@ -356,7 +371,7 @@ class TracklistScraper(ScraperBase):
 
         return None
 
-    def _extract_transitions(self, soup: BeautifulSoup, tracks: List[Track]) -> List[Transition]:
+    def _extract_transitions(self, soup: BeautifulSoup, tracks: list[Track]) -> list[Transition]:
         """Extract transition information between tracks."""
         transitions = []
 
@@ -374,13 +389,13 @@ class TracklistScraper(ScraperBase):
 
         return transitions
 
-    def _parse_transition(self, element: Tag, tracks: List[Track]) -> Optional[Transition]:
+    def _parse_transition(self, element: Tag, tracks: list[Track]) -> Transition | None:
         """Parse transition from HTML element."""
         # This would need to be adapted based on actual HTML structure
         # For now, return None as we'd need real examples
         return None
 
-    def _infer_transitions(self, tracks: List[Track]) -> List[Transition]:
+    def _infer_transitions(self, tracks: list[Track]) -> list[Transition]:
         """Infer transitions from track timestamps."""
         transitions = []
 
@@ -394,10 +409,7 @@ class TracklistScraper(ScraperBase):
                 next_start = next_timestamp.timestamp_ms
 
                 # Determine transition type based on timing
-                if abs(current_end - next_start) < 5000:  # Within 5 seconds
-                    trans_type = TransitionType.BLEND
-                else:
-                    trans_type = TransitionType.CUT
+                trans_type = TransitionType.BLEND if abs(current_end - next_start) < 5000 else TransitionType.CUT
 
                 transitions.append(
                     Transition(
@@ -412,7 +424,7 @@ class TracklistScraper(ScraperBase):
 
         return transitions
 
-    def _extract_metadata(self, soup: BeautifulSoup) -> Optional[TracklistMetadata]:
+    def _extract_metadata(self, soup: BeautifulSoup) -> TracklistMetadata | None:
         """Extract additional metadata from the page."""
         # Initialize with all required fields
         metadata = TracklistMetadata(
@@ -476,6 +488,13 @@ class TracklistScraper(ScraperBase):
 
         return (
             metadata
-            if any([metadata.recording_type, metadata.duration_minutes, metadata.play_count, metadata.tags])
+            if any(
+                [
+                    metadata.recording_type,
+                    metadata.duration_minutes,
+                    metadata.play_count,
+                    metadata.tags,
+                ]
+            )
             else None
         )

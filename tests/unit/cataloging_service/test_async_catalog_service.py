@@ -1,12 +1,13 @@
 """Unit tests for async catalog service."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
 from services.cataloging_service.src.async_catalog_service import AsyncCatalogService
+from services.cataloging_service.src.message_consumer import CatalogingMessageConsumer
 from shared.core_types.src.models import Metadata, Recording, Tracklist
 
 
@@ -73,7 +74,7 @@ class TestAsyncCatalogService:
             file_name="file.mp3",
             sha256_hash="testhash",
             xxh128_hash="testxxhash",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
 
         catalog_service.recording_repo.get_by_file_path.return_value = None
@@ -93,7 +94,8 @@ class TestAsyncCatalogService:
         catalog_service.recording_repo.get_by_file_path.assert_called_once_with("/test/file.mp3")
         catalog_service.recording_repo.create.assert_called_once()
         catalog_service.metadata_repo.batch_create.assert_called_once_with(
-            recording_id=recording_id, metadata_dict={"genre": "electronic", "bpm": "128"}
+            recording_id=recording_id,
+            metadata_dict={"genre": "electronic", "bpm": "128"},
         )
 
     @pytest.mark.asyncio
@@ -101,7 +103,10 @@ class TestAsyncCatalogService:
         """Test cataloging an existing file."""
         # Setup
         existing_recording = Recording(
-            id=uuid4(), file_path="/test/file.mp3", file_name="file.mp3", created_at=datetime.utcnow()
+            id=uuid4(),
+            file_path="/test/file.mp3",
+            file_name="file.mp3",
+            created_at=datetime.now(UTC),
         )
 
         catalog_service.recording_repo.get_by_file_path.return_value = existing_recording
@@ -247,7 +252,7 @@ class TestAsyncCatalogService:
             file_name="file.mp3",
             sha256_hash="hash",
             xxh128_hash="xxhash",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
 
         metadata = [
@@ -284,7 +289,6 @@ class TestAsyncMessageConsumer:
     @pytest.mark.asyncio
     async def test_process_created_event(self):
         """Test processing file created event."""
-        from services.cataloging_service.src.message_consumer import CatalogingMessageConsumer
 
         consumer = CatalogingMessageConsumer()
         consumer.catalog_service = MagicMock()
@@ -313,7 +317,6 @@ class TestAsyncMessageConsumer:
     @pytest.mark.asyncio
     async def test_process_deleted_event(self):
         """Test processing file deleted event."""
-        from services.cataloging_service.src.message_consumer import CatalogingMessageConsumer
 
         consumer = CatalogingMessageConsumer()
         consumer.catalog_service = MagicMock()

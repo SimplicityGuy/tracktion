@@ -3,4 +3,4 @@
 from .fallback_cache import CachedItem, CacheStrategy, FallbackCache
 from .redis_cache import RedisCache
 
-__all__ = ["RedisCache", "FallbackCache", "CachedItem", "CacheStrategy"]
+__all__ = ["CacheStrategy", "CachedItem", "FallbackCache", "RedisCache"]

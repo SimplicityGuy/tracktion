@@ -23,25 +23,24 @@ Example usage:
     ...     print(f"{track.number}. {track.title} @ {track.get_start_time()}")
 """
 
-import re
 import logging
+import re
 from pathlib import Path
-from typing import Optional, List
 
 try:
-    import chardet  # type: ignore[import-not-found]
+    import chardet
 
     HAS_CHARDET = True
 except ImportError:
     HAS_CHARDET = False
 
-from .models import CueSheet, Track, CueTime, FileReference
 from .exceptions import (
     CueParsingError,
     CueValidationError,
-    InvalidTimeFormatError,
     InvalidCommandError,
+    InvalidTimeFormatError,
 )
+from .models import CueSheet, CueTime, FileReference, Track
 
 
 class CueParser:
@@ -50,7 +49,7 @@ class CueParser:
     # Maximum CUE file size (10MB) - CUE files are text and should never be this large
     MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
-    def __init__(self, logger: Optional[logging.Logger] = None) -> None:
+    def __init__(self, logger: logging.Logger | None = None) -> None:
         """Initialize the CUE parser.
 
         Args:
@@ -62,13 +61,13 @@ class CueParser:
     def reset(self) -> None:
         """Reset parser state for new file."""
         self.cue_sheet = CueSheet()
-        self.current_file: Optional[FileReference] = None
-        self.current_track: Optional[Track] = None
+        self.current_file: FileReference | None = None
+        self.current_track: Track | None = None
         self.line_number = 0
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
 
-    def parse_file(self, file_path: str, encoding: Optional[str] = None) -> CueSheet:
+    def parse_file(self, file_path: str, encoding: str | None = None) -> CueSheet:
         """Parse a CUE file from disk.
 
         Args:
@@ -97,7 +96,7 @@ class CueParser:
             # Auto-detect encoding if not specified
             if encoding is None:
                 if HAS_CHARDET:
-                    with open(path, "rb") as f:
+                    with Path(path).open("rb") as f:
                         raw_data = f.read()
                         detected = chardet.detect(raw_data)
                         encoding = detected["encoding"] or "utf-8"
@@ -105,7 +104,7 @@ class CueParser:
                     # Try common encodings
                     for enc in ["utf-8", "latin-1", "cp1252", "ascii"]:
                         try:
-                            with open(path, "r", encoding=enc) as f:
+                            with Path(path).open(encoding=enc) as f:
                                 f.read()
                             encoding = enc
                             break
@@ -114,15 +113,15 @@ class CueParser:
                     else:
                         encoding = "utf-8"  # Default fallback
 
-            with open(path, "r", encoding=encoding) as f:
+            with Path(path).open(encoding=encoding) as f:
                 content = f.read()
 
             return self.parse(content)
 
         except UnicodeDecodeError as e:
-            raise CueParsingError(f"Encoding error: {e}")
+            raise CueParsingError(f"Encoding error: {e}") from e
         except Exception as e:
-            raise CueParsingError(f"Failed to read file: {e}")
+            raise CueParsingError(f"Failed to read file: {e}") from e
 
     def parse(self, content: str) -> CueSheet:
         """Parse CUE sheet content.
@@ -144,9 +143,8 @@ class CueParser:
             self._parse_line(line)
 
         # Finalize any pending track
-        if self.current_track:
-            if self.current_file:
-                self.current_file.tracks.append(self.current_track)
+        if self.current_track and self.current_file:
+            self.current_file.tracks.append(self.current_track)
 
         # Finalize any pending file
         if self.current_file:
@@ -171,7 +169,7 @@ class CueParser:
             return
 
         # Handle alternative comment syntax
-        if line.startswith(";") or line.startswith("//"):
+        if line.startswith((";", "//")):
             # Convert to REM format for processing
             line = "REM " + line[2:].strip() if line.startswith("//") else "REM " + line[1:].strip()
 
@@ -194,7 +192,7 @@ class CueParser:
             # Unknown command, store as custom field
             self.warnings.append(f"Line {self.line_number}: Unknown command: {command}")
 
-    def _tokenize(self, line: str) -> List[str]:
+    def _tokenize(self, line: str) -> list[str]:
         """Tokenize a CUE line into command and arguments."""
         tokens = []
         current_token = ""
@@ -219,16 +217,15 @@ class CueParser:
                         current_token = ""
                 else:
                     current_token += char
+            elif char == "\\" and i + 1 < len(line) and line[i + 1] == quote_char:
+                # Escaped quote - add the quote to token
+                current_token += quote_char
+                i += 1  # Skip the next quote character
+            elif char == quote_char:
+                in_quotes = False
+                quote_char = None
             else:
-                if char == "\\" and i + 1 < len(line) and line[i + 1] == quote_char:
-                    # Escaped quote - add the quote to token
-                    current_token += quote_char
-                    i += 1  # Skip the next quote character
-                elif char == quote_char:
-                    in_quotes = False
-                    quote_char = None
-                else:
-                    current_token += char
+                current_token += char
 
             i += 1
 
@@ -238,7 +235,7 @@ class CueParser:
 
         return tokens
 
-    def _handle_file(self, args: List[str]) -> None:
+    def _handle_file(self, args: list[str]) -> None:
         """Handle FILE command."""
         if len(args) < 2:
             raise InvalidCommandError("FILE requires filename and type")
@@ -262,15 +259,14 @@ class CueParser:
 
         self.current_file = FileReference(filename=filename, file_type=file_type)
 
-    def _handle_track(self, args: List[str]) -> None:
+    def _handle_track(self, args: list[str]) -> None:
         """Handle TRACK command."""
         if len(args) < 2:
             raise InvalidCommandError("TRACK requires number and type")
 
         # Save current track if any
-        if self.current_track:
-            if self.current_file:
-                self.current_file.tracks.append(self.current_track)
+        if self.current_track and self.current_file:
+            self.current_file.tracks.append(self.current_track)
 
         # Parse track number
         track_num = int(args[0])
@@ -280,7 +276,7 @@ class CueParser:
         track_type = args[1].upper()
         self.current_track = Track(number=track_num, track_type=track_type)
 
-    def _handle_index(self, args: List[str]) -> None:
+    def _handle_index(self, args: list[str]) -> None:
         """Handle INDEX command."""
         if len(args) < 2:
             raise InvalidCommandError("INDEX requires number and time")
@@ -298,7 +294,7 @@ class CueParser:
         except InvalidTimeFormatError as e:
             self.errors.append(f"Line {self.line_number}: Invalid time format: {e}")
 
-    def _handle_title(self, args: List[str]) -> None:
+    def _handle_title(self, args: list[str]) -> None:
         """Handle TITLE command."""
         if not args:
             return
@@ -314,7 +310,7 @@ class CueParser:
         else:
             self.cue_sheet.title = title
 
-    def _handle_performer(self, args: List[str]) -> None:
+    def _handle_performer(self, args: list[str]) -> None:
         """Handle PERFORMER command."""
         if not args:
             return
@@ -330,7 +326,7 @@ class CueParser:
         else:
             self.cue_sheet.performer = performer
 
-    def _handle_songwriter(self, args: List[str]) -> None:
+    def _handle_songwriter(self, args: list[str]) -> None:
         """Handle SONGWRITER command."""
         if not args:
             return
@@ -338,7 +334,7 @@ class CueParser:
         if self.current_track:
             self.current_track.songwriter = " ".join(args)
 
-    def _handle_catalog(self, args: List[str]) -> None:
+    def _handle_catalog(self, args: list[str]) -> None:
         """Handle CATALOG command."""
         if not args:
             return
@@ -350,12 +346,12 @@ class CueParser:
 
         self.cue_sheet.catalog = catalog
 
-    def _handle_cdtextfile(self, args: List[str]) -> None:
+    def _handle_cdtextfile(self, args: list[str]) -> None:
         """Handle CDTEXTFILE command."""
         if args:
             self.cue_sheet.cdtextfile = args[0]
 
-    def _handle_flags(self, args: List[str]) -> None:
+    def _handle_flags(self, args: list[str]) -> None:
         """Handle FLAGS command."""
         if not self.current_track:
             self.errors.append(f"Line {self.line_number}: FLAGS without TRACK")
@@ -369,7 +365,7 @@ class CueParser:
             # Always add the flag (even if unknown)
             self.current_track.flags.append(flag_upper)
 
-    def _handle_isrc(self, args: List[str]) -> None:
+    def _handle_isrc(self, args: list[str]) -> None:
         """Handle ISRC command."""
         if not self.current_track:
             self.errors.append(f"Line {self.line_number}: ISRC without TRACK")
@@ -385,7 +381,7 @@ class CueParser:
 
         self.current_track.isrc = isrc
 
-    def _handle_pregap(self, args: List[str]) -> None:
+    def _handle_pregap(self, args: list[str]) -> None:
         """Handle PREGAP command."""
         if not self.current_track:
             self.errors.append(f"Line {self.line_number}: PREGAP without TRACK")
@@ -397,7 +393,7 @@ class CueParser:
             except InvalidTimeFormatError as e:
                 self.errors.append(f"Line {self.line_number}: Invalid pregap time: {e}")
 
-    def _handle_postgap(self, args: List[str]) -> None:
+    def _handle_postgap(self, args: list[str]) -> None:
         """Handle POSTGAP command."""
         if not self.current_track:
             self.errors.append(f"Line {self.line_number}: POSTGAP without TRACK")
@@ -409,7 +405,7 @@ class CueParser:
             except InvalidTimeFormatError as e:
                 self.errors.append(f"Line {self.line_number}: Invalid postgap time: {e}")
 
-    def _handle_rem(self, args: List[str]) -> None:
+    def _handle_rem(self, args: list[str]) -> None:
         """Handle REM command."""
         if not args:
             return
@@ -483,9 +479,12 @@ class CueParser:
                     self.errors.append(f"Track {track.number}: Missing required INDEX 01")
 
                 # Check INDEX ordering
-                if 0 in track.indices and 1 in track.indices:
-                    if track.indices[0].to_frames() >= track.indices[1].to_frames():
-                        self.errors.append(f"Track {track.number}: INDEX 00 must be before INDEX 01")
+                if (
+                    0 in track.indices
+                    and 1 in track.indices
+                    and track.indices[0].to_frames() >= track.indices[1].to_frames()
+                ):
+                    self.errors.append(f"Track {track.number}: INDEX 00 must be before INDEX 01")
 
         # Report validation results
         if self.errors:

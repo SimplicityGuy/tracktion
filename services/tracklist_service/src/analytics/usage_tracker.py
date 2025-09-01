@@ -1,15 +1,16 @@
 """Usage tracking and analytics for API requests."""
 
+import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, List, Optional, Any
-import redis.asyncio as redis
-import json
+from typing import Any
 
-from ..auth.models import User
+import redis.asyncio as redis
+
+from src.auth.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +35,9 @@ class UsageRecord:
     status_code: int
     tokens_consumed: int
     bytes_processed: int = 0
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
         return {
             "user_id": self.user_id,
@@ -51,7 +52,7 @@ class UsageRecord:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "UsageRecord":
+    def from_dict(cls, data: dict[str, Any]) -> "UsageRecord":
         """Create from dictionary."""
         return cls(
             user_id=data["user_id"],
@@ -80,10 +81,10 @@ class UsageStats:
     total_tokens: int
     total_bytes: int
     avg_response_time: float
-    endpoints: Dict[str, int]
+    endpoints: dict[str, int]
     error_rate: float
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "user_id": self.user_id,
@@ -108,12 +109,12 @@ class UsageReport:
     user_id: str
     period: str
     usage_stats: UsageStats
-    cost_breakdown: Dict[str, Decimal]
+    cost_breakdown: dict[str, Decimal]
     total_cost: Decimal
     tier: str
-    recommendations: List[str]
+    recommendations: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "user_id": self.user_id,
@@ -129,7 +130,7 @@ class UsageReport:
 class UsageTracker:
     """Comprehensive usage tracking and analytics system."""
 
-    def __init__(self, redis_client: redis.Redis[str]):
+    def __init__(self, redis_client: redis.Redis):
         """Initialize usage tracker.
 
         Args:
@@ -160,7 +161,7 @@ class UsageTracker:
         status_code: int,
         tokens_consumed: int,
         bytes_processed: int = 0,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ) -> None:
         """Track individual API request.
 
@@ -177,7 +178,7 @@ class UsageTracker:
         try:
             record = UsageRecord(
                 user_id=user.id,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 endpoint=endpoint,
                 method=method,
                 response_time=response_time,
@@ -239,8 +240,8 @@ class UsageTracker:
         self,
         user_id: str,
         period: AggregationPeriod,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
     ) -> UsageStats:
         """Get aggregated usage statistics for a user.
 
@@ -284,7 +285,7 @@ class UsageTracker:
         avg_response_time = sum(r.response_time for r in records) / total_requests
 
         # Endpoint breakdown
-        endpoints: Dict[str, int] = {}
+        endpoints: dict[str, int] = {}
         for record in records:
             endpoints[record.endpoint] = endpoints.get(record.endpoint, 0) + 1
 
@@ -305,7 +306,7 @@ class UsageTracker:
             error_rate=error_rate,
         )
 
-    async def _get_usage_records(self, user_id: str, start_time: datetime, end_time: datetime) -> List[UsageRecord]:
+    async def _get_usage_records(self, user_id: str, start_time: datetime, end_time: datetime) -> list[UsageRecord]:
         """Get usage records for a time period."""
         key = f"usage_records:{user_id}"
         start_ts = int(start_time.timestamp())
@@ -325,7 +326,7 @@ class UsageTracker:
 
         return records
 
-    def calculate_cost(self, usage: UsageStats, tier: str) -> Dict[str, Decimal]:
+    def calculate_cost(self, usage: UsageStats, tier: str) -> dict[str, Decimal]:
         """Calculate cost breakdown for usage statistics.
 
         Args:
@@ -369,19 +370,18 @@ class UsageTracker:
         """Determine endpoint type from endpoint path."""
         if "search" in endpoint.lower():
             return "search"
-        elif "tracklist" in endpoint.lower():
+        if "tracklist" in endpoint.lower():
             return "tracklist"
-        elif "batch" in endpoint.lower():
+        if "batch" in endpoint.lower():
             return "batch"
-        else:
-            return "search"  # default
+        return "search"  # default
 
     async def generate_usage_report(
         self,
         user: User,
         period: AggregationPeriod,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
     ) -> UsageReport:
         """Generate comprehensive usage report with cost analysis.
 
@@ -413,7 +413,7 @@ class UsageTracker:
             recommendations=recommendations,
         )
 
-    def _generate_recommendations(self, usage: UsageStats, tier: str) -> List[str]:
+    def _generate_recommendations(self, usage: UsageStats, tier: str) -> list[str]:
         """Generate usage optimization recommendations."""
         recommendations = []
 
@@ -448,7 +448,7 @@ class UsageTracker:
 
     def _get_period_bounds(self, period: AggregationPeriod) -> tuple[datetime, datetime]:
         """Get start and end times for aggregation period."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if period == AggregationPeriod.HOUR:
             start_time = now.replace(minute=0, second=0, microsecond=0)
@@ -475,7 +475,7 @@ class UsageTracker:
         Returns:
             Number of records cleaned up
         """
-        cutoff_time = datetime.now(timezone.utc).timestamp() - (days_to_keep * 24 * 3600)
+        cutoff_time = datetime.now(UTC).timestamp() - (days_to_keep * 24 * 3600)
         cleanup_count = 0
 
         try:
@@ -493,7 +493,7 @@ class UsageTracker:
             logger.error(f"Failed to cleanup old usage data: {e}")
             return 0
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Check usage tracker health and Redis connectivity.
 
         Returns:

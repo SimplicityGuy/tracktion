@@ -1,5 +1,6 @@
 """Unit tests for authentication system."""
 
+import time
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -111,7 +112,7 @@ class TestAuthenticationManager:
         api_key = auth_manager.generate_api_key(test_user.id, "free")
 
         # Find and deactivate the key
-        for _key, stored_key in auth_manager._api_keys.items():
+        for stored_key in auth_manager._api_keys.values():
             if stored_key.key_id == api_key.key_id:
                 stored_key.is_active = False
                 break
@@ -197,7 +198,6 @@ class TestAuthenticationManager:
 
     def test_refresh_jwt_token_valid(self, auth_manager, test_user):
         """Test JWT token refresh with valid refresh token."""
-        import time
 
         token_pair = auth_manager.generate_jwt_token(test_user)
         time.sleep(1.1)  # Wait just over a second to ensure different timestamps in JWT

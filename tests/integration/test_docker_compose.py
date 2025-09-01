@@ -18,6 +18,7 @@ class TestDockerCompose(unittest.TestCase):
         """Test that docker-compose configuration is valid."""
         result = subprocess.run(
             ["docker-compose", "-f", self.compose_file, "config"],
+            check=False,
             capture_output=True,
             text=True,
         )
@@ -27,6 +28,7 @@ class TestDockerCompose(unittest.TestCase):
         """Test that all required services are defined."""
         result = subprocess.run(
             ["docker-compose", "-f", self.compose_file, "config", "--services"],
+            check=False,
             capture_output=True,
             text=True,
         )

@@ -2,16 +2,17 @@
 
 import json
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, UTC
-from enum import Enum
-from typing import Any, Dict, List, Optional, Callable
-from collections import defaultdict
 import statistics
+from collections import defaultdict
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any
 
+import pandas as pd
 from redis import Redis
-import pandas as pd  # type: ignore[import-untyped]
-
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +51,9 @@ class AggregationRule:
     field_path: str
     aggregation_type: AggregationType
     output_name: str
-    filter_condition: Optional[Callable[[Any], bool]] = None
-    transform: Optional[Callable[[Any], Any]] = None
-    options: Dict[str, Any] = field(default_factory=dict)
+    filter_condition: Callable[[Any], bool] | None = None
+    transform: Callable[[Any], Any] | None = None
+    options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -63,11 +64,11 @@ class AggregationResult:
     total_jobs: int
     successful_jobs: int
     failed_jobs: int
-    aggregated_data: Dict[str, Any]
-    metadata: Dict[str, Any]
+    aggregated_data: dict[str, Any]
+    metadata: dict[str, Any]
     created_at: datetime
     processing_time: float
-    export_formats: List[str] = field(default_factory=list)
+    export_formats: list[str] = field(default_factory=list)
 
 
 class ResultAggregator:
@@ -90,14 +91,14 @@ class ResultAggregator:
         self.storage_path = storage_path
 
         # Result storage
-        self.batch_results: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-        self.aggregation_rules: Dict[str, List[AggregationRule]] = defaultdict(list)
-        self.aggregated_results: Dict[str, AggregationResult] = {}
+        self.batch_results: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        self.aggregation_rules: dict[str, list[AggregationRule]] = defaultdict(list)
+        self.aggregated_results: dict[str, AggregationResult] = {}
 
         # Custom aggregation functions
-        self.custom_aggregators: Dict[str, Callable[..., Any]] = {}
+        self.custom_aggregators: dict[str, Callable[..., Any]] = {}
 
-    def add_result(self, batch_id: str, job_id: str, result: Dict[str, Any]) -> None:
+    def add_result(self, batch_id: str, job_id: str, result: dict[str, Any]) -> None:
         """Add job result to batch.
 
         Args:
@@ -110,7 +111,13 @@ class ResultAggregator:
 
         # Persist to Redis
         key = f"batch_result:{batch_id}:{job_id}"
-        self.redis.hset(key, mapping={"result": json.dumps(result), "timestamp": datetime.now(UTC).isoformat()})
+        self.redis.hset(
+            key,
+            mapping={
+                "result": json.dumps(result),
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )
         self.redis.expire(key, 86400)  # 24 hour TTL
 
     def add_aggregation_rule(
@@ -118,7 +125,7 @@ class ResultAggregator:
         batch_id: str,
         field_path: str,
         aggregation_type: AggregationType,
-        output_name: Optional[str] = None,
+        output_name: str | None = None,
         **options: Any,
     ) -> None:
         """Add aggregation rule for batch.
@@ -138,7 +145,7 @@ class ResultAggregator:
         )
         self.aggregation_rules[batch_id].append(rule)
 
-    def register_custom_aggregator(self, name: str, func: Callable[[List[Any]], Any]) -> None:
+    def register_custom_aggregator(self, name: str, func: Callable[[list[Any]], Any]) -> None:
         """Register custom aggregation function.
 
         Args:
@@ -208,7 +215,7 @@ class ResultAggregator:
 
         return result
 
-    async def _apply_aggregation_rule(self, results: List[Dict[str, Any]], rule: AggregationRule) -> Any:
+    async def _apply_aggregation_rule(self, results: list[dict[str, Any]], rule: AggregationRule) -> Any:
         """Apply single aggregation rule.
 
         Args:
@@ -240,33 +247,33 @@ class ResultAggregator:
         # Apply aggregation
         if rule.aggregation_type == AggregationType.COUNT:
             return len(values)
-        elif rule.aggregation_type == AggregationType.SUM:
+        if rule.aggregation_type == AggregationType.SUM:
             return sum(values)
-        elif rule.aggregation_type == AggregationType.AVERAGE:
+        if rule.aggregation_type == AggregationType.AVERAGE:
             return statistics.mean(values)
-        elif rule.aggregation_type == AggregationType.MEDIAN:
+        if rule.aggregation_type == AggregationType.MEDIAN:
             return statistics.median(values)
-        elif rule.aggregation_type == AggregationType.MIN:
+        if rule.aggregation_type == AggregationType.MIN:
             return min(values)
-        elif rule.aggregation_type == AggregationType.MAX:
+        if rule.aggregation_type == AggregationType.MAX:
             return max(values)
-        elif rule.aggregation_type == AggregationType.LIST:
+        if rule.aggregation_type == AggregationType.LIST:
             return values
-        elif rule.aggregation_type == AggregationType.SET:
+        if rule.aggregation_type == AggregationType.SET:
             return list(set(values))
-        elif rule.aggregation_type == AggregationType.HISTOGRAM:
+        if rule.aggregation_type == AggregationType.HISTOGRAM:
             return self._create_histogram(values, rule.options)
-        elif rule.aggregation_type == AggregationType.PERCENTILE:
+        if rule.aggregation_type == AggregationType.PERCENTILE:
             percentile = rule.options.get("percentile", 50)
             return self._calculate_percentile(values, percentile)
-        elif rule.aggregation_type == AggregationType.CUSTOM:
+        if rule.aggregation_type == AggregationType.CUSTOM:
             func_name = rule.options.get("function")
             if func_name and isinstance(func_name, str) and func_name in self.custom_aggregators:
                 return self.custom_aggregators[func_name](values)
 
         return None
 
-    def _extract_field_value(self, data: Dict[str, Any], field_path: str) -> Optional[Any]:
+    def _extract_field_value(self, data: dict[str, Any], field_path: str) -> Any | None:
         """Extract value from nested dictionary using dot notation.
 
         Args:
@@ -293,7 +300,7 @@ class ResultAggregator:
 
         return value
 
-    def _create_histogram(self, values: List[float], options: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_histogram(self, values: list[float], options: dict[str, Any]) -> dict[str, Any]:
         """Create histogram from values.
 
         Args:
@@ -318,7 +325,7 @@ class ResultAggregator:
             "std": statistics.stdev(values) if len(values) > 1 else 0,
         }
 
-    def _calculate_percentile(self, values: List[float], percentile: float) -> float:
+    def _calculate_percentile(self, values: list[float], percentile: float) -> float:
         """Calculate percentile value.
 
         Args:
@@ -333,13 +340,12 @@ class ResultAggregator:
 
         if index.is_integer():
             return sorted_values[int(index)]
-        else:
-            lower = sorted_values[int(index)]
-            upper = sorted_values[int(index) + 1]
-            weight = index - int(index)
-            return lower + (upper - lower) * weight
+        lower = sorted_values[int(index)]
+        upper = sorted_values[int(index) + 1]
+        weight = index - int(index)
+        return lower + (upper - lower) * weight
 
-    def _get_default_rules(self, results: List[Dict[str, Any]]) -> List[AggregationRule]:
+    def _get_default_rules(self, results: list[dict[str, Any]]) -> list[AggregationRule]:
         """Generate default aggregation rules based on data structure.
 
         Args:
@@ -352,7 +358,11 @@ class ResultAggregator:
 
         # Add count rule
         rules.append(
-            AggregationRule(field_path="job_id", aggregation_type=AggregationType.COUNT, output_name="total_count")
+            AggregationRule(
+                field_path="job_id",
+                aggregation_type=AggregationType.COUNT,
+                output_name="total_count",
+            )
         )
 
         # Analyze first result for numeric fields
@@ -364,16 +374,22 @@ class ResultAggregator:
                 # Add average and sum for numeric fields
                 rules.append(
                     AggregationRule(
-                        field_path=field, aggregation_type=AggregationType.AVERAGE, output_name=f"{field}_avg"
+                        field_path=field,
+                        aggregation_type=AggregationType.AVERAGE,
+                        output_name=f"{field}_avg",
                     )
                 )
                 rules.append(
-                    AggregationRule(field_path=field, aggregation_type=AggregationType.SUM, output_name=f"{field}_sum")
+                    AggregationRule(
+                        field_path=field,
+                        aggregation_type=AggregationType.SUM,
+                        output_name=f"{field}_sum",
+                    )
                 )
 
         return rules
 
-    def _find_numeric_fields(self, data: Dict[str, Any], prefix: str = "") -> List[str]:
+    def _find_numeric_fields(self, data: dict[str, Any], prefix: str = "") -> list[str]:
         """Find all numeric fields in nested dictionary.
 
         Args:
@@ -388,7 +404,7 @@ class ResultAggregator:
         for key, value in data.items():
             field_path = f"{prefix}.{key}" if prefix else key
 
-            if isinstance(value, (int, float)):
+            if isinstance(value, int | float):
                 numeric_fields.append(field_path)
             elif isinstance(value, dict):
                 # Recursively search nested dictionaries
@@ -396,7 +412,7 @@ class ResultAggregator:
 
         return numeric_fields
 
-    async def export_results(self, batch_id: str, format: DataFormat, file_path: Optional[str] = None) -> str:
+    async def export_results(self, batch_id: str, format: DataFormat, file_path: str | None = None) -> str:
         """Export aggregated results to file.
 
         Args:
@@ -438,7 +454,7 @@ class ResultAggregator:
 
     async def _export_json(self, result: AggregationResult, file_path: str) -> None:
         """Export to JSON format."""
-        with open(file_path, "w") as f:
+        with Path(file_path).open("w") as f:
             json.dump(
                 {
                     "batch_id": result.batch_id,
@@ -466,13 +482,13 @@ class ResultAggregator:
             else:
                 rows.append({"metric": key, "value": value})
 
-        df = pd.DataFrame(rows)
-        df.to_csv(file_path, index=False)
+        metrics_df = pd.DataFrame(rows)
+        metrics_df.to_csv(file_path, index=False)
 
     async def _export_parquet(self, result: AggregationResult, file_path: str) -> None:
         """Export to Parquet format."""
-        df = pd.DataFrame([result.aggregated_data])
-        df.to_parquet(file_path, index=False)
+        result_df = pd.DataFrame([result.aggregated_data])
+        result_df.to_parquet(file_path, index=False)
 
     async def _export_excel(self, result: AggregationResult, file_path: str) -> None:
         """Export to Excel format."""
@@ -533,7 +549,7 @@ class ResultAggregator:
         </html>
         """
 
-        with open(file_path, "w") as f:
+        with Path(file_path).open("w") as f:
             f.write(html)
 
     async def _export_markdown(self, result: AggregationResult, file_path: str) -> None:
@@ -558,7 +574,7 @@ class ResultAggregator:
         for key, value in result.aggregated_data.items():
             md += f"| {key} | {value} |\n"
 
-        with open(file_path, "w") as f:
+        with Path(file_path).open("w") as f:
             f.write(md)
 
     async def _load_batch_results(self, batch_id: str) -> None:
@@ -571,7 +587,7 @@ class ResultAggregator:
         results = []
 
         for key in self.redis.scan_iter(match=pattern):
-            data = await self.redis.hgetall(key)  # type: ignore[misc]
+            data = await self.redis.hgetall(key)
             if data and "result" in data:
                 result = json.loads(data["result"])
                 job_id = key.split(":")[-1]
@@ -619,7 +635,7 @@ class ResultAggregator:
             processing_time=0.0,
         )
 
-    def get_aggregation_status(self, batch_id: str) -> Dict[str, Any]:
+    def get_aggregation_status(self, batch_id: str) -> dict[str, Any]:
         """Get aggregation status for batch.
 
         Args:
@@ -638,11 +654,10 @@ class ResultAggregator:
                 "created_at": result.created_at.isoformat(),
                 "export_formats": result.export_formats,
             }
-        elif batch_id in self.batch_results:
+        if batch_id in self.batch_results:
             return {
                 "status": "pending",
                 "collected_results": len(self.batch_results[batch_id]),
                 "rules_defined": len(self.aggregation_rules.get(batch_id, [])),
             }
-        else:
-            return {"status": "not_found"}
+        return {"status": "not_found"}

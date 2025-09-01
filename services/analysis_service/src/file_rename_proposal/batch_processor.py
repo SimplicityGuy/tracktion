@@ -2,16 +2,17 @@
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 from uuid import UUID
-import os
-from datetime import datetime, timedelta, timezone
 
-from .proposal_generator import ProposalGenerator
-from .conflict_detector import ConflictDetector
-from .confidence_scorer import ConfidenceScorer
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
 from shared.core_types.src.repositories import RecordingRepository
+
+from .confidence_scorer import ConfidenceScorer
+from .conflict_detector import ConflictDetector
+from .proposal_generator import ProposalGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,12 @@ logger = logging.getLogger(__name__)
 class BatchProcessingJob:
     """Represents a batch processing job."""
 
-    def __init__(self, job_id: str, recording_ids: List[UUID], options: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(
+        self,
+        job_id: str,
+        recording_ids: list[UUID],
+        options: dict[str, Any] | None = None,
+    ) -> None:
         """Initialize batch job.
 
         Args:
@@ -30,16 +36,16 @@ class BatchProcessingJob:
         self.job_id = job_id
         self.recording_ids = recording_ids
         self.options = options or {}
-        self.created_at = datetime.now(timezone.utc)
-        self.started_at: Optional[datetime] = None
-        self.completed_at: Optional[datetime] = None
+        self.created_at = datetime.now(UTC)
+        self.started_at: datetime | None = None
+        self.completed_at: datetime | None = None
         self.status = "pending"
         self.total_recordings = len(recording_ids)
         self.processed_recordings = 0
         self.successful_proposals = 0
         self.failed_recordings = 0
-        self.errors: List[str] = []
-        self.proposal_ids: List[UUID] = []
+        self.errors: list[str] = []
+        self.proposal_ids: list[UUID] = []
 
 
 class BatchProcessor:
@@ -70,12 +76,12 @@ class BatchProcessor:
         self.logger = logger
 
         # Active jobs tracking
-        self.active_jobs: Dict[str, BatchProcessingJob] = {}
+        self.active_jobs: dict[str, BatchProcessingJob] = {}
 
     def submit_batch_job(
         self,
-        recording_ids: List[UUID],
-        job_id: Optional[str] = None,
+        recording_ids: list[UUID],
+        job_id: str | None = None,
         max_workers: int = 4,
         chunk_size: int = 100,
         auto_approve_threshold: float = 0.9,
@@ -95,7 +101,7 @@ class BatchProcessor:
             BatchProcessingJob instance
         """
         if not job_id:
-            job_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{len(recording_ids)}"
+            job_id = f"batch_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{len(recording_ids)}"
 
         job = BatchProcessingJob(
             job_id=job_id,
@@ -129,13 +135,13 @@ class BatchProcessor:
         if not job:
             raise ValueError(f"Job {job_id} not found")
 
-        job.started_at = datetime.now(timezone.utc)
+        job.started_at = datetime.now(UTC)
         job.status = "running"
 
         try:
             self._process_recordings_in_batches(job)
             job.status = "completed"
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(UTC)
 
             logger.info(
                 f"Batch job {job_id} completed: "
@@ -145,7 +151,7 @@ class BatchProcessor:
 
         except Exception as e:
             job.status = "failed"
-            job.errors.append(f"Job failed: {str(e)}")
+            job.errors.append(f"Job failed: {e!s}")
             logger.error(f"Batch job {job_id} failed: {e}")
             raise
 
@@ -176,11 +182,11 @@ class BatchProcessor:
                     self._update_job_progress(job, chunk_results)
 
                 except Exception as e:
-                    error_msg = f"Chunk processing failed: {str(e)}"
+                    error_msg = f"Chunk processing failed: {e!s}"
                     job.errors.append(error_msg)
                     logger.error(f"Job {job.job_id}: {error_msg}")
 
-    def _process_recording_chunk(self, recording_ids: List[UUID], job: BatchProcessingJob) -> Dict[str, Any]:
+    def _process_recording_chunk(self, recording_ids: list[UUID], job: BatchProcessingJob) -> dict[str, Any]:
         """Process a chunk of recordings.
 
         Args:
@@ -190,7 +196,13 @@ class BatchProcessor:
         Returns:
             Dictionary with processing results
         """
-        results: Dict[str, Any] = {"processed": 0, "successful": 0, "failed": 0, "proposal_ids": [], "errors": []}
+        results: dict[str, Any] = {
+            "processed": 0,
+            "successful": 0,
+            "failed": 0,
+            "proposal_ids": [],
+            "errors": [],
+        }
 
         # Get directory contents for conflict detection
         directory_contents = self._collect_directory_contents(recording_ids)
@@ -213,15 +225,18 @@ class BatchProcessor:
             except Exception as e:
                 results["processed"] += 1
                 results["failed"] += 1
-                error_msg = f"Recording {recording_id}: {str(e)}"
+                error_msg = f"Recording {recording_id}: {e!s}"
                 results["errors"].append(error_msg)
                 logger.error(f"Job {job.job_id}: {error_msg}")
 
         return results
 
     def _process_single_recording(
-        self, recording_id: UUID, job: BatchProcessingJob, directory_contents: Dict[str, set]
-    ) -> Dict[str, Any]:
+        self,
+        recording_id: UUID,
+        job: BatchProcessingJob,
+        directory_contents: dict[str, set],
+    ) -> dict[str, Any]:
         """Process a single recording.
 
         Args:
@@ -235,14 +250,17 @@ class BatchProcessor:
         # Get recording
         recording = self.recording_repo.get_by_id(recording_id)
         if not recording:
-            return {"success": False, "error": f"Recording {recording_id} not found", "proposal_id": None}
+            return {
+                "success": False,
+                "error": f"Recording {recording_id} not found",
+                "proposal_id": None,
+            }
 
         try:
             # Generate proposal - need to get metadata separately
             # For now, use empty metadata and derive file extension
-            file_extension = (
-                os.path.splitext(recording.file_name)[1][1:].lower() if "." in recording.file_name else "mp3"
-            )
+            file_path = Path(recording.file_name)
+            file_extension = file_path.suffix[1:].lower() if file_path.suffix else "mp3"
             proposal = self.proposal_generator.generate_proposal(
                 recording_id=recording_id,
                 original_path=recording.file_path,
@@ -258,12 +276,15 @@ class BatchProcessor:
                 }
 
             # Detect conflicts
-            directory_path = os.path.dirname(proposal.full_proposed_path)
+            directory_path = str(Path(proposal.full_proposed_path).parent)
             existing_files = directory_contents.get(directory_path, set())
 
             # Get other proposals for conflict detection
             other_proposals = [
-                {"full_proposed_path": p.full_proposed_path, "recording_id": str(p.recording_id)}
+                {
+                    "full_proposed_path": p.full_proposed_path,
+                    "recording_id": str(p.recording_id),
+                }
                 for p in self.proposal_repo.get_pending_proposals()
                 if p.recording_id != recording_id
             ]
@@ -283,7 +304,7 @@ class BatchProcessor:
 
                 if alternative:
                     resolved_path = alternative
-                    resolved_filename = os.path.basename(alternative)
+                    resolved_filename = Path(alternative).name
 
                     # Re-check conflicts for the alternative
                     conflicts_result = self.conflict_detector.detect_conflicts(
@@ -315,7 +336,7 @@ class BatchProcessor:
             # Create proposal in database
             created_proposal = self.proposal_repo.create(
                 recording_id=recording_id,
-                original_path=os.path.dirname(recording.file_path),
+                original_path=str(Path(recording.file_path).parent),
                 original_filename=recording.file_name,
                 proposed_filename=resolved_filename,
                 full_proposed_path=resolved_path,
@@ -338,7 +359,7 @@ class BatchProcessor:
             logger.error(f"Failed to process recording {recording_id}: {e}")
             return {"success": False, "error": str(e), "proposal_id": None}
 
-    def _collect_directory_contents(self, recording_ids: List[UUID]) -> Dict[str, set]:
+    def _collect_directory_contents(self, recording_ids: list[UUID]) -> dict[str, set]:
         """Collect directory contents for conflict detection.
 
         Args:
@@ -352,12 +373,13 @@ class BatchProcessor:
         for recording_id in recording_ids:
             recording = self.recording_repo.get_by_id(recording_id)
             if recording:
-                directory = os.path.dirname(recording.file_path)
+                directory = str(Path(recording.file_path).parent)
 
                 if directory not in directory_contents:
                     try:
-                        if os.path.exists(directory):
-                            files = set(os.listdir(directory))
+                        dir_path = Path(directory)
+                        if dir_path.exists():
+                            files = {f.name for f in dir_path.iterdir()}
                             directory_contents[directory] = files
                         else:
                             directory_contents[directory] = set()
@@ -367,7 +389,7 @@ class BatchProcessor:
 
         return directory_contents
 
-    def _update_job_progress(self, job: BatchProcessingJob, chunk_results: Dict[str, Any]) -> None:
+    def _update_job_progress(self, job: BatchProcessingJob, chunk_results: dict[str, Any]) -> None:
         """Update job progress with chunk results.
 
         Args:
@@ -387,7 +409,7 @@ class BatchProcessor:
             f"({progress:.1f}%) - {job.successful_proposals} successful, {job.failed_recordings} failed"
         )
 
-    def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
+    def get_job_status(self, job_id: str) -> dict[str, Any] | None:
         """Get status of a batch job.
 
         Args:
@@ -435,7 +457,7 @@ class BatchProcessor:
             return False
 
         job.status = "cancelled"
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.now(UTC)
 
         logger.info(f"Cancelled batch job {job_id}")
         return True
@@ -449,7 +471,7 @@ class BatchProcessor:
         Returns:
             Number of jobs cleaned up
         """
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        cutoff_time = datetime.now(UTC) - timedelta(hours=max_age_hours)
         jobs_to_remove = []
 
         for job_id, job in self.active_jobs.items():
@@ -468,10 +490,10 @@ class BatchProcessor:
 
         return len(jobs_to_remove)
 
-    def list_active_jobs(self) -> List[Dict[str, Any]]:
+    def list_active_jobs(self) -> list[dict[str, Any]]:
         """List all active jobs.
 
         Returns:
             List of job status dictionaries
         """
-        return [status for job_id in self.active_jobs.keys() if (status := self.get_job_status(job_id)) is not None]
+        return [status for job_id in self.active_jobs if (status := self.get_job_status(job_id)) is not None]

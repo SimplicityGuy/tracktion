@@ -1,13 +1,17 @@
 """Async Alembic environment configuration."""
 
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from alembic import context
+from alembic import context  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
+
+# Import model's MetaData for 'autogenerate' support
+from shared.core_types.src.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -17,9 +21,6 @@ config = context.config
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-
-# Import model's MetaData for 'autogenerate' support
-from shared.core_types.src.models import Base  # noqa: E402
 
 target_metadata = Base.metadata
 
@@ -31,7 +32,6 @@ target_metadata = Base.metadata
 
 def get_async_database_url() -> str:
     """Get async database URL from environment or config."""
-    import os
 
     # Try environment variables first
     url = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL")

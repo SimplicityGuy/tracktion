@@ -197,9 +197,11 @@ class TestAdaptiveParser:
     @pytest.fixture
     def adaptive_parser(self, config_data):
         """Create AdaptiveParser instance."""
-        with patch("builtins.open", mock_open(read_data=json.dumps(config_data))):
-            with patch("pathlib.Path.exists", return_value=True):
-                return AdaptiveParser(config_path=Path("test_config.json"))
+        with (
+            patch("builtins.open", mock_open(read_data=json.dumps(config_data))),
+            patch("pathlib.Path.exists", return_value=True),
+        ):
+            return AdaptiveParser(config_path=Path("test_config.json"))
 
     def test_adaptive_parser_init(self, adaptive_parser):
         """Test AdaptiveParser initialization."""
@@ -240,7 +242,11 @@ class TestAdaptiveParser:
         """Test pattern learning."""
         successful_extractions = [
             {"field": "tracklist.title", "strategy_type": "CSS", "selector": "h1"},
-            {"field": "tracklist.artist", "strategy_type": "CSS", "selector": ".artist"},
+            {
+                "field": "tracklist.artist",
+                "strategy_type": "CSS",
+                "selector": ".artist",
+            },
         ]
 
         adaptive_parser.learn_patterns(successful_extractions)
@@ -337,7 +343,9 @@ class TestAdaptiveParser:
         adaptive_parser.ab_testing_enabled = False
 
         test = adaptive_parser.start_ab_test(
-            "title", {"type": "CSS", "selector": "h1"}, {"type": "CSS", "selector": ".title"}
+            "title",
+            {"type": "CSS", "selector": "h1"},
+            {"type": "CSS", "selector": ".title"},
         )
 
         assert test is None
@@ -559,7 +567,11 @@ class TestAdaptiveParser:
             metadata={},
         )
 
-        with patch.object(adaptive_parser._extractor, "extract_multiple_fields", return_value=mock_result):
+        with patch.object(
+            adaptive_parser._extractor,
+            "extract_multiple_fields",
+            return_value=mock_result,
+        ):
             result = adaptive_parser.parse_with_adaptation(soup, "tracklist", ["title", "artist"])
 
         assert result.data["title"] == "Test Title"
@@ -571,18 +583,27 @@ class TestAdaptiveParser:
         soup = BeautifulSoup(html, "html.parser")
 
         mock_result = ExtractedData(
-            data={"title": "Test"}, strategies_used={"title": "CSS"}, quality_score=1.0, metadata={}
+            data={"title": "Test"},
+            strategies_used={"title": "CSS"},
+            quality_score=1.0,
+            metadata={},
         )
 
-        with patch.object(adaptive_parser._extractor, "extract_multiple_fields", return_value=mock_result):
-            with patch.object(adaptive_parser, "learn_patterns") as mock_learn:
-                adaptive_parser.parse_with_adaptation(soup, "tracklist", ["title"])
+        with (
+            patch.object(
+                adaptive_parser._extractor,
+                "extract_multiple_fields",
+                return_value=mock_result,
+            ),
+            patch.object(adaptive_parser, "learn_patterns") as mock_learn,
+        ):
+            adaptive_parser.parse_with_adaptation(soup, "tracklist", ["title"])
 
-                # Should call learn_patterns
-                mock_learn.assert_called_once()
-                call_args = mock_learn.call_args[0][0]
-                assert len(call_args) == 1
-                assert call_args[0]["field"] == "tracklist.title"
+            # Should call learn_patterns
+            mock_learn.assert_called_once()
+            call_args = mock_learn.call_args[0][0]
+            assert len(call_args) == 1
+            assert call_args[0]["field"] == "tracklist.title"
 
     @pytest.mark.asyncio
     async def test_start_hot_reload(self, adaptive_parser):

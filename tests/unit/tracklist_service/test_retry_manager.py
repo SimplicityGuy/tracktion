@@ -44,12 +44,17 @@ def retry_manager(mock_redis, mock_rabbitmq):
     """Create RetryManager instance with mocks."""
     connection_mock, channel_mock = mock_rabbitmq
 
-    with patch("services.tracklist_service.src.retry.retry_manager.Redis", return_value=mock_redis):
-        with patch(
-            "services.tracklist_service.src.retry.retry_manager.pika.BlockingConnection", return_value=connection_mock
-        ):
-            manager = RetryManager()
-            return manager
+    with (
+        patch(
+            "services.tracklist_service.src.retry.retry_manager.Redis",
+            return_value=mock_redis,
+        ),
+        patch(
+            "services.tracklist_service.src.retry.retry_manager.pika.BlockingConnection",
+            return_value=connection_mock,
+        ),
+    ):
+        return RetryManager()
 
 
 @pytest.fixture
@@ -97,7 +102,12 @@ class TestRetryPolicy:
 
     def test_initialization(self):
         """Test policy initialization."""
-        policy = RetryPolicy(max_retries=5, base_delay=2.0, max_delay=600.0, strategy=RetryStrategy.EXPONENTIAL)
+        policy = RetryPolicy(
+            max_retries=5,
+            base_delay=2.0,
+            max_delay=600.0,
+            strategy=RetryStrategy.EXPONENTIAL,
+        )
 
         assert policy.max_retries == 5
         assert policy.base_delay == 2.0
@@ -142,7 +152,12 @@ class TestRetryPolicy:
 
     def test_max_delay_cap(self):
         """Test maximum delay cap."""
-        policy = RetryPolicy(base_delay=100.0, max_delay=200.0, strategy=RetryStrategy.EXPONENTIAL, jitter=False)
+        policy = RetryPolicy(
+            base_delay=100.0,
+            max_delay=200.0,
+            strategy=RetryStrategy.EXPONENTIAL,
+            jitter=False,
+        )
 
         # Should be capped at max_delay
         assert policy.get_delay(10) == 200.0
@@ -161,7 +176,12 @@ class TestRetryPolicy:
             base_delay=1.0,
             strategy=RetryStrategy.EXPONENTIAL,
             jitter=False,
-            failure_policies={FailureType.RATE_LIMIT: {"base_delay": 10.0, "strategy": RetryStrategy.FIXED}},
+            failure_policies={
+                FailureType.RATE_LIMIT: {
+                    "base_delay": 10.0,
+                    "strategy": RetryStrategy.FIXED,
+                }
+            },
         )
 
         # Normal failure uses default
@@ -292,12 +312,17 @@ class TestRetryManager:
         """Test retry manager initialization."""
         connection_mock, channel_mock = mock_rabbitmq
 
-        with patch("services.tracklist_service.src.retry.retry_manager.Redis", return_value=mock_redis):
-            with patch(
+        with (
+            patch(
+                "services.tracklist_service.src.retry.retry_manager.Redis",
+                return_value=mock_redis,
+            ),
+            patch(
                 "services.tracklist_service.src.retry.retry_manager.pika.BlockingConnection",
                 return_value=connection_mock,
-            ):
-                manager = RetryManager()
+            ),
+        ):
+            manager = RetryManager()
 
         assert manager.redis == mock_redis
         assert manager.default_policy is not None
@@ -309,7 +334,12 @@ class TestRetryManager:
 
     def test_classify_failure_network(self, retry_manager):
         """Test network failure classification."""
-        errors = ["Connection refused", "Network unreachable", "DNS resolution failed", "SSL certificate error"]
+        errors = [
+            "Connection refused",
+            "Network unreachable",
+            "DNS resolution failed",
+            "SSL certificate error",
+        ]
 
         for error in errors:
             assert retry_manager.classify_failure(error) == FailureType.NETWORK
@@ -323,7 +353,11 @@ class TestRetryManager:
 
     def test_classify_failure_rate_limit(self, retry_manager):
         """Test rate limit failure classification."""
-        errors = ["Rate limit exceeded", "Too many requests", "Error 429: Too Many Requests"]
+        errors = [
+            "Rate limit exceeded",
+            "Too many requests",
+            "Error 429: Too Many Requests",
+        ]
 
         for error in errors:
             assert retry_manager.classify_failure(error) == FailureType.RATE_LIMIT
@@ -337,7 +371,11 @@ class TestRetryManager:
 
     def test_classify_failure_server(self, retry_manager):
         """Test server failure classification."""
-        errors = ["500 Internal Server Error", "502 Bad Gateway", "503 Service Unavailable"]
+        errors = [
+            "500 Internal Server Error",
+            "502 Bad Gateway",
+            "503 Service Unavailable",
+        ]
 
         for error in errors:
             assert retry_manager.classify_failure(error) == FailureType.SERVER
@@ -486,7 +524,11 @@ class TestRetryManager:
 
         # Add failed job info
         retry_manager.failed_jobs[sample_job.id] = FailedJob(
-            job=sample_job, error=error, failure_type=FailureType.UNKNOWN, failed_at=datetime.now(UTC), retry_count=3
+            job=sample_job,
+            error=error,
+            failure_type=FailureType.UNKNOWN,
+            failed_at=datetime.now(UTC),
+            retry_count=3,
         )
 
         await retry_manager._move_to_dlq(sample_job, error)

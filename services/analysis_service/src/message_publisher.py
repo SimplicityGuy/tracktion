@@ -2,8 +2,8 @@
 
 import json
 import logging
-import os
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any
 
 import pika
 from pika.spec import BasicProperties
@@ -20,7 +20,7 @@ class PriorityMessagePublisher:
         self,
         rabbitmq_url: str,
         exchange_name: str = "tracktion_exchange",
-        priority_config: Optional[PriorityConfig] = None,
+        priority_config: PriorityConfig | None = None,
     ) -> None:
         """Initialize the message publisher.
 
@@ -33,8 +33,8 @@ class PriorityMessagePublisher:
         self.exchange_name = exchange_name
         self.priority_config = priority_config or PriorityConfig()
         self.priority_calculator = PriorityCalculator(self.priority_config)
-        self.connection: Optional[pika.BlockingConnection] = None
-        self.channel: Optional[Any] = None
+        self.connection: pika.BlockingConnection | None = None
+        self.channel: Any | None = None
 
     def connect(self) -> None:
         """Establish connection to RabbitMQ."""
@@ -55,10 +55,10 @@ class PriorityMessagePublisher:
         file_path: str,
         recording_id: str,
         routing_key: str = "file.analyze",
-        correlation_id: Optional[str] = None,
+        correlation_id: str | None = None,
         is_retry: bool = False,
         is_user_request: bool = False,
-        custom_priority: Optional[int] = None,
+        custom_priority: int | None = None,
     ) -> bool:
         """Publish an analysis request with calculated priority.
 
@@ -80,11 +80,12 @@ class PriorityMessagePublisher:
         try:
             # Get file size if file exists
             file_size_mb = None
-            if os.path.exists(file_path):
-                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            path_obj = Path(file_path)
+            if path_obj.exists():
+                file_size_mb = path_obj.stat().st_size / (1024 * 1024)
 
             # Build message
-            message: Dict[str, Any] = {
+            message: dict[str, Any] = {
                 "file_path": file_path,
                 "recording_id": recording_id,
                 "retry_count": 1 if is_retry else 0,
@@ -101,7 +102,7 @@ class PriorityMessagePublisher:
             properties = BasicProperties(
                 delivery_mode=2,  # Persistent
                 correlation_id=correlation_id,
-                priority=message["priority"] if self.priority_config.enable_priority else None,
+                priority=(message["priority"] if self.priority_config.enable_priority else None),
             )
 
             # Publish message
@@ -125,7 +126,10 @@ class PriorityMessagePublisher:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to publish message: {e}", extra={"correlation_id": correlation_id})
+            logger.error(
+                f"Failed to publish message: {e}",
+                extra={"correlation_id": correlation_id},
+            )
             return False
 
     def close(self) -> None:

@@ -16,7 +16,7 @@ from shared.core_types.src.neo4j_repository import Neo4jRepository
 load_dotenv()
 
 
-def setup_neo4j():
+def setup_neo4j() -> int:
     """Set up Neo4j constraints and indexes."""
     # Get connection details from environment
     uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")

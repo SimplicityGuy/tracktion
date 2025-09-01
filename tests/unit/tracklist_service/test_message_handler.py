@@ -7,7 +7,9 @@ import pytest
 from aio_pika import DeliveryMode
 from aio_pika.abc import AbstractIncomingMessage
 
-from services.tracklist_service.src.messaging.message_handler import TracklistMessageHandler
+from services.tracklist_service.src.messaging.message_handler import (
+    TracklistMessageHandler,
+)
 from services.tracklist_service.src.models.search_models import (
     PaginationInfo,
     SearchRequest,
@@ -338,44 +340,46 @@ class TestTracklistMessageHandler:
     @pytest.mark.asyncio
     async def test_start_consuming(self, message_handler):
         """Test starting message consumption."""
-        with patch.object(message_handler, "connect", new_callable=AsyncMock):
-            with patch.object(message_handler, "disconnect", new_callable=AsyncMock):
-                # Setup mock queue
-                mock_queue = AsyncMock()
-                message_handler._queue = mock_queue
+        with (
+            patch.object(message_handler, "connect", new_callable=AsyncMock),
+            patch.object(message_handler, "disconnect", new_callable=AsyncMock),
+        ):
+            # Setup mock queue
+            mock_queue = AsyncMock()
+            message_handler._queue = mock_queue
 
-                # Create mock iterator that yields one message then stops
-                mock_message = AsyncMock()
+            # Create mock iterator that yields one message then stops
+            mock_message = AsyncMock()
 
-                class MockAsyncIterator:
-                    def __init__(self):
-                        self.yielded = False
+            class MockAsyncIterator:
+                def __init__(self):
+                    self.yielded = False
 
-                    def __aiter__(self):
-                        return self
+                def __aiter__(self):
+                    return self
 
-                    async def __anext__(self):
-                        if not self.yielded:
-                            self.yielded = True
-                            return mock_message
-                        message_handler._running = False
-                        raise StopAsyncIteration
+                async def __anext__(self):
+                    if not self.yielded:
+                        self.yielded = True
+                        return mock_message
+                    message_handler._running = False
+                    raise StopAsyncIteration
 
-                # Create a mock context manager
-                mock_context_manager = AsyncMock()
-                mock_context_manager.__aenter__.return_value = MockAsyncIterator()
-                mock_context_manager.__aexit__.return_value = None
-                # Make iterator a regular method that returns the context manager
-                mock_queue.iterator = MagicMock(return_value=mock_context_manager)
+            # Create a mock context manager
+            mock_context_manager = AsyncMock()
+            mock_context_manager.__aenter__.return_value = MockAsyncIterator()
+            mock_context_manager.__aexit__.return_value = None
+            # Make iterator a regular method that returns the context manager
+            mock_queue.iterator = MagicMock(return_value=mock_context_manager)
 
-                with patch.object(message_handler, "process_search_request", new_callable=AsyncMock):
-                    await message_handler.start_consuming()
+            with patch.object(message_handler, "process_search_request", new_callable=AsyncMock):
+                await message_handler.start_consuming()
 
-                    # Verify message was processed
-                    message_handler.process_search_request.assert_called_once_with(mock_message)
+                # Verify message was processed
+                message_handler.process_search_request.assert_called_once_with(mock_message)
 
-                    # Verify disconnect was called
-                    message_handler.disconnect.assert_called_once()
+                # Verify disconnect was called
+                message_handler.disconnect.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_stop(self, message_handler):

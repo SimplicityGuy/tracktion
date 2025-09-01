@@ -2,7 +2,9 @@
 
 import pytest
 
-from services.analysis_service.src.file_rename_proposal.confidence_scorer import ConfidenceScorer
+from services.analysis_service.src.file_rename_proposal.confidence_scorer import (
+    ConfidenceScorer,
+)
 
 
 class TestConfidenceScorer:
@@ -166,7 +168,12 @@ class TestConfidenceScorer:
     def test_score_consistency(self, scorer):
         """Test consistency scoring."""
         # Consistent metadata
-        consistent = {"artist": "Artist", "albumartist": "Artist", "track": "5", "date": "2023"}
+        consistent = {
+            "artist": "Artist",
+            "albumartist": "Artist",
+            "track": "5",
+            "date": "2023",
+        }
         score = scorer._score_consistency(consistent, "Artist - Title.mp3")
         assert score > 0.9
 

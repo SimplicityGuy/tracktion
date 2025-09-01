@@ -19,7 +19,18 @@ class TestFileScanner:
     def test_supported_extensions_includes_legacy_formats(self):
         """Test that legacy formats are still supported."""
         scanner = FileScanner()
-        expected_formats = {".mp3", ".flac", ".wav", ".wave", ".m4a", ".mp4", ".m4b", ".m4p", ".m4v", ".m4r"}
+        expected_formats = {
+            ".mp3",
+            ".flac",
+            ".wav",
+            ".wave",
+            ".m4a",
+            ".mp4",
+            ".m4b",
+            ".m4p",
+            ".m4v",
+            ".m4r",
+        }
         for fmt in expected_formats:
             assert fmt in scanner.SUPPORTED_EXTENSIONS
 

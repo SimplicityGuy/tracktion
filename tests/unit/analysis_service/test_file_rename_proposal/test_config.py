@@ -88,9 +88,8 @@ class TestFileRenameProposalConfig:
             "RENAME_ENABLE_PROPOSAL_GENERATION": "yes",  # Should be "true" or "false"
         }
 
-        with patch.dict(os.environ, env_vars):
-            with pytest.raises(ValueError):
-                FileRenameProposalConfig.from_env()
+        with patch.dict(os.environ, env_vars), pytest.raises(ValueError):
+            FileRenameProposalConfig.from_env()
 
     def test_pattern_customization(self):
         """Test that patterns can be customized."""

@@ -13,9 +13,12 @@ import signal
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any
 
 import structlog
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = structlog.get_logger(__name__)
 
@@ -48,17 +51,17 @@ class GracefulShutdownHandler:
         self._lock = threading.RLock()
 
         # Track in-flight requests
-        self._in_flight_requests: Set[str] = set()
+        self._in_flight_requests: set[str] = set()
         self._request_lock = threading.RLock()
 
         # Shutdown hooks
-        self._shutdown_hooks: List[Callable[[], None]] = []
+        self._shutdown_hooks: list[Callable[[], None]] = []
 
         # Resources to clean up
-        self._resources: Dict[str, Any] = {}
+        self._resources: dict[str, Any] = {}
 
         # Statistics
-        self._shutdown_start_time: Optional[float] = None
+        self._shutdown_start_time: float | None = None
         self._requests_completed = 0
         self._requests_aborted = 0
 
@@ -76,7 +79,7 @@ class GracefulShutdownHandler:
 
         # Windows compatibility
         if hasattr(signal, "SIGBREAK"):
-            signal.signal(signal.SIGBREAK, self._signal_handler)  # type: ignore[attr-defined]
+            signal.signal(signal.SIGBREAK, self._signal_handler)
 
         logger.info("Signal handlers registered for graceful shutdown")
 
@@ -160,7 +163,7 @@ class GracefulShutdownHandler:
         """
         return self._shutdown_initiated
 
-    def wait_for_shutdown(self, timeout: Optional[float] = None) -> bool:
+    def wait_for_shutdown(self, timeout: float | None = None) -> bool:
         """
         Wait for shutdown to complete.
 
@@ -340,14 +343,14 @@ class GracefulShutdownHandler:
         # Force exit
         os._exit(1)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get shutdown statistics.
 
         Returns:
             Dictionary containing shutdown statistics
         """
-        stats: Dict[str, Any] = {
+        stats: dict[str, Any] = {
             "shutdown_initiated": self._shutdown_initiated,
             "shutdown_complete": self._shutdown_complete,
             "in_flight_requests": len(self._in_flight_requests),
@@ -369,7 +372,7 @@ class AsyncGracefulShutdownHandler(GracefulShutdownHandler):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the async graceful shutdown handler."""
         super().__init__(*args, **kwargs)
-        self._async_shutdown_hooks: List[Callable[[], Any]] = []
+        self._async_shutdown_hooks: list[Callable[[], Any]] = []
 
     def register_async_shutdown_hook(self, hook: Callable[[], Any]) -> None:
         """
@@ -506,12 +509,12 @@ class AsyncGracefulShutdownHandler(GracefulShutdownHandler):
 
 
 # Global instance
-_shutdown_handler: Optional[GracefulShutdownHandler] = None
+_shutdown_handler: GracefulShutdownHandler | None = None
 
 
 def get_shutdown_handler() -> GracefulShutdownHandler:
     """Get the global shutdown handler instance."""
-    global _shutdown_handler
+    global _shutdown_handler  # noqa: PLW0603 - Standard singleton pattern for global shutdown handler
     if _shutdown_handler is None:
         _shutdown_handler = GracefulShutdownHandler()
     return _shutdown_handler
@@ -519,5 +522,5 @@ def get_shutdown_handler() -> GracefulShutdownHandler:
 
 def reset_shutdown_handler() -> None:
     """Reset the global shutdown handler (mainly for testing)."""
-    global _shutdown_handler
+    global _shutdown_handler  # noqa: PLW0603 - Standard singleton reset pattern for testing
     _shutdown_handler = None

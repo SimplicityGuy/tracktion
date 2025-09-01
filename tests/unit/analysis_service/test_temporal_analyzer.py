@@ -4,8 +4,8 @@ Unit tests for temporal BPM analysis module.
 Tests windowed BPM analysis, tempo stability detection, and tempo changes.
 """
 
-import os
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -25,7 +25,7 @@ class TestTemporalAnalyzer:
     def test_analyze_constant_tempo(self, mock_loader):
         """Test analysis of track with constant tempo."""
         # Mock audio loading - 60 seconds of audio
-        mock_audio = np.random.randn(44100 * 60).astype(np.float32)
+        mock_audio = np.random.default_rng().standard_normal(44100 * 60).astype(np.float32)
         mock_loader_instance = MagicMock()
         mock_loader_instance.return_value = mock_audio
         mock_loader.return_value = mock_loader_instance
@@ -42,7 +42,7 @@ class TestTemporalAnalyzer:
             try:
                 result = self.analyzer.analyze_temporal_bpm(tmp_path)
             finally:
-                os.unlink(tmp_path)
+                Path(tmp_path).unlink()
 
             assert result["average_bpm"] == 128.0
             assert result["start_bpm"] == 128.0
@@ -55,7 +55,7 @@ class TestTemporalAnalyzer:
     def test_analyze_variable_tempo(self, mock_loader):
         """Test analysis of track with variable tempo."""
         # Mock audio loading
-        mock_audio = np.random.randn(44100 * 60).astype(np.float32)
+        mock_audio = np.random.default_rng().standard_normal(44100 * 60).astype(np.float32)
         mock_loader_instance = MagicMock()
         mock_loader_instance.return_value = mock_audio
         mock_loader.return_value = mock_loader_instance
@@ -77,7 +77,7 @@ class TestTemporalAnalyzer:
             try:
                 result = self.analyzer.analyze_temporal_bpm(tmp_path)
             finally:
-                os.unlink(tmp_path)
+                Path(tmp_path).unlink()
 
             assert result["average_bpm"] > 120.0  # Should be higher than start
             assert result["stability_score"] < 1.0  # Not perfectly stable
@@ -88,7 +88,7 @@ class TestTemporalAnalyzer:
     def test_analyze_dj_mix(self, mock_loader):
         """Test analysis of DJ mix with tempo transitions."""
         # Mock audio loading - 5 minutes
-        mock_audio = np.random.randn(44100 * 300).astype(np.float32)
+        mock_audio = np.random.default_rng().standard_normal(44100 * 300).astype(np.float32)
         mock_loader_instance = MagicMock()
         mock_loader_instance.return_value = mock_audio
         mock_loader.return_value = mock_loader_instance
@@ -99,8 +99,8 @@ class TestTemporalAnalyzer:
             audio_len = len(audio) / 44100
             if audio_len < 20:  # Start or short window
                 return (128.0, np.array([]), 0.9, np.array([]), np.array([]))
-            else:  # End or later window
-                return (140.0, np.array([]), 0.9, np.array([]), np.array([]))
+            # End or later window
+            return (140.0, np.array([]), 0.9, np.array([]), np.array([]))
 
         with patch.object(self.analyzer.rhythm_extractor, "__call__", side_effect=mock_rhythm_extract):
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
@@ -109,7 +109,7 @@ class TestTemporalAnalyzer:
             try:
                 result = self.analyzer.analyze_temporal_bpm(tmp_path)
             finally:
-                os.unlink(tmp_path)
+                Path(tmp_path).unlink()
 
             assert result["start_bpm"] == 128.0
             assert result["end_bpm"] == 140.0
@@ -119,7 +119,7 @@ class TestTemporalAnalyzer:
     def test_analyze_beatless_track(self, mock_loader):
         """Test analysis of beatless/ambient track."""
         # Mock audio loading
-        mock_audio = np.random.randn(44100 * 60).astype(np.float32)
+        mock_audio = np.random.default_rng().standard_normal(44100 * 60).astype(np.float32)
         mock_loader_instance = MagicMock()
         mock_loader_instance.return_value = mock_audio
         mock_loader.return_value = mock_loader_instance
@@ -136,7 +136,7 @@ class TestTemporalAnalyzer:
             try:
                 result = self.analyzer.analyze_temporal_bpm(tmp_path)
             finally:
-                os.unlink(tmp_path)
+                Path(tmp_path).unlink()
 
             # Low confidence results should be filtered out
             assert result["average_bpm"] is None
@@ -164,7 +164,7 @@ class TestTemporalAnalyzer:
             with pytest.raises(RuntimeError, match="Loaded audio is empty"):
                 self.analyzer.analyze_temporal_bpm(tmp_path)
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
     def test_calculate_stability(self):
         """Test tempo stability calculation."""
@@ -203,7 +203,11 @@ class TestTemporalAnalyzer:
     def test_initialization_custom_parameters(self):
         """Test TemporalAnalyzer initialization with custom parameters."""
         analyzer = TemporalAnalyzer(
-            window_size=20.0, hop_size=10.0, sample_rate=48000, start_duration=20.0, end_duration=20.0
+            window_size=20.0,
+            hop_size=10.0,
+            sample_rate=48000,
+            start_duration=20.0,
+            end_duration=20.0,
         )
 
         assert analyzer.window_size == 20.0
@@ -227,13 +231,15 @@ class TestTemporalAnalysisEdgeCases:
         analyzer = TemporalAnalyzer(window_size=10.0)
 
         # Mock 3 seconds of audio (too short for most windows)
-        mock_audio = np.random.randn(44100 * 3).astype(np.float32)
+        mock_audio = np.random.default_rng().standard_normal(44100 * 3).astype(np.float32)
         mock_loader_instance = MagicMock()
         mock_loader_instance.return_value = mock_audio
         mock_loader.return_value = mock_loader_instance
 
         with patch.object(
-            analyzer.rhythm_extractor, "__call__", return_value=(120.0, np.array([]), 0.8, np.array([]), np.array([]))
+            analyzer.rhythm_extractor,
+            "__call__",
+            return_value=(120.0, np.array([]), 0.8, np.array([]), np.array([])),
         ):
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
                 tmp_path = tmp.name
@@ -241,7 +247,7 @@ class TestTemporalAnalysisEdgeCases:
             try:
                 result = analyzer.analyze_temporal_bpm(tmp_path)
             finally:
-                os.unlink(tmp_path)
+                Path(tmp_path).unlink()
 
             # Should handle short files gracefully
             assert result is not None

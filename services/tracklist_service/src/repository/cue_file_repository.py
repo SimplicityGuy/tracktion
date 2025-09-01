@@ -3,7 +3,6 @@ CUE file repository for database operations.
 """
 
 import logging
-from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import and_, desc, func
@@ -40,23 +39,23 @@ class CueFileRepository:
         try:
             # Check if file already exists and increment version
             existing_files = await self.get_cue_files_by_tracklist_and_format(
-                cue_file_db.tracklist_id,  # type: ignore[arg-type]
-                cue_file_db.format,  # type: ignore[arg-type]
+                cue_file_db.tracklist_id,
+                cue_file_db.format,
             )
 
             if existing_files:
                 # Mark previous versions as inactive
                 for existing_file in existing_files:
-                    existing_file.is_active = False  # type: ignore[assignment]
+                    existing_file.is_active = False
 
                 # Set new version number
-                latest_version = max(f.version for f in existing_files)  # type: ignore[type-var]
-                cue_file_db.version = latest_version + 1  # type: ignore[assignment]
+                latest_version = max(f.version for f in existing_files)
+                cue_file_db.version = latest_version + 1
             else:
-                cue_file_db.version = 1  # type: ignore[assignment]
+                cue_file_db.version = 1
 
             # Ensure new file is active
-            cue_file_db.is_active = True  # type: ignore[assignment]
+            cue_file_db.is_active = True
 
             self.session.add(cue_file_db)
             await self.session.commit()
@@ -70,7 +69,7 @@ class CueFileRepository:
             logger.error(f"Failed to create CUE file: {e}", exc_info=True)
             raise
 
-    async def get_cue_file_by_id(self, cue_file_id: UUID) -> Optional[CueFileDB]:
+    async def get_cue_file_by_id(self, cue_file_id: UUID) -> CueFileDB | None:
         """
         Get CUE file by ID.
 
@@ -89,13 +88,13 @@ class CueFileRepository:
             else:
                 logger.debug(f"CUE file {cue_file_id} not found")
 
-            return cue_file
+            return cue_file  # type: ignore[no-any-return]  # SQLAlchemy returns model but typed as Any
 
         except Exception as e:
             logger.error(f"Failed to get CUE file {cue_file_id}: {e}", exc_info=True)
             raise
 
-    async def get_cue_files_by_tracklist(self, tracklist_id: UUID) -> List[CueFileDB]:
+    async def get_cue_files_by_tracklist(self, tracklist_id: UUID) -> list[CueFileDB]:
         """
         Get all CUE files for a tracklist.
 
@@ -117,10 +116,13 @@ class CueFileRepository:
             return list(cue_files)
 
         except Exception as e:
-            logger.error(f"Failed to get CUE files for tracklist {tracklist_id}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to get CUE files for tracklist {tracklist_id}: {e}",
+                exc_info=True,
+            )
             raise
 
-    async def get_cue_files_by_tracklist_and_format(self, tracklist_id: UUID, cue_format: str) -> List[CueFileDB]:
+    async def get_cue_files_by_tracklist_and_format(self, tracklist_id: UUID, cue_format: str) -> list[CueFileDB]:
         """
         Get CUE files by tracklist and format.
 
@@ -134,7 +136,12 @@ class CueFileRepository:
         try:
             result = await self.session.execute(
                 select(CueFileDB)
-                .where(and_(CueFileDB.tracklist_id == tracklist_id, CueFileDB.format == cue_format))
+                .where(
+                    and_(
+                        CueFileDB.tracklist_id == tracklist_id,
+                        CueFileDB.format == cue_format,
+                    )
+                )
                 .order_by(desc(CueFileDB.version))
             )
             cue_files = result.scalars().all()
@@ -149,7 +156,7 @@ class CueFileRepository:
             )
             raise
 
-    async def get_active_cue_file(self, tracklist_id: UUID, cue_format: str) -> Optional[CueFileDB]:
+    async def get_active_cue_file(self, tracklist_id: UUID, cue_format: str) -> CueFileDB | None:
         """
         Get active CUE file for tracklist and format.
 
@@ -177,7 +184,7 @@ class CueFileRepository:
             else:
                 logger.debug(f"No active CUE file found for tracklist {tracklist_id} format {cue_format}")
 
-            return cue_file
+            return cue_file  # type: ignore[no-any-return]  # SQLAlchemy returns model but typed as Any
 
         except Exception as e:
             logger.error(
@@ -226,7 +233,7 @@ class CueFileRepository:
                 logger.warning(f"CUE file {cue_file_id} not found for soft delete")
                 return False
 
-            cue_file.is_active = False  # type: ignore[assignment]
+            cue_file.is_active = False
             await self.session.commit()
 
             logger.info(f"Soft deleted CUE file {cue_file_id}")
@@ -268,11 +275,11 @@ class CueFileRepository:
 
     async def list_cue_files(
         self,
-        tracklist_id: Optional[UUID] = None,
-        cue_format: Optional[str] = None,
+        tracklist_id: UUID | None = None,
+        cue_format: str | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> List[CueFileDB]:
+    ) -> list[CueFileDB]:
         """
         List CUE files with filtering and pagination.
 
@@ -308,7 +315,7 @@ class CueFileRepository:
             logger.error(f"Failed to list CUE files: {e}", exc_info=True)
             raise
 
-    async def count_cue_files(self, tracklist_id: Optional[UUID] = None, cue_format: Optional[str] = None) -> int:
+    async def count_cue_files(self, tracklist_id: UUID | None = None, cue_format: str | None = None) -> int:
         """
         Count CUE files with filtering.
 
@@ -339,7 +346,7 @@ class CueFileRepository:
             logger.error(f"Failed to count CUE files: {e}", exc_info=True)
             raise
 
-    async def get_file_versions(self, cue_file_id: UUID) -> List[CueFileDB]:
+    async def get_file_versions(self, cue_file_id: UUID) -> list[CueFileDB]:
         """
         Get all versions of a CUE file.
 

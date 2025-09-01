@@ -9,7 +9,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
 from compare_bpm import (
     EssentiaBPMDetector,
     EssentiaPercivalDetector,
@@ -22,6 +21,10 @@ from compare_bpm import (
 class TestBPMDetection(unittest.TestCase):
     """Test BPM detection accuracy."""
 
+    sample_dir: Path
+    ground_truth_file: Path
+    ground_truth: dict[str, float]
+
     @classmethod
     def setUpClass(cls):
         """Set up test fixtures."""
@@ -32,7 +35,7 @@ class TestBPMDetection(unittest.TestCase):
         cls.ground_truth = {}
         if cls.ground_truth_file.exists():
             gt_df = pd.read_csv(cls.ground_truth_file)
-            cls.ground_truth = dict(zip(gt_df["filename"], gt_df["actual_bpm"]))
+            cls.ground_truth = dict(zip(gt_df["filename"], gt_df["actual_bpm"], strict=False))
 
     def test_librosa_detector(self):
         """Test Librosa BPM detector."""
@@ -100,7 +103,11 @@ class TestBPMDetection(unittest.TestCase):
             if len(detector_df) > 0:
                 mean_error = detector_df["error_percent"].mean()
                 # Expect less than 2% error for electronic music
-                self.assertLess(mean_error, 2.0, f"{detector} has {mean_error:.1f}% error on electronic music")
+                self.assertLess(
+                    mean_error,
+                    2.0,
+                    f"{detector} has {mean_error:.1f}% error on electronic music",
+                )
 
     def test_bpm_accuracy_variable(self):
         """Test BPM detection on variable tempo music."""
@@ -182,7 +189,7 @@ class TestBPMDetection(unittest.TestCase):
         results_df = compare_bpm_detection([str(f) for f in sample_files])
         summary = analyze_results(results_df)
 
-        for detector, stats in summary.items():
+        for stats in summary.values():
             self.assertIn("success_rate", stats)
             self.assertIn("avg_processing_time", stats)
 
@@ -214,7 +221,11 @@ class TestBPMRanges(unittest.TestCase):
             result = detector.detect(str(file))
             if result["error"] is None:
                 # Check that slow tempo is detected
-                self.assertLess(result["bpm"], 100, f"Expected slow tempo for {file.name}, got {result['bpm']}")
+                self.assertLess(
+                    result["bpm"],
+                    100,
+                    f"Expected slow tempo for {file.name}, got {result['bpm']}",
+                )
 
     def test_fast_tempo(self):
         """Test detection of fast tempos (140+ BPM)."""
@@ -232,7 +243,11 @@ class TestBPMRanges(unittest.TestCase):
             result = detector.detect(str(file))
             if result["error"] is None:
                 # Check that fast tempo is detected
-                self.assertGreater(result["bpm"], 130, f"Expected fast tempo for {file.name}, got {result['bpm']}")
+                self.assertGreater(
+                    result["bpm"],
+                    130,
+                    f"Expected fast tempo for {file.name}, got {result['bpm']}",
+                )
 
 
 if __name__ == "__main__":

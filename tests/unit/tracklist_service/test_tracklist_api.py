@@ -72,7 +72,7 @@ class TestTracklistRetrievalAPI:
         """Test that get by ID is not yet implemented."""
         # Since we can't directly test the HTTPException, we'll test the response
         # In production, FastAPI will catch the HTTPException and return appropriate response
-        pass  # Skip this test as it requires FastAPI app context
+        # Skip this test as it requires FastAPI app context
 
     @pytest.mark.asyncio
     @patch("services.tracklist_service.src.api.tracklist_api.cache")
@@ -155,21 +155,19 @@ class TestTracklistRetrievalAPI:
     async def test_retrieve_tracklist_no_url(self):
         """Test error when no URL provided."""
         # This test also requires FastAPI app context
-        pass  # Skip this test as it requires FastAPI app context
+        # Skip this test as it requires FastAPI app context
 
     @pytest.mark.asyncio
     async def test_retrieve_tracklist_force_refresh(self):
         """Test force refresh bypasses cache."""
         # This test requires more complex setup with actual app context
         # Skipping for now as it requires deeper integration testing
-        pass
 
     @pytest.mark.asyncio
     async def test_retrieve_tracklist_without_transitions(self):
         """Test retrieving tracklist without transitions."""
         # This test also requires more complex setup
         # Skipping for now as it requires deeper integration testing
-        pass
 
 
 class TestJobStatusAPI:
@@ -256,7 +254,6 @@ class TestCacheClearingAPI:
         """Test that bulk cache clearing is not implemented."""
         # This test requires proper argument handling in FastAPI
         # Skipping for now as it requires the full app context
-        pass
 
 
 class TestHealthCheckAPI:

@@ -5,12 +5,22 @@ This module handles downloading, caching, and loading of pre-trained
 TensorFlow models from Essentia's model repository.
 """
 
+import copy
 import hashlib
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, ClassVar
 from urllib.request import Request, urlopen
+
+try:
+    import tensorflow as tf
+
+    HAS_TENSORFLOW = True
+except ImportError:
+    HAS_TENSORFLOW = False
+    tf = None
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +37,7 @@ class ModelManager:
     MODEL_REPO_BASE = "https://essentia.upf.edu/models/"
 
     # Known models with their metadata
-    KNOWN_MODELS = {
+    KNOWN_MODELS: ClassVar[dict[str, dict[str, Any]]] = {
         "genre_discogs_effnet": {
             "filename": "genre_discogs-effnet-bs64-1.pb",
             "url": "genre_discogs-effnet-bs64-1.pb",
@@ -74,7 +84,7 @@ class ModelManager:
 
     def __init__(
         self,
-        models_dir: Optional[str] = None,
+        models_dir: str | None = None,
         auto_download: bool = True,
         verify_checksum: bool = True,
         lazy_load: bool = True,
@@ -93,9 +103,8 @@ class ModelManager:
         self.auto_download = auto_download
         self.verify_checksum = verify_checksum
         self.lazy_load = lazy_load
-        self._loaded_models: Dict[str, Any] = {}
+        self._loaded_models: dict[str, Any] = {}
         # Deep copy to prevent cross-instance mutation
-        import copy
 
         self._model_metadata = copy.deepcopy(self.KNOWN_MODELS)
 
@@ -107,14 +116,14 @@ class ModelManager:
         manifest_path = self.models_dir / "manifest.json"
         if manifest_path.exists():
             try:
-                with open(manifest_path, "r") as f:
+                with manifest_path.open() as f:
                     manifest = json.load(f)
                     for model_id, metadata in manifest.items():
                         if model_id in self._model_metadata:
                             self._model_metadata[model_id]["checksum"] = metadata.get("checksum")
                 logger.info(f"Loaded model manifest from {manifest_path}")
             except Exception as e:
-                logger.warning(f"Failed to load manifest: {str(e)}")
+                logger.warning(f"Failed to load manifest: {e!s}")
 
     def _save_manifest(self) -> None:
         """Save model manifest with checksums."""
@@ -122,15 +131,22 @@ class ModelManager:
         manifest = {}
         for model_id, metadata in self._model_metadata.items():
             if metadata.get("checksum"):
-                manifest[model_id] = {"checksum": metadata["checksum"], "filename": metadata["filename"]}
+                manifest[model_id] = {
+                    "checksum": metadata["checksum"],
+                    "filename": metadata["filename"],
+                }
         try:
-            with open(manifest_path, "w") as f:
+            with Path(manifest_path).open("w") as f:
                 json.dump(manifest, f, indent=2)
             logger.info(f"Saved model manifest to {manifest_path}")
         except Exception as e:
-            logger.warning(f"Failed to save manifest: {str(e)}")
+            logger.warning(f"Failed to save manifest: {e!s}")
 
-    def download_model(self, model_id: str, progress_callback: Optional[Callable[[str, float], None]] = None) -> bool:
+    def download_model(
+        self,
+        model_id: str,
+        progress_callback: Callable[[str, float], None] | None = None,
+    ) -> bool:
         """
         Download a model from the repository.
 
@@ -166,7 +182,7 @@ class ModelManager:
                 downloaded = 0
                 chunk_size = 8192
 
-                with open(model_path, "wb") as f:
+                with Path(model_path).open("wb") as f:
                     while True:
                         chunk = response.read(chunk_size)
                         if not chunk:
@@ -188,7 +204,7 @@ class ModelManager:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to download model {model_id}: {str(e)}")
+            logger.error(f"Failed to download model {model_id}: {e!s}")
             if model_path.exists():
                 model_path.unlink()  # Remove partial download
             return False
@@ -196,7 +212,7 @@ class ModelManager:
     def _calculate_checksum(self, file_path: Path) -> str:
         """Calculate SHA256 checksum of a file."""
         sha256 = hashlib.sha256()
-        with open(file_path, "rb") as f:
+        with Path(file_path).open("rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
                 sha256.update(chunk)
         return sha256.hexdigest()
@@ -233,7 +249,7 @@ class ModelManager:
         logger.debug(f"Checksum verified for {model_id}")
         return True
 
-    def get_model_path(self, model_id: str) -> Optional[Path]:
+    def get_model_path(self, model_id: str) -> Path | None:
         """
         Get the path to a cached model.
 
@@ -251,9 +267,8 @@ class ModelManager:
         model_path = self.models_dir / str(metadata["filename"])
 
         if not model_path.exists():
-            if self.auto_download:
-                if self.download_model(model_id):
-                    return model_path
+            if self.auto_download and self.download_model(model_id):
+                return model_path
             logger.error(f"Model {model_id} not found and auto-download disabled")
             return None
 
@@ -263,7 +278,7 @@ class ModelManager:
 
         return model_path
 
-    def load_model(self, model_id: str) -> Optional[Any]:
+    def load_model(self, model_id: str) -> Any | None:
         """
         Load a TensorFlow model (lazy loading).
 
@@ -281,10 +296,11 @@ class ModelManager:
         if not model_path:
             return None
 
-        try:
-            # Import TensorFlow only when needed (lazy import)
-            import tensorflow as tf
+        if not HAS_TENSORFLOW:
+            logger.error(f"TensorFlow not installed. Cannot load model {model_id}")
+            return None
 
+        try:
             # Load the model
             logger.info(f"Loading model {model_id} from {model_path}")
             model = tf.saved_model.load(str(model_path))
@@ -298,10 +314,10 @@ class ModelManager:
             logger.error("TensorFlow not installed. Install with: uv pip install tensorflow")
             return None
         except Exception as e:
-            logger.error(f"Failed to load model {model_id}: {str(e)}")
+            logger.error(f"Failed to load model {model_id}: {e!s}")
             return None
 
-    def preload_models(self, model_ids: List[str]) -> Dict[str, bool]:
+    def preload_models(self, model_ids: list[str]) -> dict[str, bool]:
         """
         Preload multiple models for better performance.
 
@@ -317,11 +333,11 @@ class ModelManager:
             results[model_id] = model is not None
         return results
 
-    def get_all_models(self) -> List[str]:
+    def get_all_models(self) -> list[str]:
         """Get list of all available model IDs."""
         return list(self._model_metadata.keys())
 
-    def get_model_info(self, model_id: str) -> Optional[Dict[str, Any]]:
+    def get_model_info(self, model_id: str) -> dict[str, Any] | None:
         """Get metadata for a specific model."""
         return self._model_metadata.get(model_id)
 
@@ -344,7 +360,7 @@ class ModelManager:
             Total size in megabytes
         """
         total_size = 0
-        for model_id, metadata in self._model_metadata.items():
+        for metadata in self._model_metadata.values():
             model_path = self.models_dir / str(metadata["filename"])
             if model_path.exists():
                 total_size += model_path.stat().st_size

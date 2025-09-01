@@ -10,10 +10,13 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 import structlog
-from flask import Flask, jsonify, Response
+from flask import Flask, Response, jsonify
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = structlog.get_logger(__name__)
 
@@ -33,13 +36,13 @@ class ComponentHealth:
     name: str
     status: HealthStatus
     message: str = ""
-    latency_ms: Optional[float] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    last_check: Optional[float] = None
+    latency_ms: float | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    last_check: float | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "name": self.name,
             "status": self.status.value,
             "message": self.message,
@@ -76,10 +79,10 @@ class HealthChecker:
         self.check_timeout = check_timeout
 
         # Component health checks
-        self._health_checks: Dict[str, Callable[[], ComponentHealth]] = {}
+        self._health_checks: dict[str, Callable[[], ComponentHealth]] = {}
 
         # Cache for health check results
-        self._cache: Dict[str, ComponentHealth] = {}
+        self._cache: dict[str, ComponentHealth] = {}
         self._cache_ttl = 30.0  # Cache for 30 seconds
 
         # Statistics
@@ -107,7 +110,7 @@ class HealthChecker:
         self._health_checks[component_name] = check_func
         logger.debug(f"Registered health check for component: {component_name}")
 
-    def check_health(self, use_cache: bool = True) -> Dict[str, Any]:
+    def check_health(self, use_cache: bool = True) -> dict[str, Any]:
         """
         Check overall health of the service.
 
@@ -142,7 +145,7 @@ class HealthChecker:
 
         return result
 
-    def check_readiness(self, use_cache: bool = False) -> Dict[str, Any]:
+    def check_readiness(self, use_cache: bool = False) -> dict[str, Any]:
         """
         Check readiness of the service and all dependencies.
 
@@ -185,7 +188,7 @@ class HealthChecker:
                     {
                         "name": component_name,
                         "status": HealthStatus.UNHEALTHY.value,
-                        "message": f"Check failed: {str(e)}",
+                        "message": f"Check failed: {e!s}",
                     }
                 )
                 overall_status = HealthStatus.UNHEALTHY
@@ -249,12 +252,12 @@ class HealthChecker:
             return ComponentHealth(
                 name=component_name,
                 status=HealthStatus.UNHEALTHY,
-                message=f"Check failed: {str(e)}",
+                message=f"Check failed: {e!s}",
                 latency_ms=(time.time() - start_time) * 1000,
                 last_check=time.time(),
             )
 
-    def get_detailed_status(self) -> Dict[str, Any]:
+    def get_detailed_status(self) -> dict[str, Any]:
         """
         Get detailed status including all component health.
 
@@ -295,7 +298,7 @@ def check_postgresql_health() -> ComponentHealth:
         return ComponentHealth(
             name="postgresql",
             status=HealthStatus.UNHEALTHY,
-            message=f"Database connection failed: {str(e)}",
+            message=f"Database connection failed: {e!s}",
         )
 
 
@@ -318,7 +321,7 @@ def check_neo4j_health() -> ComponentHealth:
         return ComponentHealth(
             name="neo4j",
             status=HealthStatus.UNHEALTHY,
-            message=f"Graph database connection failed: {str(e)}",
+            message=f"Graph database connection failed: {e!s}",
         )
 
 
@@ -341,7 +344,7 @@ def check_rabbitmq_health() -> ComponentHealth:
         return ComponentHealth(
             name="rabbitmq",
             status=HealthStatus.UNHEALTHY,
-            message=f"Message queue connection failed: {str(e)}",
+            message=f"Message queue connection failed: {e!s}",
         )
 
 
@@ -364,7 +367,7 @@ def check_redis_health() -> ComponentHealth:
         return ComponentHealth(
             name="redis",
             status=HealthStatus.UNHEALTHY,
-            message=f"Cache connection failed: {str(e)}",
+            message=f"Cache connection failed: {e!s}",
         )
 
 
@@ -392,14 +395,14 @@ class HealthCheckServer:
         """Set up Flask routes for health check endpoints."""
 
         @self.app.route("/health")
-        def health() -> Response:
+        def health() -> tuple[Response, int]:
             """Basic liveness check endpoint."""
             result = self.health_checker.check_health()
             status_code = 200 if result["status"] == "healthy" else 503
             return jsonify(result), status_code
 
         @self.app.route("/ready")
-        def ready() -> Response:
+        def ready() -> tuple[Response, int]:
             """Readiness check endpoint."""
             result = self.health_checker.check_readiness()
             status_code = 200 if result["ready"] else 503
@@ -423,12 +426,12 @@ class HealthCheckServer:
 
 
 # Global instance
-_health_checker: Optional[HealthChecker] = None
+_health_checker: HealthChecker | None = None
 
 
 def get_health_checker() -> HealthChecker:
     """Get the global health checker instance."""
-    global _health_checker
+    global _health_checker  # noqa: PLW0603 - Standard singleton pattern for global health checker
     if _health_checker is None:
         _health_checker = HealthChecker()
         # Register default health checks
@@ -441,5 +444,5 @@ def get_health_checker() -> HealthChecker:
 
 def reset_health_checker() -> None:
     """Reset the global health checker (mainly for testing)."""
-    global _health_checker
+    global _health_checker  # noqa: PLW0603 - Standard singleton reset pattern for testing
     _health_checker = None

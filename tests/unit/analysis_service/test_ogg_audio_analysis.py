@@ -9,7 +9,10 @@ from uuid import uuid4
 import numpy as np
 
 # Add the src directory to the path so we can import modules
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "services" / "analysis_service" / "src"))
+sys.path.insert(
+    0,
+    str(Path(__file__).parent.parent.parent.parent / "services" / "analysis_service" / "src"),
+)
 
 from bpm_detector import BPMDetector
 from config import BPMConfig
@@ -74,7 +77,7 @@ class TestOggPerformance(unittest.TestCase):
         mock_exists.return_value = True
 
         # Simulate large file (>100MB equivalent in samples)
-        large_audio = np.random.rand(44100 * 60 * 30).astype(np.float32)  # 30 minutes
+        large_audio = np.random.default_rng().random(44100 * 60 * 30).astype(np.float32)  # 30 minutes
         mock_loader_instance = Mock()
         mock_loader.return_value = mock_loader_instance
         mock_loader_instance.return_value = large_audio

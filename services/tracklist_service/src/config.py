@@ -7,7 +7,6 @@ caching, and messaging settings.
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 
 @dataclass
@@ -15,10 +14,12 @@ class ScrapingConfig:
     """Configuration for web scraping operations."""
 
     base_url: str = "https://1001tracklists.com"
-    user_agents: List[str] = field(
+    user_agents: list[str] = field(
         default_factory=lambda: [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         ]
     )
@@ -53,7 +54,7 @@ class CacheConfig:
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 1  # Use different DB than analysis service
-    redis_password: Optional[str] = None
+    redis_password: str | None = None
     search_ttl_hours: int = 24
     failed_search_ttl_minutes: int = 30
     key_prefix: str = "tracklist:"
@@ -194,7 +195,7 @@ class ServiceConfig:
 
         return config
 
-    def validate(self) -> List[str]:
+    def validate(self) -> list[str]:
         """Validate configuration and return any errors.
 
         Returns:
@@ -242,7 +243,7 @@ class ServiceConfig:
 
 
 # Global configuration instance
-_config: Optional[ServiceConfig] = None
+_config: ServiceConfig | None = None
 
 
 def get_config() -> ServiceConfig:
@@ -250,7 +251,7 @@ def get_config() -> ServiceConfig:
 
     Creates the configuration from environment variables on first call.
     """
-    global _config
+    global _config  # noqa: PLW0603  # Global config pattern for application configuration
     if _config is None:
         _config = ServiceConfig.from_env()
     return _config
@@ -261,7 +262,7 @@ def set_config(config: ServiceConfig) -> None:
 
     Useful for testing or when loading configuration from files.
     """
-    global _config
+    global _config  # noqa: PLW0603  # Global config pattern for application configuration
     _config = config
 
 
@@ -270,5 +271,5 @@ def reset_config() -> None:
 
     The next call to get_config() will recreate from environment.
     """
-    global _config
+    global _config  # noqa: PLW0603  # Global config pattern for application configuration
     _config = None

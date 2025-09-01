@@ -68,7 +68,10 @@ class TestAsyncRecordingRepository:
 
         # Create recording
         result = await recording_repo.create(
-            file_path="/test/file.mp3", file_name="file.mp3", sha256_hash="testhash", xxh128_hash="testxxhash"
+            file_path="/test/file.mp3",
+            file_name="file.mp3",
+            sha256_hash="testhash",
+            xxh128_hash="testxxhash",
         )
 
         # Verify
@@ -130,7 +133,9 @@ class TestAsyncRecordingRepository:
         # Update recording
         recording_id = uuid4()
         result = await recording_repo.update(
-            recording_id=recording_id, file_path="/test/new_file.mp3", file_name="new_file.mp3"
+            recording_id=recording_id,
+            file_path="/test/new_file.mp3",
+            file_name="new_file.mp3",
         )
 
         # Verify

@@ -6,24 +6,29 @@ import os
 import signal
 import sys
 import uuid
-from concurrent.futures import Future
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
-import aiofiles  # type: ignore
+import aiofiles  # type: ignore[import-untyped]  # aiofiles types not available
 import structlog
 import xxhash
 from dotenv import load_dotenv
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from .async_message_publisher import AsyncMessagePublisher
+from .async_message_publisher import AsyncMessagePublisher, FileEvent
 from .async_metadata_extractor import AsyncMetadataExtractor
+
+if TYPE_CHECKING:
+    from concurrent.futures import Future
 
 load_dotenv()
 
 # Generate unique instance ID for this service instance
 INSTANCE_ID = os.environ.get("INSTANCE_ID") or str(uuid.uuid4())[:8]
+
+# Constants for batch processing
+BATCH_SIZE = 100  # Number of files to process in each batch
 
 logger = structlog.get_logger()
 
@@ -31,7 +36,17 @@ logger = structlog.get_logger()
 class AsyncFileEventHandler(FileSystemEventHandler):
     """Async event handler for file system events."""
 
-    SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".wma", ".aac", ".opus", ".oga"}
+    SUPPORTED_EXTENSIONS: ClassVar[set[str]] = {
+        ".mp3",
+        ".wav",
+        ".flac",
+        ".ogg",
+        ".m4a",
+        ".wma",
+        ".aac",
+        ".opus",
+        ".oga",
+    }
 
     def __init__(
         self,
@@ -49,6 +64,7 @@ class AsyncFileEventHandler(FileSystemEventHandler):
             loop: Event loop for async operations
             semaphore: Semaphore for limiting concurrent operations
             metadata_extractor: Optional async metadata extractor
+
         """
         super().__init__()
         self.publisher = publisher
@@ -73,7 +89,8 @@ class AsyncFileEventHandler(FileSystemEventHandler):
         """Handle file modification events."""
         if not event.is_directory and self.is_audio_file(str(event.src_path)):
             task = asyncio.run_coroutine_threadsafe(
-                self._process_file_async(str(event.src_path), "modified"), self.loop
+                self._process_file_async(str(event.src_path), "modified"),
+                self.loop,
             )
             self.processing_tasks.add(task)
 
@@ -85,12 +102,12 @@ class AsyncFileEventHandler(FileSystemEventHandler):
 
     def on_moved(self, event: FileSystemEvent) -> None:
         """Handle file move/rename events."""
-        if hasattr(event, "dest_path") and not event.is_directory:
-            if self.is_audio_file(str(event.dest_path)):
-                task = asyncio.run_coroutine_threadsafe(
-                    self._process_move_async(str(event.src_path), str(event.dest_path)), self.loop
-                )
-                self.processing_tasks.add(task)
+        if hasattr(event, "dest_path") and not event.is_directory and self.is_audio_file(str(event.dest_path)):
+            task = asyncio.run_coroutine_threadsafe(
+                self._process_move_async(str(event.src_path), str(event.dest_path)),
+                self.loop,
+            )
+            self.processing_tasks.add(task)
 
     async def _process_file_async(self, file_path: str, event_type: str) -> None:
         """Process file events asynchronously with concurrency control.
@@ -98,11 +115,13 @@ class AsyncFileEventHandler(FileSystemEventHandler):
         Args:
             file_path: Path to the file
             event_type: Type of event (created, modified, deleted)
+
         """
         async with self.semaphore:  # Limit concurrent operations
             try:
                 logger.info(
-                    f"Processing {event_type} event",
+                    "Processing %s event",
+                    event_type,
                     file_path=file_path,
                     instance_id=self.instance_id,
                 )
@@ -112,7 +131,7 @@ class AsyncFileEventHandler(FileSystemEventHandler):
                 xxh128_hash = None
                 metadata = None
 
-                if event_type != "deleted" and os.path.exists(file_path):
+                if event_type != "deleted" and Path(file_path).exists():
                     sha256_hash, xxh128_hash = await self._calculate_hashes_async(file_path)
 
                     # Extract metadata if extractor is available
@@ -120,10 +139,14 @@ class AsyncFileEventHandler(FileSystemEventHandler):
                         try:
                             metadata = await self.metadata_extractor.extract_metadata(file_path)
                         except Exception as e:
-                            logger.warning("Failed to extract metadata", file_path=file_path, error=str(e))
+                            logger.warning(
+                                "Failed to extract metadata",
+                                file_path=file_path,
+                                error=str(e),
+                            )
 
                 # Publish event to message queue
-                await self.publisher.publish_file_event(
+                event = FileEvent(
                     event_type=event_type,
                     file_path=file_path,
                     instance_id=self.instance_id,
@@ -131,19 +154,21 @@ class AsyncFileEventHandler(FileSystemEventHandler):
                     xxh128_hash=xxh128_hash,
                     metadata=metadata,
                 )
+                await self.publisher.publish_file_event(event)
 
                 logger.info(
-                    f"Successfully processed {event_type} event",
+                    "Successfully processed %s event",
+                    event_type,
                     file_path=file_path,
                     sha256_hash=sha256_hash,
                 )
 
             except Exception as e:
-                logger.error(
-                    f"Error processing {event_type} event",
+                logger.exception(
+                    "Error processing %s event",
+                    event_type,
                     file_path=file_path,
                     error=str(e),
-                    exc_info=True,
                 )
 
     async def _process_move_async(self, old_path: str, new_path: str) -> None:
@@ -152,16 +177,18 @@ class AsyncFileEventHandler(FileSystemEventHandler):
         Args:
             old_path: Original file path
             new_path: New file path
+
         """
         async with self.semaphore:
             try:
                 # Determine if it's a rename or move
-                old_dir = os.path.dirname(old_path)
-                new_dir = os.path.dirname(new_path)
+                old_dir = Path(old_path).parent
+                new_dir = Path(new_path).parent
                 event_type = "renamed" if old_dir == new_dir else "moved"
 
                 logger.info(
-                    f"Processing {event_type} event",
+                    "Processing %s event",
+                    event_type,
                     old_path=old_path,
                     new_path=new_path,
                     instance_id=self.instance_id,
@@ -171,28 +198,29 @@ class AsyncFileEventHandler(FileSystemEventHandler):
                 sha256_hash, xxh128_hash = await self._calculate_hashes_async(new_path)
 
                 # Publish move/rename event
-                await self.publisher.publish_file_event(
+                event = FileEvent(
                     event_type=event_type,
                     file_path=new_path,
-                    old_path=old_path,
                     instance_id=self.instance_id,
+                    old_path=old_path,
                     sha256_hash=sha256_hash,
                     xxh128_hash=xxh128_hash,
                 )
+                await self.publisher.publish_file_event(event)
 
                 logger.info(
-                    f"Successfully processed {event_type} event",
+                    "Successfully processed %s event",
+                    event_type,
                     old_path=old_path,
                     new_path=new_path,
                 )
 
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "Error processing move event",
                     old_path=old_path,
                     new_path=new_path,
                     error=str(e),
-                    exc_info=True,
                 )
 
     async def _calculate_hashes_async(self, file_path: str) -> tuple[str | None, str | None]:
@@ -203,6 +231,7 @@ class AsyncFileEventHandler(FileSystemEventHandler):
 
         Returns:
             Tuple of (sha256_hash, xxh128_hash), or (None, None) on error
+
         """
         try:
             sha256 = hashlib.sha256()
@@ -215,7 +244,7 @@ class AsyncFileEventHandler(FileSystemEventHandler):
 
             return sha256.hexdigest(), xxh128.hexdigest()
         except OSError as e:
-            logger.warning(f"Failed to calculate hashes for {file_path}: {e}")
+            logger.warning("Failed to calculate hashes for %s: %s", file_path, e)
             return None, None
 
     async def wait_for_tasks(self) -> None:
@@ -234,6 +263,7 @@ class AsyncFileWatcherService:
 
         Args:
             loop: Event loop to use (creates new one if not provided)
+
         """
         # Get data directory from environment
         data_dir = os.getenv("DATA_DIR", os.getenv("FILE_WATCHER_SCAN_PATH", "/data/music"))
@@ -245,6 +275,7 @@ class AsyncFileWatcherService:
         self.event_handler: AsyncFileEventHandler | None = None
         self.metadata_extractor: AsyncMetadataExtractor | None = None
         self.loop = loop or asyncio.get_event_loop()
+        self.shutdown_task: asyncio.Task[None] | None = None  # Reference to prevent GC during shutdown
 
         # Semaphore for limiting concurrent operations (default: 100)
         max_concurrent = int(os.getenv("MAX_CONCURRENT_FILES", "100"))
@@ -277,11 +308,11 @@ class AsyncFileWatcherService:
 
         # Validate directory
         if not self.scan_path.exists():
-            logger.error(f"ERROR: Data directory {self.scan_path} does not exist")
+            logger.error("ERROR: Data directory %s does not exist", self.scan_path)
             sys.exit(1)
 
         if not os.access(self.scan_path, os.R_OK):
-            logger.error(f"ERROR: No read permission for {self.scan_path}")
+            logger.error("ERROR: No read permission for %s", self.scan_path)
             sys.exit(1)
 
         # Initialize async message publisher
@@ -293,7 +324,11 @@ class AsyncFileWatcherService:
 
         # Initialize event handler with async support
         self.event_handler = AsyncFileEventHandler(
-            self.publisher, self.instance_id, self.loop, self.semaphore, self.metadata_extractor
+            self.publisher,
+            self.instance_id,
+            self.loop,
+            self.semaphore,
+            self.metadata_extractor,
         )
 
         # Set up file system observer (still uses watchdog for events)
@@ -328,7 +363,7 @@ class AsyncFileWatcherService:
                     file_count += 1
 
                     # Process in batches to avoid overwhelming the system
-                    if len(tasks) >= 100:
+                    if len(tasks) >= BATCH_SIZE:
                         await asyncio.gather(*tasks, return_exceptions=True)
                         tasks = []
 
@@ -347,6 +382,7 @@ class AsyncFileWatcherService:
 
         Args:
             file_path: Path to the existing file
+
         """
         if self.event_handler:
             await self.event_handler._process_file_async(file_path, "created")
@@ -378,10 +414,11 @@ class AsyncFileWatcherService:
     def setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
 
-        def signal_handler(signum: int, frame: Any) -> None:
+        def signal_handler(signum: int, _frame: Any) -> None:
             """Handle shutdown signals."""
-            logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-            asyncio.create_task(self.stop())
+            logger.info("Received signal %s, initiating graceful shutdown...", signum)
+            # Store reference to prevent garbage collection during shutdown
+            self.shutdown_task = asyncio.create_task(self.stop())
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)

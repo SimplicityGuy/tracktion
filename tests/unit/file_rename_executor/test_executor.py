@@ -50,7 +50,10 @@ class TestFileRenameExecutor:
         recording.file_path = "/tmp/old_file.ogg"
         recording.file_name = "old_file.ogg"
 
-        session.query.return_value.filter_by.return_value.first.side_effect = [proposal, recording]
+        session.query.return_value.filter_by.return_value.first.side_effect = [
+            proposal,
+            recording,
+        ]
 
         with (
             patch("pathlib.Path.exists") as mock_exists,
@@ -114,7 +117,10 @@ class TestFileRenameExecutor:
         recording = Mock(spec=Recording)
         recording.id = recording_id
 
-        session.query.return_value.filter_by.return_value.first.side_effect = [proposal, recording]
+        session.query.return_value.filter_by.return_value.first.side_effect = [
+            proposal,
+            recording,
+        ]
 
         with patch("pathlib.Path.exists", return_value=False):
             success, error = executor.execute_rename(proposal_id)
@@ -138,7 +144,10 @@ class TestFileRenameExecutor:
         recording = Mock(spec=Recording)
         recording.id = recording_id
 
-        session.query.return_value.filter_by.return_value.first.side_effect = [proposal, recording]
+        session.query.return_value.filter_by.return_value.first.side_effect = [
+            proposal,
+            recording,
+        ]
 
         with patch("pathlib.Path.exists", return_value=True):
             success, error = executor.execute_rename(proposal_id)
@@ -200,7 +209,8 @@ class TestFileRenameExecutor:
         metadata = {"tags": {"title": ["Test"]}}
 
         with patch(
-            "services.analysis_service.src.file_rename_executor.executor.OggVorbis", side_effect=Exception("Test error")
+            "services.analysis_service.src.file_rename_executor.executor.OggVorbis",
+            side_effect=Exception("Test error"),
         ):
             result = executor._restore_metadata("/tmp/test.ogg", metadata)
 
@@ -225,7 +235,10 @@ class TestFileRenameExecutor:
         recording.file_path = "/tmp/new_file.ogg"
         recording.file_name = "new_file.ogg"
 
-        session.query.return_value.filter_by.return_value.first.side_effect = [proposal, recording]
+        session.query.return_value.filter_by.return_value.first.side_effect = [
+            proposal,
+            recording,
+        ]
 
         with (
             patch("pathlib.Path.exists") as mock_exists,
@@ -277,7 +290,10 @@ class TestFileRenameExecutor:
         recording = Mock(spec=Recording)
         recording.id = recording_id
 
-        session.query.return_value.filter_by.return_value.first.side_effect = [proposal, recording]
+        session.query.return_value.filter_by.return_value.first.side_effect = [
+            proposal,
+            recording,
+        ]
 
         with patch("pathlib.Path.exists", return_value=False):
             success, error = executor.rollback_rename(proposal_id)

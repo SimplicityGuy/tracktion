@@ -5,9 +5,9 @@ Tests message processing, caching, error handling, and RabbitMQ integration.
 """
 
 import json
-import os
 import tempfile
 import uuid
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pika
@@ -67,26 +67,28 @@ class TestMessageConsumer:
     @pytest.fixture
     def consumer(self, mock_cache, mock_bpm_detector, mock_temporal_analyzer):
         """Create MessageConsumer with mocked dependencies."""
-        with patch("services.analysis_service.src.message_consumer.AudioCache") as mock_cache_class:
-            with patch("services.analysis_service.src.message_consumer.BPMDetector") as mock_detector_class:
-                with patch("services.analysis_service.src.message_consumer.TemporalAnalyzer") as mock_analyzer_class:
-                    mock_cache_class.return_value = mock_cache
-                    mock_detector_class.return_value = mock_bpm_detector
-                    mock_analyzer_class.return_value = mock_temporal_analyzer
+        with (
+            patch("services.analysis_service.src.message_consumer.AudioCache") as mock_cache_class,
+            patch("services.analysis_service.src.message_consumer.BPMDetector") as mock_detector_class,
+            patch("services.analysis_service.src.message_consumer.TemporalAnalyzer") as mock_analyzer_class,
+        ):
+            mock_cache_class.return_value = mock_cache
+            mock_detector_class.return_value = mock_bpm_detector
+            mock_analyzer_class.return_value = mock_temporal_analyzer
 
-                    consumer = MessageConsumer(
-                        rabbitmq_url="amqp://guest:guest@localhost:5672/",
-                        queue_name="test_queue",
-                        enable_cache=True,
-                        enable_temporal_analysis=True,
-                    )
+            consumer = MessageConsumer(
+                rabbitmq_url="amqp://guest:guest@localhost:5672/",
+                queue_name="test_queue",
+                enable_cache=True,
+                enable_temporal_analysis=True,
+            )
 
-                    # Set the mocked components directly
-                    consumer.cache = mock_cache
-                    consumer.bpm_detector = mock_bpm_detector
-                    consumer.temporal_analyzer = mock_temporal_analyzer
+            # Set the mocked components directly
+            consumer.cache = mock_cache
+            consumer.bpm_detector = mock_bpm_detector
+            consumer.temporal_analyzer = mock_temporal_analyzer
 
-                    return consumer
+            return consumer
 
     def test_initialization(self):
         """Test MessageConsumer initialization."""
@@ -185,7 +187,7 @@ class TestMessageConsumer:
             mock_storage.store_bpm_data.assert_called_once()
 
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
     def test_process_audio_file_cached(self, consumer):
         """Test processing with cached results."""
@@ -211,7 +213,7 @@ class TestMessageConsumer:
             consumer.temporal_analyzer.analyze_temporal_bpm.assert_not_called()
 
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
     def test_process_audio_file_not_found(self, consumer):
         """Test processing non-existent file."""
@@ -246,7 +248,7 @@ class TestMessageConsumer:
             assert call_args[1]["failed"] is True
 
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
     def test_process_audio_file_temporal_failure(self, consumer):
         """Test handling of temporal analysis failure."""
@@ -270,37 +272,44 @@ class TestMessageConsumer:
             consumer.cache.set_bpm_results.assert_called_once()
 
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
     def test_process_audio_file_no_cache(self):
         """Test processing without cache."""
-        with patch("services.analysis_service.src.message_consumer.BPMDetector") as mock_detector_class:
-            with patch("services.analysis_service.src.message_consumer.TemporalAnalyzer") as mock_analyzer_class:
-                mock_detector = Mock()
-                mock_detector.detect_bpm.return_value = {"bpm": 120.0, "confidence": 0.95}
-                mock_detector_class.return_value = mock_detector
+        with (
+            patch("services.analysis_service.src.message_consumer.BPMDetector") as mock_detector_class,
+            patch("services.analysis_service.src.message_consumer.TemporalAnalyzer") as mock_analyzer_class,
+        ):
+            mock_detector = Mock()
+            mock_detector.detect_bpm.return_value = {
+                "bpm": 120.0,
+                "confidence": 0.95,
+            }
+            mock_detector_class.return_value = mock_detector
 
-                mock_analyzer = Mock()
-                mock_analyzer.analyze_temporal_bpm.return_value = {"average_bpm": 120.0}
-                mock_analyzer_class.return_value = mock_analyzer
+            mock_analyzer = Mock()
+            mock_analyzer.analyze_temporal_bpm.return_value = {"average_bpm": 120.0}
+            mock_analyzer_class.return_value = mock_analyzer
 
-                consumer = MessageConsumer(
-                    rabbitmq_url="amqp://localhost", enable_cache=False, enable_temporal_analysis=True
-                )
-                consumer.bpm_detector = mock_detector
-                consumer.temporal_analyzer = mock_analyzer
+            consumer = MessageConsumer(
+                rabbitmq_url="amqp://localhost",
+                enable_cache=False,
+                enable_temporal_analysis=True,
+            )
+            consumer.bpm_detector = mock_detector
+            consumer.temporal_analyzer = mock_analyzer
 
-                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-                    tmp_path = tmp.name
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+                tmp_path = tmp.name
 
-                try:
-                    result = consumer.process_audio_file(tmp_path, str(uuid.uuid4()))
+            try:
+                result = consumer.process_audio_file(tmp_path, str(uuid.uuid4()))
 
-                    assert result["bpm_data"]["bpm"] == 120.0
-                    assert consumer.cache is None
+                assert result["bpm_data"]["bpm"] == 120.0
+                assert consumer.cache is None
 
-                finally:
-                    os.unlink(tmp_path)
+            finally:
+                Path(tmp_path).unlink()
 
     def test_process_audio_file_storage_failure(self, consumer, mock_storage):
         """Test handling of storage failure."""
@@ -322,7 +331,7 @@ class TestMessageConsumer:
             assert "Storage error" in result["storage_error"]
 
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
     @patch("services.analysis_service.src.message_consumer.pika.BlockingConnection")
     def test_consume_message_success(self, mock_connection_class, consumer):
@@ -420,7 +429,12 @@ class TestMessageConsumer:
         mock_method = Mock()
         mock_method.delivery_tag = 1
 
-        registered_callback(mock_channel, mock_method, Mock(correlation_id="test"), json.dumps(message).encode())
+        registered_callback(
+            mock_channel,
+            mock_method,
+            Mock(correlation_id="test"),
+            json.dumps(message).encode(),
+        )
 
         # Should reject message without requeue (ValueError is not retryable)
         mock_channel.basic_nack.assert_called_once_with(delivery_tag=1, requeue=False)
@@ -444,22 +458,24 @@ class TestMessageConsumer:
     def test_initialization_with_config_object(self):
         """Test initialization using component configs."""
         # Test that MessageConsumer can be initialized with various configurations
-        with patch("services.analysis_service.src.message_consumer.AudioCache"):
-            with patch("services.analysis_service.src.message_consumer.BPMDetector"):
-                with patch("services.analysis_service.src.message_consumer.TemporalAnalyzer"):
-                    # Test with explicit parameters
-                    consumer = MessageConsumer(
-                        rabbitmq_url="amqp://guest:guest@rabbitmq:5672/",
-                        queue_name="analysis_queue",
-                        exchange_name="tracktion_exchange",
-                        routing_key="file.analyze",
-                        redis_host="redis",
-                        redis_port=6379,
-                        enable_cache=True,
-                        enable_temporal_analysis=True,
-                    )
+        with (
+            patch("services.analysis_service.src.message_consumer.AudioCache"),
+            patch("services.analysis_service.src.message_consumer.BPMDetector"),
+            patch("services.analysis_service.src.message_consumer.TemporalAnalyzer"),
+        ):
+            # Test with explicit parameters
+            consumer = MessageConsumer(
+                rabbitmq_url="amqp://guest:guest@rabbitmq:5672/",
+                queue_name="analysis_queue",
+                exchange_name="tracktion_exchange",
+                routing_key="file.analyze",
+                redis_host="redis",
+                redis_port=6379,
+                enable_cache=True,
+                enable_temporal_analysis=True,
+            )
 
-                    assert consumer.rabbitmq_url == "amqp://guest:guest@rabbitmq:5672/"
-                    assert consumer.queue_name == "analysis_queue"
-                    assert consumer.exchange_name == "tracktion_exchange"
-                    assert consumer.routing_key == "file.analyze"
+            assert consumer.rabbitmq_url == "amqp://guest:guest@rabbitmq:5672/"
+            assert consumer.queue_name == "analysis_queue"
+            assert consumer.exchange_name == "tracktion_exchange"
+            assert consumer.routing_key == "file.analyze"

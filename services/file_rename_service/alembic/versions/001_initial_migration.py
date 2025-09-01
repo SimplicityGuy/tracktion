@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 
-from alembic import op
+from alembic import op  # type: ignore[attr-defined]  # Alembic adds op attribute at runtime
 
 # revision identifiers, used by Alembic.
 revision: str = "001"
@@ -38,7 +38,12 @@ def upgrade() -> None:
         sa.UniqueConstraint("name"),
     )
     op.create_index("idx_category_name", "pattern_categories", ["name"], unique=False)
-    op.create_index("idx_category_parent", "pattern_categories", ["parent_category_id"], unique=False)
+    op.create_index(
+        "idx_category_parent",
+        "pattern_categories",
+        ["parent_category_id"],
+        unique=False,
+    )
 
     # Create patterns table
     op.create_table(
@@ -57,7 +62,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("idx_pattern_confidence", "patterns", ["confidence_score"], unique=False)
-    op.create_index("idx_pattern_type_category", "patterns", ["pattern_type", "category"], unique=False)
+    op.create_index(
+        "idx_pattern_type_category",
+        "patterns",
+        ["pattern_type", "category"],
+        unique=False,
+    )
     op.create_index(op.f("ix_patterns_id"), "patterns", ["id"], unique=False)
 
     # Create ml_models table

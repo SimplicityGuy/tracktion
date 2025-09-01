@@ -8,7 +8,7 @@ Create Date: 2025-08-16
 
 import sqlalchemy as sa
 
-from alembic import op  # type: ignore[attr-defined,import-untyped]
+from alembic import op  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
 
 # revision identifiers, used by Alembic.
 revision = "002"
@@ -22,7 +22,10 @@ def upgrade() -> None:
     # Add new columns
     op.add_column("recordings", sa.Column("file_hash", sa.String(64), nullable=True))
     op.add_column("recordings", sa.Column("file_size", sa.Integer(), nullable=True))
-    op.add_column("recordings", sa.Column("processing_status", sa.String(50), nullable=True, server_default="pending"))
+    op.add_column(
+        "recordings",
+        sa.Column("processing_status", sa.String(50), nullable=True, server_default="pending"),
+    )
     op.add_column("recordings", sa.Column("processing_error", sa.Text(), nullable=True))
     op.add_column("recordings", sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True))
 

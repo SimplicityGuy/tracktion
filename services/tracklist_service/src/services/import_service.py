@@ -8,17 +8,17 @@ from 1001tracklists.com for import into the local catalog.
 import json
 import logging
 from datetime import timedelta
-from typing import List, Optional, Any
+from typing import Any
 from uuid import UUID
 
 import redis
 
-from ..models.tracklist import TrackEntry, Tracklist
-from ..models.tracklist_models import Track as ScrapedTrack
-from ..models.tracklist_models import Tracklist as ScrapedTracklist
-from ..scraper.tracklist_scraper import TracklistScraper
-from ..config import get_config
-from ..utils.time_utils import parse_time_string, milliseconds_to_timedelta
+from src.config import get_config
+from src.models.tracklist import TrackEntry, Tracklist
+from src.models.tracklist_models import Track as ScrapedTrack
+from src.models.tracklist_models import Tracklist as ScrapedTracklist
+from src.scraper.tracklist_scraper import TracklistScraper
+from src.utils.time_utils import milliseconds_to_timedelta, parse_time_string
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class ImportService:
     """Service for importing tracklists from 1001tracklists."""
 
-    def __init__(self, redis_client: Optional[redis.Redis[str]] = None):
+    def __init__(self, redis_client: redis.Redis | None = None):
         """
         Initialize the import service.
 
@@ -37,7 +37,7 @@ class ImportService:
         self.config = get_config()
 
         # Setup Redis client
-        self.redis_client: Optional[redis.Redis[str]] = None
+        self.redis_client: redis.Redis | None = None
         if redis_client:
             self.redis_client = redis_client
         elif self.config.cache.enabled:
@@ -88,12 +88,12 @@ class ImportService:
             if self.redis_client:
                 self._cache_tracklist(url, scraped_tracklist)
 
-            return scraped_tracklist
+            return ScrapedTracklist(**scraped_tracklist) if isinstance(scraped_tracklist, dict) else scraped_tracklist
         except Exception as e:
             logger.error(f"Failed to fetch tracklist from {url}: {e}")
-            raise ValueError(f"Failed to fetch tracklist: {str(e)}")
+            raise ValueError(f"Failed to fetch tracklist: {e!s}") from e
 
-    def transform_to_track_entries(self, scraped_tracks: List[ScrapedTrack]) -> List[TrackEntry]:
+    def transform_to_track_entries(self, scraped_tracks: list[ScrapedTrack]) -> list[TrackEntry]:
         """
         Transform scraped tracks to TrackEntry objects.
 
@@ -122,7 +122,7 @@ class ImportService:
                 remix=track.remix,
                 label=track.label,
                 catalog_track_id=None,  # Will be set if track is found in catalog
-                confidence=0.9 if not track.is_id else 0.5,  # Lower confidence for ID'd tracks
+                confidence=(0.9 if not track.is_id else 0.5),  # Lower confidence for ID'd tracks
                 transition_type=None,  # Will be set from transitions if available
             )
             track_entries.append(entry)
@@ -175,9 +175,9 @@ class ImportService:
 
         except Exception as e:
             logger.error(f"Failed to import tracklist: {e}")
-            raise ValueError(f"Import failed: {str(e)}")
+            raise ValueError(f"Import failed: {e!s}") from e
 
-    def _parse_timestamp(self, cue_point: Optional[Any]) -> timedelta:
+    def _parse_timestamp(self, cue_point: Any | None) -> timedelta:
         """
         Parse a CuePoint timestamp to timedelta.
 
@@ -191,15 +191,15 @@ class ImportService:
             return timedelta(0)
 
         if hasattr(cue_point, "timestamp_ms") and cue_point.timestamp_ms is not None:
-            return milliseconds_to_timedelta(cue_point.timestamp_ms)
+            return milliseconds_to_timedelta(cue_point.timestamp_ms)  # type: ignore[no-any-return]  # utility returns timedelta but typed as Any
 
         if hasattr(cue_point, "formatted_time") and cue_point.formatted_time:
             # Use centralized parsing function
-            return parse_time_string(cue_point.formatted_time)
+            return parse_time_string(cue_point.formatted_time)  # type: ignore[no-any-return]  # utility returns timedelta but typed as Any
 
         return timedelta(0)
 
-    def _calculate_confidence_score(self, scraped: ScrapedTracklist, track_entries: List[TrackEntry]) -> float:
+    def _calculate_confidence_score(self, scraped: ScrapedTracklist, track_entries: list[TrackEntry]) -> float:
         """
         Calculate overall confidence score for the tracklist.
 
@@ -225,7 +225,12 @@ class ImportService:
         # 3. Metadata completeness
         metadata_score = 0.0
         if scraped.metadata:
-            metadata_fields = [scraped.dj_name, scraped.event_name, scraped.date, scraped.metadata.duration_minutes]
+            metadata_fields = [
+                scraped.dj_name,
+                scraped.event_name,
+                scraped.date,
+                scraped.metadata.duration_minutes,
+            ]
             metadata_score = sum(1 for f in metadata_fields if f) / len(metadata_fields)
 
         # Weighted average
@@ -233,7 +238,7 @@ class ImportService:
 
         return min(max(confidence, 0.0), 1.0)
 
-    def _get_cached_tracklist(self, url: str) -> Optional[ScrapedTracklist]:
+    def _get_cached_tracklist(self, url: str) -> ScrapedTracklist | None:
         """
         Get cached tracklist from Redis.
 

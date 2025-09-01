@@ -1,19 +1,21 @@
 """Integration module for file rename proposal service with analysis pipeline."""
 
-import os
-from typing import Dict, Optional, cast
+from pathlib import Path
+from typing import cast
 from uuid import UUID
+
 import structlog
+
+from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
+from shared.core_types.src.repositories import RecordingRepository
 
 from .batch_processor import BatchProcessor
 from .confidence_scorer import ConfidenceScorer
-from .conflict_detector import ConflictDetector
 from .config import FileRenameProposalConfig
+from .conflict_detector import ConflictDetector
 from .pattern_manager import PatternManager
 from .proposal_generator import ProposalGenerator
 from .validator import FilesystemValidator
-from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
-from shared.core_types.src.repositories import RecordingRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -25,7 +27,7 @@ class FileRenameProposalIntegration:
         self,
         proposal_repo: RenameProposalRepository,
         recording_repo: RecordingRepository,
-        config: Optional[FileRenameProposalConfig] = None,
+        config: FileRenameProposalConfig | None = None,
     ) -> None:
         """Initialize the integration service.
 
@@ -61,8 +63,8 @@ class FileRenameProposalIntegration:
         self.auto_approve_threshold = self.config.auto_approve_threshold
 
     def process_recording_metadata(
-        self, recording_id: UUID, metadata: Dict[str, str], correlation_id: str
-    ) -> Optional[str]:
+        self, recording_id: UUID, metadata: dict[str, str], correlation_id: str
+    ) -> str | None:
         """Process extracted metadata and generate rename proposal if enabled.
 
         Args:
@@ -92,9 +94,8 @@ class FileRenameProposalIntegration:
                 return None
 
             # Extract file extension
-            file_extension = (
-                os.path.splitext(recording.file_name)[1][1:].lower() if "." in recording.file_name else "mp3"
-            )
+            path_obj = Path(recording.file_name)
+            file_extension = path_obj.suffix[1:].lower() if path_obj.suffix else "mp3"
 
             # Generate proposal
             proposal = self.proposal_generator.generate_proposal(
@@ -105,11 +106,11 @@ class FileRenameProposalIntegration:
             )
 
             # Get directory contents for conflict detection
-            directory_path = os.path.dirname(recording.file_path)
+            directory_path = Path(recording.file_path).parent
             existing_files = set()
-            if os.path.exists(directory_path):
+            if directory_path.exists():
                 try:
-                    existing_files = set(os.listdir(directory_path))
+                    existing_files = {f.name for f in directory_path.iterdir()}
                 except (OSError, PermissionError) as e:
                     logger.warning(
                         f"Could not list directory {directory_path}: {e}",
@@ -118,7 +119,10 @@ class FileRenameProposalIntegration:
 
             # Get other pending proposals for conflict detection
             other_proposals = [
-                {"full_proposed_path": p.full_proposed_path, "recording_id": str(p.recording_id)}
+                {
+                    "full_proposed_path": p.full_proposed_path,
+                    "recording_id": str(p.recording_id),
+                }
                 for p in self.proposal_repo.get_pending_proposals()
                 if p.recording_id != recording_id
             ]
@@ -137,7 +141,7 @@ class FileRenameProposalIntegration:
                 alternative = self.conflict_detector.resolve_conflicts(proposal.full_proposed_path, conflicts)
                 if alternative:
                     resolved_path = alternative
-                    resolved_filename = os.path.basename(alternative)
+                    resolved_filename = Path(alternative).name
 
                     # Re-check conflicts for the alternative
                     conflicts_result = self.conflict_detector.detect_conflicts(
@@ -148,7 +152,7 @@ class FileRenameProposalIntegration:
 
             # Calculate confidence score
             confidence, components = self.confidence_scorer.calculate_confidence(
-                metadata=cast(Dict[str, Optional[str]], metadata),
+                metadata=cast("dict[str, str | None]", metadata),
                 original_filename=recording.file_name,
                 proposed_filename=resolved_filename,
                 conflicts=conflicts,
@@ -168,7 +172,7 @@ class FileRenameProposalIntegration:
             # Create proposal in database
             created_proposal = self.proposal_repo.create(
                 recording_id=recording_id,
-                original_path=os.path.dirname(recording.file_path),
+                original_path=str(Path(recording.file_path).parent),
                 original_filename=recording.file_name,
                 proposed_filename=resolved_filename,
                 full_proposed_path=resolved_path,
@@ -201,7 +205,7 @@ class FileRenameProposalIntegration:
             )
             return None
 
-    def process_batch_recordings(self, recording_ids: list[UUID], correlation_id: str) -> Optional[str]:
+    def process_batch_recordings(self, recording_ids: list[UUID], correlation_id: str) -> str | None:
         """Process multiple recordings in batch.
 
         Args:
@@ -247,7 +251,7 @@ class FileRenameProposalIntegration:
             )
             return None
 
-    def get_proposal_status(self, recording_id: UUID) -> Optional[Dict[str, str]]:
+    def get_proposal_status(self, recording_id: UUID) -> dict[str, str] | None:
         """Get the status of rename proposals for a recording.
 
         Args:
@@ -268,8 +272,10 @@ class FileRenameProposalIntegration:
                 "proposal_id": str(latest_proposal.id),
                 "status": latest_proposal.status,
                 "proposed_filename": latest_proposal.proposed_filename,
-                "confidence_score": str(latest_proposal.confidence_score) if latest_proposal.confidence_score else "0",
-                "created_at": latest_proposal.created_at.isoformat() if latest_proposal.created_at else "",
+                "confidence_score": (
+                    str(latest_proposal.confidence_score) if latest_proposal.confidence_score else "0"
+                ),
+                "created_at": (latest_proposal.created_at.isoformat() if latest_proposal.created_at else ""),
             }
 
         except Exception as e:
@@ -286,7 +292,8 @@ class FileRenameProposalIntegration:
             Number of proposals cleaned up
         """
         try:
-            return self.proposal_repo.cleanup_old_proposals(days)
+            result = self.proposal_repo.cleanup_old_proposals(days)
+            return int(result)  # Ensure explicit int return type for mypy
         except Exception as e:
             logger.error(f"Failed to cleanup old proposals: {e}")
             return 0

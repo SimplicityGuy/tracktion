@@ -2,16 +2,19 @@
 
 import asyncio
 import random
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 import structlog
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
-from pybreaker import CircuitBreaker  # type: ignore[import-not-found]
+from pybreaker import CircuitBreaker
 
 logger = structlog.get_logger(__name__)
+
+# Type variable for generic return types
+T = TypeVar("T")
 
 
 class HTTPClientConfig:
@@ -161,10 +164,10 @@ class RetryHandler:
 
     async def execute_with_retry(
         self,
-        func: Any,
+        func: Callable[..., Awaitable[T]],
         *args: Any,
         **kwargs: Any,
-    ) -> Any:
+    ) -> T:
         """Execute an async function with retry logic.
 
         Args:
@@ -263,13 +266,14 @@ class AsyncHTTPClient:
         # The pybreaker library handles state management internally
         try:
             # Create a wrapper for the circuit breaker to handle async calls
-            @circuit_breaker  # type: ignore[misc]
+            @circuit_breaker
             async def _protected_request() -> httpx.Response:
-                return await self.retry_handler.execute_with_retry(_make_request)  # type: ignore[no-any-return]
+                result: httpx.Response = await self.retry_handler.execute_with_retry(_make_request)
+                return result
 
             # Execute the protected request
-            result = await _protected_request()
-            return result  # type: ignore[no-any-return]
+            response: httpx.Response = await _protected_request()
+            return response
         except Exception as e:
             logger.error(
                 "Request failed with circuit breaker",
@@ -319,7 +323,7 @@ def get_global_http_factory(
     Returns:
         Global HTTP client factory instance
     """
-    global _global_factory
+    global _global_factory  # noqa: PLW0603 - Module-level singleton pattern for global factory
     if _global_factory is None:
         _global_factory = AsyncHTTPClientFactory(config)
     return _global_factory
@@ -327,7 +331,7 @@ def get_global_http_factory(
 
 async def cleanup_global_factory() -> None:
     """Cleanup the global HTTP client factory."""
-    global _global_factory
+    global _global_factory  # noqa: PLW0603 - Module-level singleton pattern for global factory
     if _global_factory:
         await _global_factory.close()
         _global_factory = None

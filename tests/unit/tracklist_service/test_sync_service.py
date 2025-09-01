@@ -1,6 +1,7 @@
 """Unit tests for main synchronization service."""
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -8,7 +9,10 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.tracklist_service.src.models.synchronization import SyncConfiguration, SyncEvent
+from services.tracklist_service.src.models.synchronization import (
+    SyncConfiguration,
+    SyncEvent,
+)
 from services.tracklist_service.src.models.tracklist import TracklistDB
 from services.tracklist_service.src.services.sync_service import (
     SyncFrequency,
@@ -21,8 +25,7 @@ from services.tracklist_service.src.services.sync_service import (
 @pytest.fixture
 def mock_session():
     """Create a mock database session."""
-    session = AsyncMock(spec=AsyncSession)
-    return session
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
@@ -56,8 +59,7 @@ def mock_cue_service():
 @pytest.fixture
 def mock_version_service():
     """Create a mock version service."""
-    service = MagicMock()
-    return service
+    return MagicMock()
 
 
 @pytest.fixture
@@ -334,10 +336,8 @@ class TestSynchronizationService:
         assert tracklist_id not in sync_service.scheduled_tasks
 
         # Give the task a moment to process cancellation
-        try:
+        with contextlib.suppress(TimeoutError, asyncio.CancelledError):
             await asyncio.wait_for(task, timeout=0.1)
-        except (TimeoutError, asyncio.CancelledError):
-            pass  # Expected - task was cancelled or timed out
 
         assert task.cancelled() or task.done()
 

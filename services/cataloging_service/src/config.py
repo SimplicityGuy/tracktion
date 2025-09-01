@@ -87,7 +87,7 @@ _config: Config | None = None
 
 def get_config() -> Config:
     """Get the global configuration instance."""
-    global _config
+    global _config  # noqa: PLW0603 - Necessary for singleton pattern
     if _config is None:
         _config = Config.from_env()
     return _config

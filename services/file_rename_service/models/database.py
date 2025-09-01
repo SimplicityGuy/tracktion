@@ -28,8 +28,6 @@ from services.file_rename_service.app.config import settings
 class Base(DeclarativeBase):
     """Base class for all models."""
 
-    pass
-
 
 class PatternType(str, Enum):
     """Types of filename patterns."""

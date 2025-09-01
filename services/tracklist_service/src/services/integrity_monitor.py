@@ -1,12 +1,15 @@
 """Service for monitoring database integrity and orphaned records."""
 
 import asyncio
+import contextlib
 import logging
-from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 from sqlalchemy.orm import Session
 
-from ..utils.integrity_validator import IntegrityValidator
+from src.utils.integrity_validator import IntegrityValidator
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +18,10 @@ class IntegrityMonitor:
     """Monitors database integrity and alerts on orphaned records."""
 
     def __init__(
-        self, session_factory: Callable[[], Session], check_interval_minutes: int = 60, auto_clean: bool = False
+        self,
+        session_factory: Callable[[], Session],
+        check_interval_minutes: int = 60,
+        auto_clean: bool = False,
     ):
         """Initialize the integrity monitor.
 
@@ -27,9 +33,9 @@ class IntegrityMonitor:
         self.session_factory = session_factory
         self.check_interval = timedelta(minutes=check_interval_minutes)
         self.auto_clean = auto_clean
-        self.last_check: Optional[datetime] = None
+        self.last_check: datetime | None = None
         self.is_running = False
-        self._monitor_task: Optional[asyncio.Task[None]] = None
+        self._monitor_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         """Start the integrity monitoring service."""
@@ -52,10 +58,8 @@ class IntegrityMonitor:
         self.is_running = False
         if self._monitor_task:
             self._monitor_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._monitor_task
-            except asyncio.CancelledError:
-                pass
         logger.info("Stopped integrity monitor")
 
     async def _monitor_loop(self) -> None:
@@ -76,7 +80,7 @@ class IntegrityMonitor:
         session = self.session_factory()
         try:
             validator = IntegrityValidator(session)
-            self.last_check = datetime.utcnow()
+            self.last_check = datetime.now(UTC)
 
             # Check for orphaned records
             orphaned = validator.check_orphaned_records()
@@ -116,7 +120,7 @@ class IntegrityMonitor:
         finally:
             session.close()
 
-    async def check_now(self) -> Dict[str, Any]:
+    async def check_now(self) -> dict[str, Any]:
         """Perform an immediate integrity check.
 
         Returns:
@@ -126,12 +130,12 @@ class IntegrityMonitor:
         try:
             validator = IntegrityValidator(session)
             results = validator.run_full_validation()
-            self.last_check = datetime.utcnow()
-            return results
+            self.last_check = datetime.now(UTC)
+            return results  # type: ignore[no-any-return]  # Validator returns dict but typed as Any
         finally:
             session.close()
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get the current monitor status.
 
         Returns:
@@ -149,11 +153,13 @@ class IntegrityMonitor:
 
 
 # Singleton instance
-_monitor_instance: Optional[IntegrityMonitor] = None
+_monitor_instance: IntegrityMonitor | None = None
 
 
 def get_integrity_monitor(
-    session_factory: Optional[Callable[[], Session]] = None, check_interval_minutes: int = 60, auto_clean: bool = False
+    session_factory: Callable[[], Session] | None = None,
+    check_interval_minutes: int = 60,
+    auto_clean: bool = False,
 ) -> IntegrityMonitor:
     """Get or create the singleton integrity monitor instance.
 
@@ -165,7 +171,7 @@ def get_integrity_monitor(
     Returns:
         The integrity monitor instance
     """
-    global _monitor_instance
+    global _monitor_instance  # noqa: PLW0603  # Global is needed for singleton pattern
 
     if _monitor_instance is None:
         if session_factory is None:

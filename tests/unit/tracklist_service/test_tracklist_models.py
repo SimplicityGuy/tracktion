@@ -1,6 +1,6 @@
 """Unit tests for tracklist models with manual creation support."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from services.tracklist_service.src.models.tracklist import (
@@ -199,8 +199,8 @@ class TestTracklistDB:
         db_model.id = tracklist_id
         db_model.audio_file_id = audio_file_id
         db_model.source = "manual"
-        db_model.created_at = datetime.utcnow()
-        db_model.updated_at = datetime.utcnow()
+        db_model.created_at = datetime.now(UTC)
+        db_model.updated_at = datetime.now(UTC)
         db_model.tracks = []
         db_model.confidence_score = 1.0
         db_model.is_draft = True
@@ -243,8 +243,8 @@ class TestTracklistDB:
         db_model.id = tracklist_id
         db_model.audio_file_id = audio_file_id
         db_model.source = "manual"
-        db_model.created_at = datetime.utcnow()
-        db_model.updated_at = datetime.utcnow()
+        db_model.created_at = datetime.now(UTC)
+        db_model.updated_at = datetime.now(UTC)
         db_model.tracks = track_data
         db_model.confidence_score = 1.0
         db_model.is_draft = True

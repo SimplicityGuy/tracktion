@@ -1,6 +1,6 @@
 """Tests for search data models."""
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from uuid import uuid4
 
 import pytest
@@ -35,7 +35,14 @@ class TestPaginationInfo:
 
     def test_valid_pagination(self):
         """Test valid pagination info."""
-        pagination = PaginationInfo(page=2, limit=20, total_pages=5, total_items=100, has_next=True, has_previous=True)
+        pagination = PaginationInfo(
+            page=2,
+            limit=20,
+            total_pages=5,
+            total_items=100,
+            has_next=True,
+            has_previous=True,
+        )
 
         assert pagination.page == 2
         assert pagination.limit == 20
@@ -192,7 +199,9 @@ class TestSearchResult:
     def test_minimal_result(self):
         """Test result with only required fields."""
         result = SearchResult(
-            dj_name="Test DJ", url="https://1001tracklists.com/test", source_url="https://1001tracklists.com/test"
+            dj_name="Test DJ",
+            url="https://1001tracklists.com/test",
+            source_url="https://1001tracklists.com/test",
         )
 
         assert result.dj_name == "Test DJ"
@@ -204,7 +213,11 @@ class TestSearchResult:
     def test_invalid_url(self):
         """Test validation of invalid URL."""
         with pytest.raises(ValidationError) as exc_info:
-            SearchResult(dj_name="Test DJ", url="invalid-url", source_url="https://1001tracklists.com/test")
+            SearchResult(
+                dj_name="Test DJ",
+                url="invalid-url",
+                source_url="https://1001tracklists.com/test",
+            )
 
         errors = exc_info.value.errors()
         assert any(error["type"] == "value_error" for error in errors)
@@ -230,11 +243,26 @@ class TestSearchResponse:
         """Test valid search response."""
         correlation_id = uuid4()
 
-        pagination = PaginationInfo(page=1, limit=20, total_pages=1, total_items=2, has_next=False, has_previous=False)
+        pagination = PaginationInfo(
+            page=1,
+            limit=20,
+            total_pages=1,
+            total_items=2,
+            has_next=False,
+            has_previous=False,
+        )
 
         results = [
-            SearchResult(dj_name="DJ 1", url="https://1001tracklists.com/1", source_url="https://1001tracklists.com/1"),
-            SearchResult(dj_name="DJ 2", url="https://1001tracklists.com/2", source_url="https://1001tracklists.com/2"),
+            SearchResult(
+                dj_name="DJ 1",
+                url="https://1001tracklists.com/1",
+                source_url="https://1001tracklists.com/1",
+            ),
+            SearchResult(
+                dj_name="DJ 2",
+                url="https://1001tracklists.com/2",
+                source_url="https://1001tracklists.com/2",
+            ),
         ]
 
         response = SearchResponse(
@@ -267,7 +295,11 @@ class TestSearchResponse:
 
         # Create response with 1 result (within limit) - should work
         results = [
-            SearchResult(dj_name="DJ 1", url="https://1001tracklists.com/1", source_url="https://1001tracklists.com/1")
+            SearchResult(
+                dj_name="DJ 1",
+                url="https://1001tracklists.com/1",
+                source_url="https://1001tracklists.com/1",
+            )
         ]
 
         response = SearchResponse(
@@ -330,7 +362,9 @@ class TestSearchError:
         correlation_id = uuid4()
 
         error = SearchError(
-            error_code="SEARCH_TIMEOUT", error_message="Search request timed out", correlation_id=correlation_id
+            error_code="SEARCH_TIMEOUT",
+            error_message="Search request timed out",
+            correlation_id=correlation_id,
         )
 
         assert error.error_code == "SEARCH_TIMEOUT"
@@ -373,7 +407,14 @@ class TestMessageModels:
         """Test successful search response message."""
         correlation_id = uuid4()
 
-        pagination = PaginationInfo(page=1, limit=20, total_pages=1, total_items=1, has_next=False, has_previous=False)
+        pagination = PaginationInfo(
+            page=1,
+            limit=20,
+            total_pages=1,
+            total_items=1,
+            has_next=False,
+            has_previous=False,
+        )
 
         response = SearchResponse(
             results=[],
@@ -396,7 +437,9 @@ class TestMessageModels:
         correlation_id = uuid4()
 
         error = SearchError(
-            error_code="SCRAPING_FAILED", error_message="Failed to scrape search results", correlation_id=correlation_id
+            error_code="SCRAPING_FAILED",
+            error_message="Failed to scrape search results",
+            correlation_id=correlation_id,
         )
 
         message = SearchResponseMessage(success=False, error=error, processing_time_ms=50.0)
@@ -415,7 +458,14 @@ class TestCachedSearchResponse:
         """Test cached search response model."""
         correlation_id = uuid4()
 
-        pagination = PaginationInfo(page=1, limit=20, total_pages=1, total_items=0, has_next=False, has_previous=False)
+        pagination = PaginationInfo(
+            page=1,
+            limit=20,
+            total_pages=1,
+            total_items=0,
+            has_next=False,
+            has_previous=False,
+        )
 
         response = SearchResponse(
             results=[],
@@ -426,11 +476,14 @@ class TestCachedSearchResponse:
             correlation_id=correlation_id,
         )
 
-        cached_at = datetime.utcnow()
-        expires_at = datetime.utcnow()
+        cached_at = datetime.now(UTC)
+        expires_at = datetime.now(UTC)
 
         cached_response = CachedSearchResponse(
-            response=response, cached_at=cached_at, expires_at=expires_at, cache_version="1.0"
+            response=response,
+            cached_at=cached_at,
+            expires_at=expires_at,
+            cache_version="1.0",
         )
 
         assert cached_response.response.cache_hit is True

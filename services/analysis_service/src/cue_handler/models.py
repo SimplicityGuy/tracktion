@@ -1,17 +1,15 @@
 """Data models for CUE sheet representation."""
 
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
 import re
+from dataclasses import dataclass, field
+from typing import Any
 
 
 class InvalidTimeFormatError(Exception):
     """Raised when a time string cannot be parsed."""
 
-    pass
 
-
-@dataclass
+@dataclass(frozen=True, eq=True, unsafe_hash=True)
 class CueTime:
     """Represents a time in CUE format (MM:SS:FF where FF is frames at 75fps)."""
 
@@ -30,6 +28,10 @@ class CueTime:
             raise InvalidTimeFormatError(f"Invalid seconds: {self.seconds}")
         if self.frames < 0 or self.frames >= 75:
             raise InvalidTimeFormatError(f"Invalid frames: {self.frames} (must be 0-74)")
+
+    def __hash__(self) -> int:
+        """Return hash of time components."""
+        return hash((self.minutes, self.seconds, self.frames))
 
     @classmethod
     def from_string(cls, time_str: str) -> "CueTime":
@@ -148,15 +150,15 @@ class Track:
 
     number: int
     track_type: str = "AUDIO"
-    title: Optional[str] = None
-    performer: Optional[str] = None
-    songwriter: Optional[str] = None
-    isrc: Optional[str] = None
-    flags: List[str] = field(default_factory=list)
-    indices: Dict[int, CueTime] = field(default_factory=dict)
-    pregap: Optional[CueTime] = None
-    postgap: Optional[CueTime] = None
-    rem_fields: Dict[str, str] = field(default_factory=dict)
+    title: str | None = None
+    performer: str | None = None
+    songwriter: str | None = None
+    isrc: str | None = None
+    flags: list[str] = field(default_factory=list)
+    indices: dict[int, CueTime] = field(default_factory=dict)
+    pregap: CueTime | None = None
+    postgap: CueTime | None = None
+    rem_fields: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Validate track data."""
@@ -174,7 +176,7 @@ class Track:
         if self.isrc and len(self.isrc) != 12:
             raise ValueError(f"ISRC must be 12 characters, got {len(self.isrc)}")
 
-    def get_start_time(self) -> Optional[CueTime]:
+    def get_start_time(self) -> CueTime | None:
         """Get the track start time (INDEX 01).
 
         Returns:
@@ -182,7 +184,7 @@ class Track:
         """
         return self.indices.get(1)
 
-    def get_pregap_start(self) -> Optional[CueTime]:
+    def get_pregap_start(self) -> CueTime | None:
         """Get the pregap start time (INDEX 00).
 
         Returns:
@@ -190,7 +192,7 @@ class Track:
         """
         return self.indices.get(0)
 
-    def validate(self) -> List[str]:
+    def validate(self) -> list[str]:
         """Validate track structure.
 
         Returns:
@@ -203,19 +205,16 @@ class Track:
             errors.append(f"Track {self.number}: Missing required INDEX 01")
 
         # Check INDEX ordering
-        if 0 in self.indices and 1 in self.indices:
-            if self.indices[0] >= self.indices[1]:
-                errors.append(f"Track {self.number}: INDEX 00 must be before INDEX 01")
+        if 0 in self.indices and 1 in self.indices and self.indices[0] >= self.indices[1]:
+            errors.append(f"Track {self.number}: INDEX 00 must be before INDEX 01")
 
         # Validate FLAGS
         valid_flags = {"DCP", "4CH", "PRE", "SCMS"}
-        for flag in self.flags:
-            if flag not in valid_flags:
-                errors.append(f"Track {self.number}: Invalid flag {flag}")
+        errors.extend(f"Track {self.number}: Invalid flag {flag}" for flag in self.flags if flag not in valid_flags)
 
         return errors
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert track to dictionary for serialization.
 
         Returns:
@@ -242,7 +241,7 @@ class FileReference:
 
     filename: str
     file_type: str
-    tracks: List[Track] = field(default_factory=list)
+    tracks: list[Track] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Validate file reference."""
@@ -251,7 +250,7 @@ class FileReference:
             # Store but warn about unknown type
             pass  # Warning handled in parser
 
-    def validate(self) -> List[str]:
+    def validate(self) -> list[str]:
         """Validate file reference structure.
 
         Returns:
@@ -282,20 +281,20 @@ class CueSheet:
     """Represents a complete CUE sheet."""
 
     # Disc-level metadata
-    title: Optional[str] = None
-    performer: Optional[str] = None
-    catalog: Optional[str] = None
-    cdtextfile: Optional[str] = None
+    title: str | None = None
+    performer: str | None = None
+    catalog: str | None = None
+    cdtextfile: str | None = None
 
     # Files and tracks
-    files: List[FileReference] = field(default_factory=list)
+    files: list[FileReference] = field(default_factory=list)
 
     # REM fields
-    rem_fields: Dict[str, str] = field(default_factory=dict)
+    rem_fields: dict[str, str] = field(default_factory=dict)
 
     # Parsing information
-    parsing_errors: List[str] = field(default_factory=list)
-    parsing_warnings: List[str] = field(default_factory=list)
+    parsing_errors: list[str] = field(default_factory=list)
+    parsing_warnings: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Validate CUE sheet data."""
@@ -311,7 +310,7 @@ class CueSheet:
             # Store but mark as invalid format
             pass  # Warning handled in parser
 
-    def get_all_tracks(self) -> List[Track]:
+    def get_all_tracks(self) -> list[Track]:
         """Get all tracks from all files.
 
         Returns:
@@ -330,7 +329,7 @@ class CueSheet:
         """
         return len(self.get_all_tracks())
 
-    def validate(self) -> List[str]:
+    def validate(self) -> list[str]:
         """Validate complete CUE sheet structure.
 
         Returns:
@@ -356,7 +355,7 @@ class CueSheet:
 
         return errors
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert CUE sheet to dictionary for serialization.
 
         Returns:
@@ -368,7 +367,11 @@ class CueSheet:
             "catalog": self.catalog,
             "cdtextfile": self.cdtextfile,
             "files": [
-                {"filename": f.filename, "type": f.file_type, "tracks": [t.to_dict() for t in f.tracks]}
+                {
+                    "filename": f.filename,
+                    "type": f.file_type,
+                    "tracks": [t.to_dict() for t in f.tracks],
+                }
                 for f in self.files
             ],
             "rem_fields": self.rem_fields,

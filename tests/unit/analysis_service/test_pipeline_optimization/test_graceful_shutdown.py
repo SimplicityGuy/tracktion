@@ -89,9 +89,8 @@ class TestGracefulShutdownHandler:
         """Test that new requests are rejected during shutdown."""
         self.handler._shutdown_initiated = True
 
-        with pytest.raises(RuntimeError) as exc_info:
-            with self.handler.track_request("req-456"):
-                pass
+        with pytest.raises(RuntimeError) as exc_info, self.handler.track_request("req-456"):
+            pass
 
         assert "shutting down" in str(exc_info.value)
 
@@ -99,10 +98,9 @@ class TestGracefulShutdownHandler:
         """Test that requests are cleaned up even if exception occurs."""
         request_id = "req-789"
 
-        with pytest.raises(ValueError):
-            with self.handler.track_request(request_id):
-                assert request_id in self.handler._in_flight_requests
-                raise ValueError("Test error")
+        with pytest.raises(ValueError), self.handler.track_request(request_id):
+            assert request_id in self.handler._in_flight_requests
+            raise ValueError("Test error")
 
         # Request should still be removed
         assert request_id not in self.handler._in_flight_requests

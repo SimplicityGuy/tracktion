@@ -6,17 +6,17 @@ Create Date: 2025-08-28 15:40:36.122375
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op  # type: ignore[attr-defined]  # Alembic adds op at runtime
 
 # revision identifiers, used by Alembic.
 revision: str = "063942b5b3ea"
-down_revision: Union[str, Sequence[str], None] = "004_add_cue_file_models"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "004_add_cue_file_models"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

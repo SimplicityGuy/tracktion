@@ -6,19 +6,14 @@ Provides caching for search results to reduce scraping load.
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import redis
 from redis.exceptions import RedisError
 
-from ..config import get_config
-from ..models.search_models import (
-    CachedSearchResponse,
-    CacheKey,
-    SearchRequest,
-    SearchResponse,
-)
+from src.config import get_config
+from src.models.search_models import CachedSearchResponse, CacheKey, SearchRequest, SearchResponse
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +25,7 @@ class RedisCache:
         """Initialize Redis cache connection."""
         self.config = get_config().cache
         self.enabled = self.config.enabled
-        self.client: Optional[redis.Redis[str]] = None
+        self.client: redis.Redis | None = None
 
         if self.enabled:
             try:
@@ -51,7 +46,7 @@ class RedisCache:
                 self.enabled = False
                 self.client = None
 
-    def get_cached_response(self, request: SearchRequest) -> Optional[SearchResponse]:
+    def get_cached_response(self, request: SearchRequest) -> SearchResponse | None:
         """Get cached search response if available.
 
         Args:
@@ -86,16 +81,15 @@ class RedisCache:
                 cached_response = CachedSearchResponse.model_validate_json(cached_data)
 
                 # Check if still valid
-                if cached_response.expires_at > datetime.now(timezone.utc).replace(tzinfo=None):
+                if cached_response.expires_at > datetime.now(UTC).replace(tzinfo=None):
                     # Update response to indicate cache hit
                     response = cached_response.response
                     response.cache_hit = True
                     response.correlation_id = request.correlation_id
                     return response
-                else:
-                    # Expired - delete from cache
-                    logger.debug(f"Cache expired for key: {key}")
-                    self.client.delete(key)
+                # Expired - delete from cache
+                logger.debug(f"Cache expired for key: {key}")
+                self.client.delete(key)
 
             logger.debug(f"Cache miss for key: {key}")
             return None
@@ -104,7 +98,12 @@ class RedisCache:
             logger.error(f"Error retrieving from cache: {e}")
             return None
 
-    def cache_response(self, request: SearchRequest, response: SearchResponse, ttl_hours: Optional[int] = None) -> bool:
+    def cache_response(
+        self,
+        request: SearchRequest,
+        response: SearchResponse,
+        ttl_hours: int | None = None,
+    ) -> bool:
         """Cache a search response.
 
         Args:
@@ -136,7 +135,7 @@ class RedisCache:
                 ttl_hours = self.config.search_ttl_hours
 
             # Create cached response
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            now = datetime.now(UTC).replace(tzinfo=None)
             expires_at = now + timedelta(hours=ttl_hours)
 
             cached_response = CachedSearchResponse(
@@ -190,8 +189,8 @@ class RedisCache:
             # Store error with shorter TTL
             failed_data = {
                 "error": error_message,
-                "failed_at": datetime.now(timezone.utc).isoformat(),
-                "correlation_id": str(request.correlation_id) if request.correlation_id else None,
+                "failed_at": datetime.now(UTC).isoformat(),
+                "correlation_id": (str(request.correlation_id) if request.correlation_id else None),
             }
 
             ttl_seconds = self.config.failed_search_ttl_minutes * 60
@@ -208,7 +207,7 @@ class RedisCache:
             logger.error(f"Error caching failed search: {e}")
             return False
 
-    def is_search_failed_recently(self, request: SearchRequest) -> Optional[str]:
+    def is_search_failed_recently(self, request: SearchRequest) -> str | None:
         """Check if a search has failed recently.
 
         Args:
@@ -247,7 +246,7 @@ class RedisCache:
             logger.error(f"Error checking failed search cache: {e}")
             return None
 
-    def clear_cache(self, pattern: Optional[str] = None) -> int:
+    def clear_cache(self, pattern: str | None = None) -> int:
         """Clear cache entries matching a pattern.
 
         Args:
@@ -279,7 +278,7 @@ class RedisCache:
             logger.error(f"Error clearing cache: {e}")
             return 0
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics.
 
         Returns:
@@ -290,7 +289,7 @@ class RedisCache:
 
         try:
             # Get Redis info
-            info = self.client.info()
+            info: dict[str, Any] = self.client.info()
 
             # Count tracklist keys
             tracklist_keys = len(list(self.client.scan_iter(match=f"{self.config.key_prefix}*")))
@@ -310,7 +309,7 @@ class RedisCache:
             logger.error(f"Error getting cache stats: {e}")
             return {"enabled": True, "connected": False, "error": str(e)}
 
-    async def get(self, key: str) -> Optional[str]:
+    async def get(self, key: str) -> str | None:
         """Get a value from cache by key.
 
         Args:
@@ -324,7 +323,7 @@ class RedisCache:
 
         try:
             value = self.client.get(key)
-            return value
+            return str(value) if value is not None else None
         except Exception as e:
             logger.error(f"Error getting value from cache: {e}")
             return None
@@ -395,7 +394,7 @@ class RedisCache:
 
 
 # Global cache instance
-_cache_instance: Optional[RedisCache] = None
+_cache_instance: RedisCache | None = None
 
 
 def get_cache() -> RedisCache:
@@ -404,7 +403,7 @@ def get_cache() -> RedisCache:
     Returns:
         RedisCache instance
     """
-    global _cache_instance
+    global _cache_instance  # noqa: PLW0603  # Global singleton pattern required for cache lifecycle
 
     if _cache_instance is None:
         _cache_instance = RedisCache()
@@ -414,7 +413,7 @@ def get_cache() -> RedisCache:
 
 def close_cache() -> None:
     """Close the global cache instance."""
-    global _cache_instance
+    global _cache_instance  # noqa: PLW0603  # Global singleton pattern required for cache lifecycle
 
     if _cache_instance:
         _cache_instance.close()

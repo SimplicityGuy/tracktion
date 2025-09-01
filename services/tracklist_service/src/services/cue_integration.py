@@ -7,37 +7,66 @@ to integrate CUE file generation and validation with tracklist data.
 
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, ClassVar
 
-from ..models.tracklist import Tracklist
-from ..models.cue_file import CueFormat, ValidationResult
-from ..utils.time_utils import timedelta_to_milliseconds
+from src.models.cue_file import CueFormat, ValidationResult
+from src.models.tracklist import Tracklist
+from src.utils.time_utils import timedelta_to_milliseconds
 
 # Add the analysis service to the path so we can import from it
 analysis_service_path = Path(__file__).parent.parent.parent.parent / "analysis_service" / "src"
 sys.path.insert(0, str(analysis_service_path))
 
 try:
-    from cue_handler import (  # type: ignore[import-not-found]
-        CueGenerator,
-        CueFormat as CueHandlerFormat,
-        CueTrack,
-        CueFile,
-        CueDisc,
-        get_generator,
-        CueValidator,
-        CueConverter,
+    from cue_handler import (
         ConversionMode,
+        CueConverter,
+        CueDisc,
+        CueFile,
+        CueGenerator,
+        CueTrack,
+        CueValidator,
+        get_generator,
     )
-    from cue_handler.models import CueTime  # type: ignore[import-not-found]
+    from cue_handler import (
+        CueFormat as CueHandlerFormat,
+    )
+    from cue_handler.models import CueTime
 except ImportError as e:
-    raise ImportError(f"Could not import CUE handler components: {e}")
+    raise ImportError(f"Could not import CUE handler components: {e}") from e
+
+
+def get_format_capabilities(cue_format: CueHandlerFormat) -> dict[str, Any]:
+    """Get capabilities for a CUE format.
+
+    Placeholder implementation - should be imported from cue_handler.
+    """
+    return {
+        "max_tracks": 99,
+        "supports_isrc": False,
+        "supports_flags": False,
+        "supports_rem": False,
+        "supports_pregap": False,
+        "supports_postgap": False,
+        "encoding": "UTF-8",
+    }
+
+
+def get_lossy_warnings(source_format: CueHandlerFormat, target_format: CueHandlerFormat) -> list[str]:
+    """Get conversion warnings when converting between formats.
+
+    Placeholder implementation - should be imported from cue_handler.
+    """
+    warnings = []
+    if source_format != target_format:
+        warnings.append(f"Converting from {source_format} to {target_format} may result in data loss")
+    return warnings
 
 
 class CueFormatMapper:
     """Maps between tracklist service and CUE handler format enums."""
 
-    FORMAT_MAPPING = {
+    FORMAT_MAPPING: ClassVar[dict[CueFormat, Any]] = {
         CueFormat.STANDARD: CueHandlerFormat.STANDARD,
         CueFormat.CDJ: CueHandlerFormat.CDJ,
         CueFormat.TRAKTOR: CueHandlerFormat.TRAKTOR,
@@ -46,7 +75,7 @@ class CueFormatMapper:
         CueFormat.KODI: CueHandlerFormat.KODI,
     }
 
-    REVERSE_MAPPING = {v: k for k, v in FORMAT_MAPPING.items()}
+    REVERSE_MAPPING: ClassVar[dict[Any, CueFormat]] = {v: k for k, v in FORMAT_MAPPING.items()}
 
     @classmethod
     def to_cue_handler_format(cls, format_val: CueFormat) -> CueHandlerFormat:
@@ -80,7 +109,7 @@ class TracklistToCueMapper:
         return CueTime(minutes=minutes, seconds=seconds, frames=frames)
 
     @classmethod
-    def tracklist_to_cue_tracks(cls, tracklist: Tracklist) -> List[CueTrack]:
+    def tracklist_to_cue_tracks(cls, tracklist: Tracklist) -> list[CueTrack]:
         """Convert tracklist tracks to CUE tracks."""
         cue_tracks = []
 
@@ -94,7 +123,12 @@ class TracklistToCueMapper:
                 title = f"{title} ({track.remix})"
 
             # Create CUE track
-            cue_track = CueTrack(number=track.position, title=title, performer=performer, start_time_ms=start_ms)
+            cue_track = CueTrack(
+                number=track.position,
+                title=title,
+                performer=performer,
+                start_time_ms=start_ms,
+            )
 
             # Add track to indices (INDEX 01 is the main index)
             cue_track.indices[1] = start_ms
@@ -131,8 +165,8 @@ class CueIntegrationService:
         tracklist: Tracklist,
         cue_format: CueFormat,
         audio_filename: str = "audio.wav",
-        options: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[bool, str, Optional[str]]:
+        options: dict[str, Any] | None = None,
+    ) -> tuple[bool, str, str | None]:
         """
         Generate CUE file content from tracklist.
 
@@ -185,10 +219,13 @@ class CueIntegrationService:
             return True, content, None
 
         except Exception as e:
-            return False, "", f"CUE generation failed: {str(e)}"
+            return False, "", f"CUE generation failed: {e!s}"
 
     def validate_cue_content(
-        self, content: str, cue_format: Optional[CueFormat] = None, audio_duration_seconds: Optional[float] = None
+        self,
+        content: str,
+        cue_format: CueFormat | None = None,
+        audio_duration_seconds: float | None = None,
     ) -> ValidationResult:
         """
         Validate CUE file content.
@@ -233,12 +270,19 @@ class CueIntegrationService:
 
         except Exception as e:
             return ValidationResult(
-                valid=False, error=f"Validation failed: {str(e)}", audio_duration=None, tracklist_duration=None
+                valid=False,
+                error=f"Validation failed: {e!s}",
+                audio_duration=None,
+                tracklist_duration=None,
             )
 
     def convert_cue_format(
-        self, content: str, source_format: CueFormat, target_format: CueFormat, preserve_metadata: bool = True
-    ) -> Tuple[bool, str, List[str], Optional[str]]:
+        self,
+        content: str,
+        source_format: CueFormat,
+        target_format: CueFormat,
+        preserve_metadata: bool = True,
+    ) -> tuple[bool, str, list[str], str | None]:
         """
         Convert CUE content between formats.
 
@@ -271,9 +315,9 @@ class CueIntegrationService:
             return success, converted_content, warnings, error_message
 
         except Exception as e:
-            return False, "", [], f"Conversion failed: {str(e)}"
+            return False, "", [], f"Conversion failed: {e!s}"
 
-    def get_format_capabilities(self, cue_format: CueFormat) -> Dict[str, Any]:
+    def get_format_capabilities(self, cue_format: CueFormat) -> dict[str, Any]:
         """
         Get capabilities for a specific CUE format.
 
@@ -284,8 +328,6 @@ class CueIntegrationService:
             Dictionary of format capabilities
         """
         try:
-            from cue_handler.format_mappings import get_format_capabilities  # type: ignore[import-not-found]
-
             handler_format = self.format_mapper.to_cue_handler_format(cue_format)
             capabilities = get_format_capabilities(handler_format)
 
@@ -301,9 +343,9 @@ class CueIntegrationService:
             }
 
         except Exception as e:
-            return {"error": f"Could not get capabilities: {str(e)}"}
+            return {"error": f"Could not get capabilities: {e!s}"}
 
-    def get_conversion_warnings(self, source_format: CueFormat, target_format: CueFormat) -> List[str]:
+    def get_conversion_warnings(self, source_format: CueFormat, target_format: CueFormat) -> list[str]:
         """
         Get potential warnings for format conversion.
 
@@ -315,8 +357,6 @@ class CueIntegrationService:
             List of warning messages
         """
         try:
-            from cue_handler.format_mappings import get_lossy_warnings
-
             handler_source = self.format_mapper.to_cue_handler_format(source_format)
             handler_target = self.format_mapper.to_cue_handler_format(target_format)
 
@@ -324,20 +364,19 @@ class CueIntegrationService:
             return warnings or []
 
         except Exception as e:
-            return [f"Could not get conversion warnings: {str(e)}"]
+            return [f"Could not get conversion warnings: {e!s}"]
 
-    def _apply_generation_options(self, generator: Any, options: Dict[str, Any]) -> None:
+    def _apply_generation_options(self, generator: Any, options: dict[str, Any]) -> None:
         """Apply generation options to generator."""
         # This is a placeholder for applying format-specific options
         # In a real implementation, you would configure the generator
         # based on the options dictionary
-        pass
 
-    def get_supported_formats(self) -> List[CueFormat]:
+    def get_supported_formats(self) -> list[CueFormat]:
         """Get list of supported CUE formats."""
         return list(CueFormat)
 
-    def extract_metadata_from_content(self, content: str) -> Dict[str, Any]:
+    def extract_metadata_from_content(self, content: str) -> dict[str, Any]:
         """
         Extract metadata from CUE content.
 
@@ -364,7 +403,7 @@ class CueIntegrationService:
             }
 
         except Exception as e:
-            return {"error": f"Could not extract metadata: {str(e)}"}
+            return {"error": f"Could not extract metadata: {e!s}"}
 
 
 # Create a singleton instance for use across the service

@@ -2,13 +2,13 @@
 
 import time
 import uuid
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ..structured_logging import get_logger
+from services.analysis_service.src.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -23,7 +23,12 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
         # Log request start
         logger.info(
-            "Request started", extra={"request_id": request_id, "method": request.method, "path": request.url.path}
+            "Request started",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+            },
         )
 
         # Process request
@@ -32,7 +37,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         # Add request ID to response headers
         response.headers["X-Request-ID"] = request_id
 
-        return response  # type: ignore[no-any-return]
+        return response  # FastAPI middleware return type
 
 
 class TimingMiddleware(BaseHTTPMiddleware):
@@ -63,7 +68,7 @@ class TimingMiddleware(BaseHTTPMiddleware):
             },
         )
 
-        return response  # type: ignore[no-any-return]
+        return response  # FastAPI middleware return type
 
 
 class ErrorHandlingMiddleware(BaseHTTPMiddleware):
@@ -72,15 +77,16 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Handle errors globally with proper logging."""
         try:
-            response = await call_next(request)
-            return response  # type: ignore[no-any-return]
+            return await call_next(request)  # FastAPI middleware return type  # FastAPI/Starlette response
         except Exception as e:
             # Get request ID if available
             request_id = getattr(request.state, "request_id", None)
 
             # Log error
             logger.error(
-                "Unhandled exception in request", extra={"request_id": request_id, "error": str(e)}, exc_info=True
+                "Unhandled exception in request",
+                extra={"request_id": request_id, "error": str(e)},
+                exc_info=True,
             )
 
             # Return error response

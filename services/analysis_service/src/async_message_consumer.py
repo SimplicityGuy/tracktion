@@ -3,15 +3,19 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import aio_pika
-from aio_pika import ExchangeType, IncomingMessage
-from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractQueue
+from aio_pika import ExchangeType
 
-from .async_storage_handler import AsyncStorageHandler
 from .async_config import get_config
+from .async_storage_handler import AsyncStorageHandler
+
+if TYPE_CHECKING:
+    from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractQueue
+
+from aio_pika.abc import AbstractIncomingMessage
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +34,7 @@ class AsyncAnalysisProcessor:
 
     async def process_audio_analysis(
         self, recording_id: UUID, file_path: str, analysis_type: str = "basic"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Process audio analysis asynchronously.
 
         Args:
@@ -60,7 +64,12 @@ class AsyncAnalysisProcessor:
                     "channels": 2,
                     "format": "mp3",
                 },
-                "features": {"tempo": 128, "key": "A minor", "energy": 0.85, "danceability": 0.72},
+                "features": {
+                    "tempo": 128,
+                    "key": "A minor",
+                    "energy": 0.85,
+                    "danceability": 0.72,
+                },
             }
 
             # Store results
@@ -70,7 +79,7 @@ class AsyncAnalysisProcessor:
 
             return results
 
-    async def process_similarity_analysis(self, recording_id: UUID, limit: int = 10) -> Dict[str, Any]:
+    async def process_similarity_analysis(self, recording_id: UUID, limit: int = 10) -> dict[str, Any]:
         """Find similar recordings asynchronously.
 
         Args:
@@ -83,11 +92,15 @@ class AsyncAnalysisProcessor:
         async with self._processing_semaphore:
             similar = await self.storage.find_similar_recordings(recording_id=recording_id, limit=limit)
 
-            return {"recording_id": str(recording_id), "similar_recordings": similar, "count": len(similar)}
+            return {
+                "recording_id": str(recording_id),
+                "similar_recordings": similar,
+                "count": len(similar),
+            }
 
     async def process_tracklist_extraction(
         self, recording_id: UUID, file_path: str, source: str = "automatic"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Extract and store tracklist information.
 
         Args:
@@ -104,8 +117,20 @@ class AsyncAnalysisProcessor:
 
             # Mock tracklist data
             tracks = [
-                {"position": 1, "name": "Track 1", "artist": "Artist A", "start_time": "00:00", "duration": "5:32"},
-                {"position": 2, "name": "Track 2", "artist": "Artist B", "start_time": "05:32", "duration": "6:15"},
+                {
+                    "position": 1,
+                    "name": "Track 1",
+                    "artist": "Artist A",
+                    "start_time": "00:00",
+                    "duration": "5:32",
+                },
+                {
+                    "position": 2,
+                    "name": "Track 2",
+                    "artist": "Artist B",
+                    "start_time": "05:32",
+                    "duration": "6:15",
+                },
             ]
 
             # Store tracklist
@@ -120,9 +145,9 @@ class AsyncAnalysisMessageConsumer:
     def __init__(self) -> None:
         """Initialize the async message consumer."""
         self.config = get_config()
-        self.connection: Optional[AbstractConnection] = None
-        self.channel: Optional[AbstractChannel] = None
-        self.queue: Optional[AbstractQueue] = None
+        self.connection: AbstractConnection | None = None
+        self.channel: AbstractChannel | None = None
+        self.queue: AbstractQueue | None = None
 
         # Initialize storage handler
         self.storage = AsyncStorageHandler(
@@ -168,7 +193,12 @@ class AsyncAnalysisMessageConsumer:
             )
 
             # Bind queue to routing keys
-            routing_keys = ["analysis.audio", "analysis.similarity", "analysis.tracklist", "analysis.metadata"]
+            routing_keys = [
+                "analysis.audio",
+                "analysis.similarity",
+                "analysis.tracklist",
+                "analysis.metadata",
+            ]
 
             for routing_key in routing_keys:
                 await self.queue.bind(exchange, routing_key)
@@ -202,7 +232,7 @@ class AsyncAnalysisMessageConsumer:
 
                 async for message in queue_iter:
                     async with message.process():
-                        await self.process_message(message)  # type: ignore[arg-type]
+                        await self.process_message(message)
 
         except asyncio.CancelledError:
             logger.info("Analysis consumer cancelled")
@@ -211,7 +241,7 @@ class AsyncAnalysisMessageConsumer:
             logger.error(f"Error in analysis consumer: {e}")
             raise
 
-    async def process_message(self, message: IncomingMessage) -> None:
+    async def process_message(self, message: AbstractIncomingMessage) -> None:
         """Process an analysis task message.
 
         Args:
@@ -225,12 +255,17 @@ class AsyncAnalysisMessageConsumer:
             file_path = body.get("file_path")
             correlation_id = body.get("correlation_id", "unknown")
 
-            logger.info(f"Processing {task_type} task for {recording_id}", extra={"correlation_id": correlation_id})
+            logger.info(
+                f"Processing {task_type} task for {recording_id}",
+                extra={"correlation_id": correlation_id},
+            )
 
             # Route to appropriate processor
             if task_type == "audio_analysis":
                 result = await self.processor.process_audio_analysis(
-                    recording_id=recording_id, file_path=file_path, analysis_type=body.get("analysis_type", "basic")
+                    recording_id=recording_id,
+                    file_path=file_path,
+                    analysis_type=body.get("analysis_type", "basic"),
                 )
 
             elif task_type == "similarity":
@@ -240,7 +275,9 @@ class AsyncAnalysisMessageConsumer:
 
             elif task_type == "tracklist":
                 result = await self.processor.process_tracklist_extraction(
-                    recording_id=recording_id, file_path=file_path, source=body.get("source", "automatic")
+                    recording_id=recording_id,
+                    file_path=file_path,
+                    source=body.get("source", "automatic"),
                 )
 
             else:
@@ -262,7 +299,10 @@ class AsyncAnalysisMessageConsumer:
 async def main() -> None:
     """Main entry point for analysis message consumer."""
     # Setup logging
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
 
     consumer = AsyncAnalysisMessageConsumer()
 

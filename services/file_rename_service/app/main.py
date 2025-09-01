@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
+import uvicorn
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,33 @@ from fastapi.responses import JSONResponse
 from services.file_rename_service.api.ml_routers import ml_router
 from services.file_rename_service.api.routers import rename_router
 from services.file_rename_service.app.config import settings
+
+
+# Placeholder implementations - TODO: implement these properly
+class RabbitMQManager:
+    """Placeholder RabbitMQ manager."""
+
+    is_connected = False
+
+    async def connect(self) -> None:
+        pass
+
+    async def disconnect(self) -> None:
+        pass
+
+
+class ServiceRegistry:
+    """Placeholder service registry."""
+
+    async def register(self) -> None:
+        pass
+
+    async def deregister(self) -> None:
+        pass
+
+
+rabbitmq_manager = RabbitMQManager()
+service_registry = ServiceRegistry()
 
 # Configure logging
 logging.basicConfig(
@@ -35,7 +63,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # TODO: Initialize Redis connection
 
     # Initialize RabbitMQ connection
-    from services.file_rename_service.utils.rabbitmq import rabbitmq_manager
 
     try:
         await rabbitmq_manager.connect()
@@ -43,7 +70,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         logger.warning(f"Failed to connect to RabbitMQ: {e}")
 
     # Register with service discovery
-    from services.file_rename_service.utils.service_registry import service_registry
 
     await service_registry.register()
 
@@ -128,7 +154,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
 @app.get("/health", tags=["Health"])
 async def health_check() -> dict[str, Any]:
     """Health check endpoint."""
-    health_status = {
+    return {
         "status": "healthy",
         "service": settings.app_name,
         "version": settings.app_version,
@@ -138,8 +164,6 @@ async def health_check() -> dict[str, Any]:
     # TODO: Add database health check
     # TODO: Add Redis health check
     # TODO: Add RabbitMQ health check
-
-    return health_status
 
 
 @app.get("/", tags=["Root"])
@@ -158,8 +182,6 @@ app.include_router(ml_router)
 
 
 if __name__ == "__main__":
-    import uvicorn
-
     uvicorn.run(
         "app.main:app",
         host=settings.host,

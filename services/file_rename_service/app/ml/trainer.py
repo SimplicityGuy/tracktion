@@ -5,13 +5,19 @@ import logging
 import pickle
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+)
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
@@ -19,6 +25,9 @@ from .features import FeatureExtractor
 from .models import MLModel, ModelAlgorithm, ModelMetrics, ModelStatus, TrainingData
 
 logger = logging.getLogger(__name__)
+
+# Constants
+MIN_CLASSES_FOR_MULTI_CLASS_METRICS = 2  # Minimum classes to generate per-category metrics
 
 
 class Trainer:
@@ -162,7 +171,7 @@ class Trainer:
         }
 
         # Per-category metrics if we have multiple classes
-        if len(np.unique(y)) > 2:
+        if len(np.unique(y)) > MIN_CLASSES_FOR_MULTI_CLASS_METRICS:
             per_class_precision = precision_score(y, y_pred, average=None, zero_division=0)
             per_class_recall = recall_score(y, y_pred, average=None, zero_division=0)
             per_class_f1 = f1_score(y, y_pred, average=None, zero_division=0)
@@ -190,13 +199,13 @@ class Trainer:
     ) -> MLModel:
         """Save trained model to disk with metadata."""
         model_id = str(uuid.uuid4())
-        version = datetime.now().strftime("%Y%m%d_%H%M%S")
+        version = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
 
         # Save model pickle
         model_filename = f"model_{algorithm.value}_{version}.pkl"
         model_path = self.model_dir / model_filename
 
-        with open(model_path, "wb") as f:
+        with Path(model_path).open("wb") as f:
             pickle.dump(
                 {
                     "model": self.model,
@@ -211,7 +220,7 @@ class Trainer:
             id=model_id,
             version=version,
             algorithm=algorithm,
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             training_metrics=metrics.to_dict(),
             hyperparameters=hyperparameters,
             feature_config=self.feature_extractor.config,
@@ -223,7 +232,7 @@ class Trainer:
 
         # Save metadata
         metadata_path = self.model_dir / f"metadata_{version}.json"
-        with open(metadata_path, "w") as f:
+        with Path(metadata_path).open("w") as f:
             json.dump(model_metadata.to_dict(), f, indent=2)
 
         logger.info(f"Model saved to {model_path}")
@@ -231,7 +240,7 @@ class Trainer:
 
     def load_model(self, model_path: str) -> MLModel:
         """Load model from disk."""
-        with open(model_path, "rb") as f:
+        with Path(model_path).open("rb") as f:
             model_data = pickle.load(f)
 
         self.model = model_data["model"]
@@ -242,7 +251,7 @@ class Trainer:
         version = Path(model_path).stem.split("_")[-1]
         metadata_path = self.model_dir / f"metadata_{version}.json"
 
-        with open(metadata_path) as f:
+        with metadata_path.open() as f:
             metadata_dict = json.load(f)
 
         self.current_model_metadata = MLModel(
@@ -276,4 +285,3 @@ class Trainer:
         # 1. Store feedback in database
         # 2. Periodically retrain with original + feedback data
         # 3. Weight feedback samples based on recency and confidence
-        pass

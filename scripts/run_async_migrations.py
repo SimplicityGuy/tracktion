@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Script to run database migrations with async support."""
 
+import argparse
 import asyncio
 import logging
 import os
@@ -11,9 +12,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
 
-from alembic import command  # noqa: E402
+from alembic import command  # type: ignore[attr-defined]  # Alembic adds commands at runtime # noqa: E402
 from alembic.config import Config  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
@@ -37,9 +39,8 @@ def get_database_url(use_async: bool = True) -> str:
     if use_async:
         if url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    else:
-        if url.startswith("postgresql+asyncpg://"):
-            url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    elif url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
     return url
 
@@ -53,8 +54,8 @@ async def test_async_connection() -> bool:
     try:
         engine = create_async_engine(get_database_url(use_async=True))
         async with engine.connect() as conn:
-            result = await conn.execute("SELECT 1")
-            await result.fetchone()
+            result = await conn.execute(text("SELECT 1"))
+            result.fetchone()
         await engine.dispose()
         logger.info("✅ Async database connection successful")
         return True
@@ -169,22 +170,27 @@ def rollback_test() -> None:
         raise
 
 
-async def main():
+async def main() -> None:
     """Main entry point."""
-    import argparse
-
     parser = argparse.ArgumentParser(description="Run async database migrations")
-    parser.add_argument("command", choices=["upgrade", "downgrade", "test", "rollback-test"], help="Command to run")
+    parser.add_argument(
+        "command",
+        choices=["upgrade", "downgrade", "test", "rollback-test"],
+        help="Command to run",
+    )
     parser.add_argument("--revision", default="head", help="Target revision (default: head)")
-    parser.add_argument("--sync", action="store_true", help="Use synchronous migrations instead of async")
+    parser.add_argument(
+        "--sync",
+        action="store_true",
+        help="Use synchronous migrations instead of async",
+    )
 
     args = parser.parse_args()
 
     # Test connection first
-    if not args.sync:
-        if not await test_async_connection():
-            logger.error("Failed to connect to database with async driver")
-            sys.exit(1)
+    if not args.sync and not await test_async_connection():
+        logger.error("Failed to connect to database with async driver")
+        sys.exit(1)
 
     if args.command == "test":
         # Just test connection

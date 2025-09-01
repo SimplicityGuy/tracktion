@@ -7,10 +7,10 @@ track timestamps when importing from 1001tracklists and for manual tracklist cre
 
 import logging
 from datetime import timedelta
-from typing import List, Optional, Tuple, Dict, Any
+from typing import Any
 
-from ..models.tracklist import TrackEntry
-from ..utils.time_utils import parse_time_string
+from src.models.tracklist import TrackEntry
+from src.utils.time_utils import parse_time_string
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +22,14 @@ class TimingService:
         """Initialize the timing service."""
         self.min_track_duration = timedelta(seconds=30)  # Minimum 30 seconds per track
         self.max_track_duration = timedelta(minutes=20)  # Maximum 20 minutes per track
-        self._calculation_cache: Dict[str, Any] = {}  # Cache for expensive calculations
+        self._calculation_cache: dict[str, Any] = {}  # Cache for expensive calculations
 
     def adjust_track_timings(
-        self, tracks: List[TrackEntry], audio_duration: Optional[timedelta] = None, offset: Optional[timedelta] = None
-    ) -> List[TrackEntry]:
+        self,
+        tracks: list[TrackEntry],
+        audio_duration: timedelta | None = None,
+        offset: timedelta | None = None,
+    ) -> list[TrackEntry]:
         """
         Adjust track timings to align with audio duration.
 
@@ -52,9 +55,7 @@ class TimingService:
         if audio_duration:
             tracks = self._ensure_within_duration(tracks, audio_duration)
 
-        tracks = self._validate_track_durations(tracks)
-
-        return tracks
+        return self._validate_track_durations(tracks)
 
     def parse_timing_format(self, timing_str: str) -> timedelta:
         """
@@ -77,7 +78,7 @@ class TimingService:
         result = parse_time_string(timing_str)
         if result == timedelta(0) and timing_str:
             logger.warning(f"Failed to parse timing: {timing_str}")
-        return result
+        return result  # type: ignore[no-any-return]  # parse_time_string returns timedelta but typed as Any
 
     def calculate_offset_from_start(
         self, first_track_time: timedelta, mix_start_time: timedelta = timedelta(0)
@@ -95,8 +96,8 @@ class TimingService:
         return mix_start_time - first_track_time
 
     def validate_timing_consistency(
-        self, tracks: List[TrackEntry], audio_duration: timedelta
-    ) -> Tuple[bool, List[str]]:
+        self, tracks: list[TrackEntry], audio_duration: timedelta
+    ) -> tuple[bool, list[str]]:
         """
         Validate timing consistency and identify issues.
 
@@ -117,13 +118,12 @@ class TimingService:
             current = tracks[i]
             next_track = tracks[i + 1]
 
-            if current.end_time and next_track.start_time:
-                if current.end_time > next_track.start_time:
-                    overlap = current.end_time - next_track.start_time
-                    issues.append(
-                        f"Track {current.position} overlaps with track {next_track.position} "
-                        f"by {overlap.total_seconds():.1f} seconds"
-                    )
+            if current.end_time and next_track.start_time and current.end_time > next_track.start_time:
+                overlap = current.end_time - next_track.start_time
+                issues.append(
+                    f"Track {current.position} overlaps with track {next_track.position} "
+                    f"by {overlap.total_seconds():.1f} seconds"
+                )
 
         # Check if tracks exceed audio duration
         last_track = tracks[-1]
@@ -151,7 +151,7 @@ class TimingService:
 
         return len(issues) == 0, issues
 
-    def _apply_offset(self, tracks: List[TrackEntry], offset: timedelta) -> List[TrackEntry]:
+    def _apply_offset(self, tracks: list[TrackEntry], offset: timedelta) -> list[TrackEntry]:
         """
         Apply offset to all track timestamps.
 
@@ -169,7 +169,7 @@ class TimingService:
 
         return tracks
 
-    def _fix_timing_gaps(self, tracks: List[TrackEntry]) -> List[TrackEntry]:
+    def _fix_timing_gaps(self, tracks: list[TrackEntry]) -> list[TrackEntry]:
         """
         Fix gaps and overlaps in track timings.
 
@@ -191,16 +191,15 @@ class TimingService:
                 current.end_time = next_track.start_time
 
             # Fix overlaps
-            elif current.end_time and next_track.start_time:
-                if current.end_time > next_track.start_time:
-                    # Split the difference
-                    midpoint = current.start_time + (next_track.start_time - current.start_time) / 2
-                    current.end_time = midpoint
-                    next_track.start_time = midpoint
+            elif current.end_time and next_track.start_time and current.end_time > next_track.start_time:
+                # Split the difference
+                midpoint = current.start_time + (next_track.start_time - current.start_time) / 2
+                current.end_time = midpoint
+                next_track.start_time = midpoint
 
         return tracks
 
-    def _ensure_within_duration(self, tracks: List[TrackEntry], audio_duration: timedelta) -> List[TrackEntry]:
+    def _ensure_within_duration(self, tracks: list[TrackEntry], audio_duration: timedelta) -> list[TrackEntry]:
         """
         Ensure all tracks are within audio duration.
 
@@ -218,10 +217,9 @@ class TimingService:
         last_track = tracks[-1]
         if last_track.end_time and last_track.end_time > audio_duration:
             last_track.end_time = audio_duration
-        elif not last_track.end_time:
+        elif not last_track.end_time and last_track.start_time < audio_duration:
             # Only set end time if track starts before duration ends
-            if last_track.start_time < audio_duration:
-                last_track.end_time = audio_duration
+            last_track.end_time = audio_duration
 
         # Check if all tracks need scaling
         if last_track.start_time > audio_duration:
@@ -236,7 +234,7 @@ class TimingService:
 
         return tracks
 
-    def _validate_track_durations(self, tracks: List[TrackEntry]) -> List[TrackEntry]:
+    def _validate_track_durations(self, tracks: list[TrackEntry]) -> list[TrackEntry]:
         """
         Validate and fix individual track durations.
 
@@ -269,8 +267,8 @@ class TimingService:
     def detect_timing_conflicts(
         self,
         track: TrackEntry,
-        other_tracks: List[TrackEntry],
-    ) -> List[Dict[str, Any]]:
+        other_tracks: list[TrackEntry],
+    ) -> list[dict[str, Any]]:
         """
         Detect timing conflicts between a track and other tracks.
 
@@ -312,8 +310,8 @@ class TimingService:
 
     def detect_all_timing_conflicts(
         self,
-        tracks: List[TrackEntry],
-    ) -> List[Tuple[TrackEntry, TrackEntry, str]]:
+        tracks: list[TrackEntry],
+    ) -> list[tuple[TrackEntry, TrackEntry, str]]:
         """
         Detect all timing conflicts across a list of tracks.
 
@@ -344,10 +342,10 @@ class TimingService:
 
     def auto_calculate_end_times(
         self,
-        tracks: List[TrackEntry],
-        audio_duration: Optional[timedelta] = None,
+        tracks: list[TrackEntry],
+        audio_duration: timedelta | None = None,
         default_gap: timedelta = timedelta(seconds=0),
-    ) -> List[TrackEntry]:
+    ) -> list[TrackEntry]:
         """
         Automatically calculate end times based on next track's start time.
 
@@ -376,22 +374,21 @@ class TimingService:
             if i < len(sorted_tracks) - 1:
                 next_track = sorted_tracks[i + 1]
                 track.end_time = next_track.start_time - default_gap
+            # For the last track, use audio duration if available
+            elif audio_duration:
+                track.end_time = audio_duration
             else:
-                # For the last track, use audio duration if available
-                if audio_duration:
-                    track.end_time = audio_duration
-                else:
-                    # Default to 3 minutes after start if no other info
-                    track.end_time = track.start_time + timedelta(minutes=3)
+                # Default to 3 minutes after start if no other info
+                track.end_time = track.start_time + timedelta(minutes=3)
 
         return sorted_tracks
 
     def shift_tracks_after_position(
         self,
-        tracks: List[TrackEntry],
+        tracks: list[TrackEntry],
         position: int,
         shift_amount: timedelta,
-    ) -> List[TrackEntry]:
+    ) -> list[TrackEntry]:
         """
         Shift all tracks after a given position by a specified amount.
 
@@ -416,8 +413,8 @@ class TimingService:
 
     def normalize_track_positions(
         self,
-        tracks: List[TrackEntry],
-    ) -> List[TrackEntry]:
+        tracks: list[TrackEntry],
+    ) -> list[TrackEntry]:
         """
         Normalize track positions to ensure they are sequential starting from 1.
 
@@ -441,7 +438,7 @@ class TimingService:
 
     def calculate_total_duration(
         self,
-        tracks: List[TrackEntry],
+        tracks: list[TrackEntry],
     ) -> timedelta:
         """
         Calculate total duration of a tracklist.
@@ -459,16 +456,15 @@ class TimingService:
         last_track = max(tracks, key=lambda t: t.position)
 
         if last_track.end_time:
-            return last_track.end_time
-        else:
-            # Estimate based on start time + default duration
-            return last_track.start_time + timedelta(minutes=3)
+            return last_track.end_time  # type: ignore[no-any-return]  # TrackEntry.end_time returns timedelta but typed as Any
+        # Estimate based on start time + default duration
+        return last_track.start_time + timedelta(minutes=3)  # type: ignore[no-any-return]  # TrackEntry.start_time returns timedelta but typed as Any
 
     def suggest_timing_adjustments(
         self,
-        tracks: List[TrackEntry],
-        target_duration: Optional[timedelta] = None,
-    ) -> List[Dict[str, Any]]:
+        tracks: list[TrackEntry],
+        target_duration: timedelta | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Suggest timing adjustments to fix conflicts and improve flow.
 
@@ -479,7 +475,7 @@ class TimingService:
         Returns:
             List of adjustment suggestions.
         """
-        suggestions: List[Dict[str, Any]] = []
+        suggestions: list[dict[str, Any]] = []
 
         if not tracks:
             return suggestions
@@ -544,9 +540,9 @@ class TimingService:
 
     def batch_validate_timings(
         self,
-        tracklists: List[List[TrackEntry]],
-        audio_durations: Optional[List[timedelta]] = None,
-    ) -> List[Tuple[bool, List[str]]]:
+        tracklists: list[list[TrackEntry]],
+        audio_durations: list[timedelta] | None = None,
+    ) -> list[tuple[bool, list[str]]]:
         """Validate timings for multiple tracklists efficiently.
 
         Args:
@@ -557,12 +553,12 @@ class TimingService:
             List of validation results (is_valid, issues) for each tracklist.
         """
         results = []
-        durations: List[Optional[timedelta]] = list(audio_durations) if audio_durations is not None else []
+        durations: list[timedelta | None] = list(audio_durations) if audio_durations is not None else []
         # Extend with None values if needed
         while len(durations) < len(tracklists):
             durations.append(None)
 
-        for tracks, duration in zip(tracklists, durations):
+        for tracks, duration in zip(tracklists, durations, strict=False):
             # Use cached validation if available
             cache_key = f"validate_{len(tracks)}_{duration}"
             if cache_key in self._calculation_cache:
@@ -576,9 +572,8 @@ class TimingService:
                     for i in range(len(tracks) - 1):
                         end_time = tracks[i].end_time
                         start_time = tracks[i + 1].start_time
-                        if end_time is not None and start_time is not None:
-                            if end_time > start_time:
-                                issues.append(f"Track {i + 1} overlaps with track {i + 2}")
+                        if end_time is not None and start_time is not None and end_time > start_time:
+                            issues.append(f"Track {i + 1} overlaps with track {i + 2}")
                     result = (len(issues) == 0, issues)
 
                 self._calculation_cache[cache_key] = result
@@ -588,9 +583,9 @@ class TimingService:
 
     def optimize_timing_layout(
         self,
-        tracks: List[TrackEntry],
+        tracks: list[TrackEntry],
         target_duration: timedelta,
-    ) -> List[TrackEntry]:
+    ) -> list[TrackEntry]:
         """Optimize track timing layout for smooth transitions.
 
         Args:

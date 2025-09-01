@@ -5,7 +5,9 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from services.analysis_service.src.file_rename_executor.executor import FileRenameExecutor
+from services.analysis_service.src.file_rename_executor.executor import (
+    FileRenameExecutor,
+)
 
 
 class TestRollbackMechanism:
@@ -46,7 +48,10 @@ class TestRollbackMechanism:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rollback_preconditions.return_value = (True, None)
+        executor.transaction_manager.validate_rollback_preconditions.return_value = (
+            True,
+            None,
+        )
 
         # Setup metadata preserver
         metadata = {"tags": {"title": "Test"}}
@@ -116,7 +121,10 @@ class TestRollbackMechanism:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rollback_preconditions.return_value = (True, None)
+        executor.transaction_manager.validate_rollback_preconditions.return_value = (
+            True,
+            None,
+        )
 
         with (
             patch("pathlib.Path.exists", return_value=True),
@@ -145,7 +153,10 @@ class TestRollbackMechanism:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rollback_preconditions.return_value = (True, None)
+        executor.transaction_manager.validate_rollback_preconditions.return_value = (
+            True,
+            None,
+        )
 
         with (
             patch("pathlib.Path.exists", return_value=True),
@@ -180,7 +191,10 @@ class TestRollbackMechanism:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rollback_preconditions.return_value = (True, None)
+        executor.transaction_manager.validate_rollback_preconditions.return_value = (
+            True,
+            None,
+        )
 
         # Setup metadata preserver to fail restore
         metadata = {"tags": {"title": "Test"}}
@@ -238,7 +252,10 @@ class TestRollbackMechanism:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rollback_preconditions.return_value = (True, None)
+        executor.transaction_manager.validate_rollback_preconditions.return_value = (
+            True,
+            None,
+        )
 
         with (
             patch("pathlib.Path.exists", return_value=True),
@@ -271,9 +288,16 @@ class TestRollbackMechanism:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rollback_preconditions.return_value = (True, None)
+        executor.transaction_manager.validate_rollback_preconditions.return_value = (
+            True,
+            None,
+        )
 
-        with patch("pathlib.Path.exists", return_value=True), patch("pathlib.Path.mkdir"), patch("shutil.move"):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.mkdir"),
+            patch("shutil.move"),
+        ):
             result, error = executor.rollback_rename(proposal_id)
 
             assert result is True

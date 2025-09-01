@@ -3,7 +3,7 @@
 import enum
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class PriorityConfig:
     user_request_boost: int = 3
 
     # File format priorities
-    format_priorities: Optional[Dict[str, int]] = None
+    format_priorities: dict[str, int] | None = None
 
     def __post_init__(self) -> None:
         """Initialize default format priorities if not provided."""
@@ -55,7 +55,7 @@ class PriorityConfig:
 class PriorityCalculator:
     """Calculate message priority based on various attributes."""
 
-    def __init__(self, config: Optional[PriorityConfig] = None) -> None:
+    def __init__(self, config: PriorityConfig | None = None) -> None:
         """Initialize the priority calculator.
 
         Args:
@@ -66,11 +66,11 @@ class PriorityCalculator:
     def calculate_priority(
         self,
         file_path: str,
-        file_size_mb: Optional[float] = None,
+        file_size_mb: float | None = None,
         is_retry: bool = False,
         is_user_request: bool = False,
-        custom_priority: Optional[int] = None,
-        correlation_id: Optional[str] = None,
+        custom_priority: int | None = None,
+        correlation_id: str | None = None,
     ) -> int:
         """Calculate the priority for a message.
 
@@ -91,7 +91,10 @@ class PriorityCalculator:
         # Use custom priority if provided
         if custom_priority is not None:
             priority = max(1, min(custom_priority, self.config.max_priority))
-            logger.debug(f"Using custom priority: {priority}", extra={"correlation_id": correlation_id})
+            logger.debug(
+                f"Using custom priority: {priority}",
+                extra={"correlation_id": correlation_id},
+            )
             return priority
 
         # Start with default priority
@@ -101,7 +104,10 @@ class PriorityCalculator:
         file_ext = file_path.lower().split(".")[-1] if "." in file_path else ""
         if self.config.format_priorities and file_ext in self.config.format_priorities:
             priority = self.config.format_priorities[file_ext]
-            logger.debug(f"Format {file_ext} base priority: {priority}", extra={"correlation_id": correlation_id})
+            logger.debug(
+                f"Format {file_ext} base priority: {priority}",
+                extra={"correlation_id": correlation_id},
+            )
 
         # Adjust for file size
         if file_size_mb is not None:
@@ -121,7 +127,10 @@ class PriorityCalculator:
         # Boost priority for retries
         if is_retry:
             priority += self.config.retry_boost
-            logger.debug(f"Retry boost applied: +{self.config.retry_boost}", extra={"correlation_id": correlation_id})
+            logger.debug(
+                f"Retry boost applied: +{self.config.retry_boost}",
+                extra={"correlation_id": correlation_id},
+            )
 
         # Boost priority for user requests
         if is_user_request:
@@ -168,10 +177,10 @@ def setup_priority_queue(channel: Any, queue_name: str, max_priority: int = 10) 
 
 
 def add_priority_to_message(
-    message: Dict[str, Any],
+    message: dict[str, Any],
     priority_calculator: PriorityCalculator,
-    correlation_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    correlation_id: str | None = None,
+) -> dict[str, Any]:
     """Add priority field to a message.
 
     Args:

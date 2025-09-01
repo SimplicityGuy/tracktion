@@ -5,14 +5,16 @@ Provides streaming, chunking, and parallel processing capabilities
 for efficient handling of large audio files.
 """
 
+import gc
 import logging
-import os
 import time
+from collections.abc import Callable, Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple
+from typing import Any
 
+import essentia.standard as es
 import numpy as np
 import psutil
 
@@ -26,11 +28,11 @@ class PerformanceMonitor:
 
     def __init__(self) -> None:
         """Initialize performance monitor."""
-        self.metrics: Dict[str, Any] = {}
-        self.start_times: Dict[str, float] = {}
+        self.metrics: dict[str, Any] = {}
+        self.start_times: dict[str, float] = {}
 
     @contextmanager
-    def measure(self, operation: str) -> Generator[None, None, None]:
+    def measure(self, operation: str) -> Generator[None]:
         """Context manager to measure operation duration.
 
         Args:
@@ -65,7 +67,7 @@ class PerformanceMonitor:
         """
         self.metrics[name] = value
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         """Get all collected metrics.
 
         Returns:
@@ -82,7 +84,7 @@ class PerformanceMonitor:
 class AudioStreamer:
     """Stream large audio files in chunks for memory-efficient processing."""
 
-    def __init__(self, config: Optional[PerformanceConfig] = None):
+    def __init__(self, config: PerformanceConfig | None = None):
         """Initialize audio streamer.
 
         Args:
@@ -104,14 +106,12 @@ class AudioStreamer:
             return False
 
         try:
-            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            file_size_mb = Path(file_path).stat().st_size / (1024 * 1024)
             return file_size_mb > self.config.streaming_threshold_mb
         except OSError:
             return False
 
-    def stream_audio_chunks(
-        self, file_path: str, sample_rate: int = 44100, mono: bool = True
-    ) -> Generator[np.ndarray, None, None]:
+    def stream_audio_chunks(self, file_path: str, sample_rate: int = 44100, mono: bool = True) -> Generator[np.ndarray]:
         """Stream audio file in chunks.
 
         Args:
@@ -127,8 +127,6 @@ class AudioStreamer:
             essentia.streaming or librosa streaming capabilities.
         """
         try:
-            import essentia.standard as es
-
             # For large files, we'll use Essentia's streaming mode
             # This is a simplified implementation
             loader = es.MonoLoader(filename=file_path, sampleRate=sample_rate)
@@ -139,7 +137,7 @@ class AudioStreamer:
             # Fallback for testing when Essentia is not available or file is invalid
             # In production, Essentia would be required
             logger.warning(f"Using mock audio for testing: {e}")
-            audio = np.random.random(44100).astype(np.float32)  # 1 second of mock audio
+            audio = np.random.default_rng().random(44100).astype(np.float32)  # 1 second of mock audio
         chunk_samples = self.chunk_size // 4  # 4 bytes per float32 sample
 
         for i in range(0, len(audio), chunk_samples):
@@ -148,8 +146,8 @@ class AudioStreamer:
                 yield chunk
 
     def process_chunked_audio(
-        self, file_path: str, processor: Callable[[np.ndarray], Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, file_path: str, processor: Callable[[np.ndarray], dict[str, Any]]
+    ) -> dict[str, Any]:
         """Process audio file in chunks with a given processor.
 
         Args:
@@ -168,7 +166,7 @@ class AudioStreamer:
         # Aggregate results (this is application-specific)
         return self._aggregate_chunk_results(results)
 
-    def _aggregate_chunk_results(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _aggregate_chunk_results(self, results: list[dict[str, Any]]) -> dict[str, Any]:
         """Aggregate results from multiple chunks.
 
         Args:
@@ -198,7 +196,7 @@ class AudioStreamer:
 class ParallelProcessor:
     """Process multiple audio files in parallel."""
 
-    def __init__(self, config: Optional[PerformanceConfig] = None):
+    def __init__(self, config: PerformanceConfig | None = None):
         """Initialize parallel processor.
 
         Args:
@@ -209,10 +207,10 @@ class ParallelProcessor:
 
     def process_files(
         self,
-        file_paths: List[str],
-        processor: Callable[[str], Dict[str, Any]],
-        monitor: Optional[PerformanceMonitor] = None,
-    ) -> List[Dict[str, Any]]:
+        file_paths: list[str],
+        processor: Callable[[str], dict[str, Any]],
+        monitor: PerformanceMonitor | None = None,
+    ) -> list[dict[str, Any]]:
         """Process multiple files in parallel.
 
         Args:
@@ -259,10 +257,10 @@ class ParallelProcessor:
 
     def process_in_batches(
         self,
-        file_paths: List[str],
-        processor: Callable[[str], Dict[str, Any]],
-        batch_size: Optional[int] = None,
-    ) -> Generator[List[Dict[str, Any]], None, None]:
+        file_paths: list[str],
+        processor: Callable[[str], dict[str, Any]],
+        batch_size: int | None = None,
+    ) -> Generator[list[dict[str, Any]]]:
         """Process files in batches for memory efficiency.
 
         Args:
@@ -284,7 +282,7 @@ class ParallelProcessor:
 class MemoryManager:
     """Manage memory usage during processing."""
 
-    def __init__(self, config: Optional[PerformanceConfig] = None):
+    def __init__(self, config: PerformanceConfig | None = None):
         """Initialize memory manager.
 
         Args:
@@ -293,7 +291,7 @@ class MemoryManager:
         self.config = config or get_config().performance
         self.memory_limit_mb = self.config.memory_limit_mb
 
-    def check_memory(self) -> Tuple[float, bool]:
+    def check_memory(self) -> tuple[float, bool]:
         """Check current memory usage.
 
         Returns:
@@ -308,7 +306,7 @@ class MemoryManager:
 
         return memory_mb, within_limit
 
-    def get_memory_info(self) -> Dict[str, float]:
+    def get_memory_info(self) -> dict[str, float]:
         """Get detailed memory information.
 
         Returns:
@@ -326,7 +324,7 @@ class MemoryManager:
         }
 
     @contextmanager
-    def memory_guard(self, operation: str) -> Generator[None, None, None]:
+    def memory_guard(self, operation: str) -> Generator[None]:
         """Guard against excessive memory usage.
 
         Args:
@@ -352,8 +350,6 @@ class MemoryManager:
 
             if not within_limit:
                 # In production, you might want to trigger garbage collection
-                import gc
-
                 gc.collect()
                 # Re-check after garbage collection
                 final_memory, within_limit = self.check_memory()
@@ -366,7 +362,7 @@ class MemoryManager:
 class PerformanceOptimizer:
     """Main class for performance optimization coordination."""
 
-    def __init__(self, config: Optional[PerformanceConfig] = None):
+    def __init__(self, config: PerformanceConfig | None = None):
         """Initialize performance optimizer.
 
         Args:
@@ -378,7 +374,7 @@ class PerformanceOptimizer:
         self.parallel_processor = ParallelProcessor(config)
         self.memory_manager = MemoryManager(config)
 
-    def optimize_processing(self, file_path: str, processor: Callable[[str], Dict[str, Any]]) -> Dict[str, Any]:
+    def optimize_processing(self, file_path: str, processor: Callable[[str], dict[str, Any]]) -> dict[str, Any]:
         """Optimize processing based on file characteristics.
 
         Args:
@@ -407,8 +403,8 @@ class PerformanceOptimizer:
             return result
 
     def optimize_batch_processing(
-        self, file_paths: List[str], processor: Callable[[str], Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+        self, file_paths: list[str], processor: Callable[[str], dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Optimize processing of multiple files.
 
         Args:
@@ -434,6 +430,6 @@ class PerformanceOptimizer:
 
 
 @contextmanager
-def nullcontext() -> Generator[None, None, None]:
+def nullcontext() -> Generator[None]:
     """Null context manager for conditional context usage."""
     yield

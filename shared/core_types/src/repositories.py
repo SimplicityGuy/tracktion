@@ -1,12 +1,11 @@
 """Repository pattern implementations for database operations."""
 
 import logging
-from typing import List, Optional, Dict, Any, cast
+from typing import Any
 from uuid import UUID
 
-
-from .models import Recording, Metadata, Tracklist
 from .database import DatabaseManager
+from .models import Metadata, Recording, Tracklist
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,11 @@ class RecordingRepository:
         self.db = db_manager
 
     def create(
-        self, file_path: str, file_name: str, sha256_hash: Optional[str] = None, xxh128_hash: Optional[str] = None
+        self,
+        file_path: str,
+        file_name: str,
+        sha256_hash: str | None = None,
+        xxh128_hash: str | None = None,
     ) -> Recording:
         """Create a new recording.
 
@@ -41,14 +44,17 @@ class RecordingRepository:
         """
         with self.db.get_db_session() as session:
             recording = Recording(
-                file_path=file_path, file_name=file_name, sha256_hash=sha256_hash, xxh128_hash=xxh128_hash
+                file_path=file_path,
+                file_name=file_name,
+                sha256_hash=sha256_hash,
+                xxh128_hash=xxh128_hash,
             )
             session.add(recording)
             session.flush()
             session.refresh(recording)
             return recording
 
-    def get_by_id(self, recording_id: UUID) -> Optional[Recording]:
+    def get_by_id(self, recording_id: UUID) -> Recording | None:
         """Get recording by ID.
 
         Args:
@@ -58,10 +64,9 @@ class RecordingRepository:
             Recording instance or None if not found
         """
         with self.db.get_db_session() as session:
-            result = session.query(Recording).filter(Recording.id == recording_id).first()
-            return cast(Optional[Recording], result)
+            return session.query(Recording).filter(Recording.id == recording_id).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns Recording | None
 
-    def get_by_file_path(self, file_path: str) -> Optional[Recording]:
+    def get_by_file_path(self, file_path: str) -> Recording | None:
         """Get recording by file path.
 
         Args:
@@ -71,10 +76,9 @@ class RecordingRepository:
             Recording instance or None if not found
         """
         with self.db.get_db_session() as session:
-            result = session.query(Recording).filter(Recording.file_path == file_path).first()
-            return cast(Optional[Recording], result)
+            return session.query(Recording).filter(Recording.file_path == file_path).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns Recording | None
 
-    def get_all(self, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Recording]:
+    def get_all(self, limit: int | None = None, offset: int | None = None) -> list[Recording]:
         """Get all recordings with optional pagination.
 
         Args:
@@ -90,10 +94,9 @@ class RecordingRepository:
                 query = query.offset(offset)
             if limit:
                 query = query.limit(limit)
-            result = query.all()
-            return cast(List[Recording], result)
+            return query.all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[Recording]
 
-    def update(self, recording_id: UUID, **kwargs: Any) -> Optional[Recording]:
+    def update(self, recording_id: UUID, **kwargs: Any) -> Recording | None:
         """Update a recording.
 
         Args:
@@ -115,7 +118,7 @@ class RecordingRepository:
 
             session.flush()
             session.refresh(recording)
-            return cast(Optional[Recording], recording)
+            return recording  # type: ignore[no-any-return] # Recording object from database refresh, known to be Recording type
 
     def delete(self, recording_id: UUID) -> bool:
         """Delete a recording.
@@ -135,7 +138,7 @@ class RecordingRepository:
             session.delete(recording)
             return True
 
-    def bulk_create(self, recordings: List[Dict[str, Any]]) -> List[Recording]:
+    def bulk_create(self, recordings: list[dict[str, Any]]) -> list[Recording]:
         """Create multiple recordings in a single transaction.
 
         Args:
@@ -179,7 +182,7 @@ class MetadataRepository:
             session.refresh(metadata)
             return metadata
 
-    def get_by_recording(self, recording_id: UUID) -> List[Metadata]:
+    def get_by_recording(self, recording_id: UUID) -> list[Metadata]:
         """Get all metadata for a recording.
 
         Args:
@@ -189,10 +192,9 @@ class MetadataRepository:
             List of Metadata instances
         """
         with self.db.get_db_session() as session:
-            result = session.query(Metadata).filter(Metadata.recording_id == recording_id).all()
-            return cast(List[Metadata], result)
+            return session.query(Metadata).filter(Metadata.recording_id == recording_id).all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[Metadata]
 
-    def get_by_key(self, recording_id: UUID, key: str) -> Optional[Metadata]:
+    def get_by_key(self, recording_id: UUID, key: str) -> Metadata | None:
         """Get specific metadata by key for a recording.
 
         Args:
@@ -203,10 +205,9 @@ class MetadataRepository:
             Metadata instance or None if not found
         """
         with self.db.get_db_session() as session:
-            result = session.query(Metadata).filter(Metadata.recording_id == recording_id, Metadata.key == key).first()
-            return cast(Optional[Metadata], result)
+            return session.query(Metadata).filter(Metadata.recording_id == recording_id, Metadata.key == key).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns Metadata | None
 
-    def update(self, metadata_id: UUID, value: str) -> Optional[Metadata]:
+    def update(self, metadata_id: UUID, value: str) -> Metadata | None:
         """Update metadata value.
 
         Args:
@@ -225,7 +226,7 @@ class MetadataRepository:
             metadata.value = value
             session.flush()
             session.refresh(metadata)
-            return cast(Optional[Metadata], metadata)
+            return metadata  # type: ignore[no-any-return] # Metadata object from database refresh, known to be Metadata type
 
     def delete(self, metadata_id: UUID) -> bool:
         """Delete metadata.
@@ -245,7 +246,7 @@ class MetadataRepository:
             session.delete(metadata)
             return True
 
-    def bulk_create(self, recording_id: UUID, metadata_items: List[Dict[str, str]]) -> List[Metadata]:
+    def bulk_create(self, recording_id: UUID, metadata_items: list[dict[str, str]]) -> list[Metadata]:
         """Create multiple metadata entries for a recording.
 
         Args:
@@ -278,8 +279,8 @@ class TracklistRepository:
         self,
         recording_id: UUID,
         source: str,
-        tracks: Optional[List[Dict[str, Any]]] = None,
-        cue_file_path: Optional[str] = None,
+        tracks: list[dict[str, Any]] | None = None,
+        cue_file_path: str | None = None,
     ) -> Tracklist:
         """Create a tracklist for a recording.
 
@@ -296,7 +297,12 @@ class TracklistRepository:
             IntegrityError: If tracklist already exists for recording
         """
         with self.db.get_db_session() as session:
-            tracklist = Tracklist(recording_id=recording_id, source=source, tracks=tracks, cue_file_path=cue_file_path)
+            tracklist = Tracklist(
+                recording_id=recording_id,
+                source=source,
+                tracks=tracks,
+                cue_file_path=cue_file_path,
+            )
 
             # Validate tracks structure
             if not tracklist.validate_tracks():
@@ -307,7 +313,7 @@ class TracklistRepository:
             session.refresh(tracklist)
             return tracklist
 
-    def get_by_recording(self, recording_id: UUID) -> Optional[Tracklist]:
+    def get_by_recording(self, recording_id: UUID) -> Tracklist | None:
         """Get tracklist for a recording.
 
         Args:
@@ -317,10 +323,9 @@ class TracklistRepository:
             Tracklist instance or None if not found
         """
         with self.db.get_db_session() as session:
-            result = session.query(Tracklist).filter(Tracklist.recording_id == recording_id).first()
-            return cast(Optional[Tracklist], result)
+            return session.query(Tracklist).filter(Tracklist.recording_id == recording_id).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns Tracklist | None
 
-    def get_by_id(self, tracklist_id: UUID) -> Optional[Tracklist]:
+    def get_by_id(self, tracklist_id: UUID) -> Tracklist | None:
         """Get tracklist by ID.
 
         Args:
@@ -330,10 +335,9 @@ class TracklistRepository:
             Tracklist instance or None if not found
         """
         with self.db.get_db_session() as session:
-            result = session.query(Tracklist).filter(Tracklist.id == tracklist_id).first()
-            return cast(Optional[Tracklist], result)
+            return session.query(Tracklist).filter(Tracklist.id == tracklist_id).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns Tracklist | None
 
-    def update(self, tracklist_id: UUID, **kwargs: Any) -> Optional[Tracklist]:
+    def update(self, tracklist_id: UUID, **kwargs: Any) -> Tracklist | None:
         """Update a tracklist.
 
         Args:
@@ -359,7 +363,7 @@ class TracklistRepository:
 
             session.flush()
             session.refresh(tracklist)
-            return cast(Optional[Tracklist], tracklist)
+            return tracklist  # type: ignore[no-any-return] # Tracklist object from database refresh, known to be Tracklist type
 
     def delete(self, tracklist_id: UUID) -> bool:
         """Delete a tracklist.

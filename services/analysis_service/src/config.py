@@ -7,7 +7,7 @@ caching, and other service settings.
 
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -18,7 +18,17 @@ class BPMConfig:
     fallback_threshold: float = 0.5
     agreement_tolerance: float = 5.0
     max_file_size_mb: int = 500
-    supported_formats: list = field(default_factory=lambda: [".mp3", ".wav", ".flac", ".m4a", ".ogg", ".wma", ".aac"])
+    supported_formats: list = field(
+        default_factory=lambda: [
+            ".mp3",
+            ".wav",
+            ".flac",
+            ".m4a",
+            ".ogg",
+            ".wma",
+            ".aac",
+        ]
+    )
 
 
 @dataclass
@@ -41,7 +51,7 @@ class CacheConfig:
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
-    redis_password: Optional[str] = None
+    redis_password: str | None = None
     default_ttl_days: int = 30
     failed_ttl_hours: int = 1
     low_confidence_ttl_days: int = 7
@@ -66,10 +76,10 @@ class MessageQueueConfig:
 class StorageConfig:
     """Configuration for database storage."""
 
-    postgres_url: Optional[str] = None
-    neo4j_uri: Optional[str] = None
-    neo4j_user: Optional[str] = None
-    neo4j_password: Optional[str] = None
+    postgres_url: str | None = None
+    neo4j_uri: str | None = None
+    neo4j_user: str | None = None
+    neo4j_password: str | None = None
     store_temporal_array: bool = False
     batch_size: int = 100
 
@@ -118,7 +128,15 @@ class MoodAnalysisConfig:
     ensemble_voting_threshold: float = 0.5
     confidence_threshold: float = 0.6
     mood_dimensions: list = field(
-        default_factory=lambda: ["happy", "sad", "aggressive", "relaxed", "acoustic", "electronic", "party"]
+        default_factory=lambda: [
+            "happy",
+            "sad",
+            "aggressive",
+            "relaxed",
+            "acoustic",
+            "electronic",
+            "party",
+        ]
     )
 
 
@@ -176,7 +194,11 @@ class ServiceConfig:
         if val := os.getenv("TRACKTION_TEMPORAL_STABILITY_THRESHOLD"):
             config.temporal.stability_threshold = float(val)
         if val := os.getenv("TRACKTION_TEMPORAL_ENABLE_STORAGE"):
-            config.temporal.enable_temporal_storage = val.lower() in ("true", "1", "yes")
+            config.temporal.enable_temporal_storage = val.lower() in (
+                "true",
+                "1",
+                "yes",
+            )
 
         # Cache configuration
         if val := os.getenv("TRACKTION_CACHE_ENABLED"):
@@ -243,11 +265,23 @@ class ServiceConfig:
 
         # Mood analysis configuration
         if val := os.getenv("TRACKTION_MOOD_ENABLE_MOOD"):
-            config.mood_analysis.enable_mood_detection = val.lower() in ("true", "1", "yes")
+            config.mood_analysis.enable_mood_detection = val.lower() in (
+                "true",
+                "1",
+                "yes",
+            )
         if val := os.getenv("TRACKTION_MOOD_ENABLE_GENRE"):
-            config.mood_analysis.enable_genre_detection = val.lower() in ("true", "1", "yes")
+            config.mood_analysis.enable_genre_detection = val.lower() in (
+                "true",
+                "1",
+                "yes",
+            )
         if val := os.getenv("TRACKTION_MOOD_ENABLE_DANCEABILITY"):
-            config.mood_analysis.enable_danceability = val.lower() in ("true", "1", "yes")
+            config.mood_analysis.enable_danceability = val.lower() in (
+                "true",
+                "1",
+                "yes",
+            )
         if val := os.getenv("TRACKTION_MOOD_ENSEMBLE_THRESHOLD"):
             config.mood_analysis.ensemble_voting_threshold = float(val)
         if val := os.getenv("TRACKTION_MOOD_CONFIDENCE_THRESHOLD"):
@@ -265,7 +299,7 @@ class ServiceConfig:
         return config
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ServiceConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "ServiceConfig":
         """Create configuration from a dictionary.
 
         Useful for loading from JSON or YAML files.
@@ -327,13 +361,18 @@ class ServiceConfig:
                     setattr(config.mood_analysis, key, value)
 
         # Update service-level settings
-        for key in ["enable_temporal_analysis", "log_level", "metrics_enabled", "health_check_port"]:
+        for key in [
+            "enable_temporal_analysis",
+            "log_level",
+            "metrics_enabled",
+            "health_check_port",
+        ]:
             if key in data:
                 setattr(config, key, data[key])
 
         return config
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary."""
         return {
             "bpm": {
@@ -461,8 +500,44 @@ class ServiceConfig:
         return errors
 
 
-# Global configuration instance
-_config: Optional[ServiceConfig] = None
+class ConfigManager:
+    """Manages global configuration instance without using global statements."""
+
+    _instance: Optional["ConfigManager"] = None
+    _config: ServiceConfig | None = None
+
+    def __new__(cls) -> "ConfigManager":
+        """Create singleton instance."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def get_config(self) -> ServiceConfig:
+        """Get the configuration instance.
+
+        Creates the configuration from environment variables on first call.
+        """
+        if self._config is None:
+            self._config = ServiceConfig.from_env()
+        return self._config
+
+    def set_config(self, config: ServiceConfig) -> None:
+        """Set the configuration instance.
+
+        Useful for testing or when loading configuration from files.
+        """
+        self._config = config
+
+    def reset_config(self) -> None:
+        """Reset the configuration instance.
+
+        The next call to get_config() will recreate from environment.
+        """
+        self._config = None
+
+
+# Module-level convenience functions
+_manager = ConfigManager()
 
 
 def get_config() -> ServiceConfig:
@@ -470,10 +545,7 @@ def get_config() -> ServiceConfig:
 
     Creates the configuration from environment variables on first call.
     """
-    global _config
-    if _config is None:
-        _config = ServiceConfig.from_env()
-    return _config
+    return _manager.get_config()
 
 
 def set_config(config: ServiceConfig) -> None:
@@ -481,8 +553,7 @@ def set_config(config: ServiceConfig) -> None:
 
     Useful for testing or when loading configuration from files.
     """
-    global _config
-    _config = config
+    _manager.set_config(config)
 
 
 def reset_config() -> None:
@@ -490,5 +561,4 @@ def reset_config() -> None:
 
     The next call to get_config() will recreate from environment.
     """
-    global _config
-    _config = None
+    _manager.reset_config()

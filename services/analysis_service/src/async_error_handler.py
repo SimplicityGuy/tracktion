@@ -7,12 +7,17 @@ and resource cleanup for robust audio analysis.
 
 import asyncio
 import logging
+import random
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Constants for error handling
+MAX_ERROR_HISTORY = 1000
 
 
 class ErrorType(Enum):
@@ -34,10 +39,10 @@ class ErrorContext:
     error_type: ErrorType
     error_message: str
     task_id: str
-    audio_file: Optional[str] = None
+    audio_file: str | None = None
     retry_count: int = 0
     timestamp: float = 0.0
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -61,7 +66,7 @@ class AsyncErrorHandler:
 
     def __init__(
         self,
-        retry_policy: Optional[RetryPolicy] = None,
+        retry_policy: RetryPolicy | None = None,
         enable_fallback: bool = True,
         enable_circuit_breaker: bool = True,
     ):
@@ -78,8 +83,8 @@ class AsyncErrorHandler:
         self.enable_circuit_breaker = enable_circuit_breaker
 
         # Error tracking
-        self.error_history: List[ErrorContext] = []
-        self.error_counts: Dict[ErrorType, int] = {e: 0 for e in ErrorType}
+        self.error_history: list[ErrorContext] = []
+        self.error_counts: dict[ErrorType, int] = dict.fromkeys(ErrorType, 0)
 
         # Circuit breaker state
         self.circuit_open = False
@@ -95,8 +100,8 @@ class AsyncErrorHandler:
         func: Callable,
         *args: Any,
         task_id: str,
-        audio_file: Optional[str] = None,
-        timeout: Optional[float] = None,
+        audio_file: str | None = None,
+        timeout: float | None = None,
         **kwargs: Any,
     ) -> Any:
         """
@@ -119,61 +124,76 @@ class AsyncErrorHandler:
         if self._is_circuit_open():
             raise RuntimeError(f"Circuit breaker open for task {task_id}")
 
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
         retry_count = 0
 
         while retry_count <= self.retry_policy.max_retries:
             try:
-                # Execute with timeout if specified
-                if timeout:
-                    result = await asyncio.wait_for(self._execute_func(func, *args, **kwargs), timeout=timeout)
-                else:
-                    result = await self._execute_func(func, *args, **kwargs)
-
-                # Success - reset circuit breaker
+                result = await self._execute_with_timeout(func, timeout, *args, **kwargs)
                 self._reset_circuit()
                 return result
 
-            except asyncio.TimeoutError as e:
-                error_type = ErrorType.TIMEOUT
-                last_error = e
-                if not self.retry_policy.retry_on_timeout:
-                    break
-
-            except MemoryError as e:
-                error_type = ErrorType.MEMORY
-                last_error = e
-                if not self.retry_policy.retry_on_memory:
-                    break
-
-            except FileNotFoundError as e:
-                error_type = ErrorType.CORRUPTED_FILE
-                last_error = e
-                # No retry for file not found
-                break
-
             except Exception as e:
-                error_type = self._classify_error(e)
                 last_error = e
+                error_type = self._handle_exception(e)
 
-            # Record error
-            await self._record_error(error_type, str(last_error), task_id, audio_file, retry_count)
+                # Record error
+                await self._record_error(error_type, str(last_error), task_id, audio_file, retry_count)
 
-            # Check if we should retry
-            if retry_count < self.retry_policy.max_retries:
-                delay = self._calculate_retry_delay(retry_count)
-                logger.warning(
-                    f"Retry {retry_count + 1}/{self.retry_policy.max_retries} "
-                    f"for task {task_id} after {delay:.1f}s delay"
-                )
-                await asyncio.sleep(delay)
+                # Check if we should stop retrying
+                if self._should_stop_retrying(e, retry_count):
+                    break
+
+                # Retry with delay
+                await self._handle_retry_delay(retry_count, task_id)
                 retry_count += 1
-            else:
-                break
 
         # All retries failed
         self._trip_circuit()
         raise last_error or RuntimeError(f"Task {task_id} failed after {retry_count} retries")
+
+    async def _execute_with_timeout(
+        self,
+        func: Callable,
+        timeout: float | None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Execute function with optional timeout."""
+        if timeout:
+            return await asyncio.wait_for(self._execute_func(func, *args, **kwargs), timeout=timeout)
+        return await self._execute_func(func, *args, **kwargs)
+
+    def _handle_exception(self, exception: Exception) -> ErrorType:
+        """Handle exception and return error type."""
+        if isinstance(exception, TimeoutError):
+            return ErrorType.TIMEOUT
+        if isinstance(exception, MemoryError):
+            return ErrorType.MEMORY
+        if isinstance(exception, FileNotFoundError):
+            return ErrorType.CORRUPTED_FILE
+        return self._classify_error(exception)
+
+    def _should_stop_retrying(self, exception: Exception, retry_count: int) -> bool:
+        """Check if we should stop retrying based on exception type and policy."""
+        if retry_count >= self.retry_policy.max_retries:
+            return True
+
+        if isinstance(exception, TimeoutError) and not self.retry_policy.retry_on_timeout:
+            return True
+
+        if isinstance(exception, MemoryError) and not self.retry_policy.retry_on_memory:
+            return True
+
+        return isinstance(exception, FileNotFoundError)  # No retry for file not found
+
+    async def _handle_retry_delay(self, retry_count: int, task_id: str) -> None:
+        """Handle retry delay logic."""
+        delay = self._calculate_retry_delay(retry_count)
+        logger.warning(
+            f"Retry {retry_count + 1}/{self.retry_policy.max_retries} for task {task_id} after {delay:.1f}s delay"
+        )
+        await asyncio.sleep(delay)
 
     async def _execute_func(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """
@@ -189,9 +209,8 @@ class AsyncErrorHandler:
         """
         if asyncio.iscoroutinefunction(func):
             return await func(*args, **kwargs)
-        else:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, func, *args, **kwargs)
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, func, *args, **kwargs)
 
     def _calculate_retry_delay(self, retry_count: int) -> float:
         """
@@ -203,8 +222,6 @@ class AsyncErrorHandler:
         Returns:
             Delay in seconds
         """
-        import random
-
         # Exponential backoff
         delay = min(
             self.retry_policy.initial_delay_seconds * (self.retry_policy.exponential_base**retry_count),
@@ -229,23 +246,22 @@ class AsyncErrorHandler:
 
         if "timeout" in error_str:
             return ErrorType.TIMEOUT
-        elif "memory" in error_str:
+        if "memory" in error_str:
             return ErrorType.MEMORY
-        elif "corrupt" in error_str or "invalid" in error_str:
+        if "corrupt" in error_str or "invalid" in error_str:
             return ErrorType.CORRUPTED_FILE
-        elif "network" in error_str or "connection" in error_str:
+        if "network" in error_str or "connection" in error_str:
             return ErrorType.NETWORK
-        elif "resource" in error_str:
+        if "resource" in error_str:
             return ErrorType.RESOURCE_EXHAUSTED
-        else:
-            return ErrorType.UNKNOWN
+        return ErrorType.UNKNOWN
 
     async def _record_error(
         self,
         error_type: ErrorType,
         message: str,
         task_id: str,
-        audio_file: Optional[str],
+        audio_file: str | None,
         retry_count: int,
     ) -> None:
         """
@@ -271,8 +287,8 @@ class AsyncErrorHandler:
         self.error_counts[error_type] += 1
 
         # Limit history
-        if len(self.error_history) > 1000:
-            self.error_history = self.error_history[-1000:]
+        if len(self.error_history) > MAX_ERROR_HISTORY:
+            self.error_history = self.error_history[-MAX_ERROR_HISTORY:]
 
         logger.error(
             f"Error recorded - Type: {error_type.value}, Task: {task_id}, File: {audio_file}, Message: {message}"
@@ -316,7 +332,7 @@ class AsyncErrorHandler:
             self.circuit_failures = 0
             logger.debug("Circuit breaker reset")
 
-    def get_error_stats(self) -> Dict[str, Any]:
+    def get_error_stats(self) -> dict[str, Any]:
         """
         Get error statistics.
 
@@ -346,7 +362,7 @@ class AudioFallbackHandler:
         self,
         audio_file: str,
         primary_func: Callable,
-        fallback_funcs: List[Callable],
+        fallback_funcs: list[Callable],
         **kwargs: Any,
     ) -> Any:
         """
@@ -372,7 +388,7 @@ class AudioFallbackHandler:
             self.successful_fallbacks += 1
             return result
         except Exception as e:
-            logger.warning(f"Primary strategy failed for {audio_file}: {str(e)}")
+            logger.warning(f"Primary strategy failed for {audio_file}: {e!s}")
 
         # Try fallback strategies
         for i, fallback_func in enumerate(fallback_funcs):
@@ -382,7 +398,7 @@ class AudioFallbackHandler:
                 self.successful_fallbacks += 1
                 return result
             except Exception as e:
-                logger.warning(f"Fallback strategy {i + 1} failed for {audio_file}: {str(e)}")
+                logger.warning(f"Fallback strategy {i + 1} failed for {audio_file}: {e!s}")
 
         # All strategies failed
         raise RuntimeError(f"All processing strategies failed for {audio_file}")
@@ -401,11 +417,10 @@ class AudioFallbackHandler:
         """
         if asyncio.iscoroutinefunction(func):
             return await func(audio_file, **kwargs)
-        else:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, func, audio_file, **kwargs)
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, func, audio_file, **kwargs)
 
-    async def repair_corrupted_audio(self, audio_file: str) -> Optional[str]:
+    async def repair_corrupted_audio(self, audio_file: str) -> str | None:
         """
         Attempt to repair corrupted audio file.
 
@@ -435,11 +450,15 @@ class ResourceCleanupManager:
 
     def __init__(self) -> None:
         """Initialize cleanup manager."""
-        self.cleanup_tasks: List[asyncio.Task] = []
-        self.resources_to_cleanup: Dict[str, Any] = {}
+        self.cleanup_tasks: list[asyncio.Task] = []
+        self.resources_to_cleanup: dict[str, Any] = {}
 
     async def register_resource(
-        self, resource_id: str, cleanup_func: Callable[..., Any], *args: Any, **kwargs: Any
+        self,
+        resource_id: str,
+        cleanup_func: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
         """
         Register a resource for cleanup.
@@ -475,7 +494,7 @@ class ResourceCleanupManager:
             logger.debug(f"Cleaned up resource: {resource_id}")
 
         except Exception as e:
-            logger.error(f"Failed to clean up resource {resource_id}: {str(e)}")
+            logger.error(f"Failed to clean up resource {resource_id}: {e!s}")
 
     async def cleanup_all(self) -> None:
         """Clean up all registered resources."""

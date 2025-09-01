@@ -1,8 +1,8 @@
 """Metadata preservation for file rename operations."""
 
 import logging
-from typing import Dict, Any, Optional
 from pathlib import Path
+from typing import Any
 
 from mutagen import File as MutagenFile
 from mutagen.oggvorbis import OggVorbis
@@ -14,7 +14,7 @@ class MetadataPreserver:
     """Handles metadata preservation during file rename operations."""
 
     @staticmethod
-    def snapshot_metadata(file_path: str) -> Optional[Dict[str, Any]]:
+    def snapshot_metadata(file_path: str) -> dict[str, Any] | None:
         """Capture all metadata from an audio file.
 
         Supports OGG Vorbis files with full tag preservation.
@@ -37,7 +37,7 @@ class MetadataPreserver:
                 logger.warning(f"Unable to read audio file: {file_path}")
                 return None
 
-            metadata = {
+            metadata: dict[str, Any] = {
                 "format": audio.mime[0] if audio.mime else "unknown",
                 "file_path": file_path,
             }
@@ -48,14 +48,15 @@ class MetadataPreserver:
 
                 # Save all Vorbis comments
                 if audio.tags:
-                    metadata["tags"] = {}
+                    tags_dict: dict[str, Any] = {}
                     for key, values in audio.tags.items():
                         # Store all values (Vorbis comments can have multiple values per key)
-                        metadata["tags"][str(key)] = values  # type: ignore[index]
+                        tags_dict[str(key)] = values
+                    metadata["tags"] = tags_dict
 
                 # Save technical info
                 if audio.info:
-                    metadata["info"] = {
+                    info_dict: dict[str, Any] = {
                         "length": audio.info.length,
                         "bitrate": audio.info.bitrate,
                         "sample_rate": audio.info.sample_rate,
@@ -64,37 +65,41 @@ class MetadataPreserver:
 
                     # OGG-specific technical info
                     if hasattr(audio.info, "bitrate_nominal"):
-                        metadata["info"]["bitrate_nominal"] = getattr(audio.info, "bitrate_nominal")  # type: ignore[index]
+                        info_dict["bitrate_nominal"] = audio.info.bitrate_nominal
                     if hasattr(audio.info, "bitrate_lower"):
-                        metadata["info"]["bitrate_lower"] = getattr(audio.info, "bitrate_lower")  # type: ignore[index]
+                        info_dict["bitrate_lower"] = audio.info.bitrate_lower
                     if hasattr(audio.info, "bitrate_upper"):
-                        metadata["info"]["bitrate_upper"] = getattr(audio.info, "bitrate_upper")  # type: ignore[index]
+                        info_dict["bitrate_upper"] = audio.info.bitrate_upper
                     if hasattr(audio.info, "encoder_version"):
-                        metadata["info"]["encoder_version"] = getattr(audio.info, "encoder_version")  # type: ignore[index]
+                        info_dict["encoder_version"] = audio.info.encoder_version
+
+                    metadata["info"] = info_dict
             else:
                 # For non-OGG files, still capture basic metadata
                 metadata["is_ogg"] = False
 
                 if hasattr(audio, "tags") and audio.tags:
-                    metadata["tags"] = {}
+                    tags_dict_general: dict[str, Any] = {}
                     # Try to extract common tags
-                    for key in audio.tags.keys():
+                    for key in audio.tags:
                         try:
                             value = audio.tags[key]
                             # Convert to string if possible
                             if isinstance(value, list):
-                                metadata["tags"][str(key)] = [str(v) for v in value]  # type: ignore[index]
+                                tags_dict_general[str(key)] = [str(v) for v in value]
                             else:
-                                metadata["tags"][str(key)] = str(value)  # type: ignore[index]
+                                tags_dict_general[str(key)] = str(value)
                         except Exception as e:
                             logger.debug(f"Could not extract tag {key}: {e}")
+                    metadata["tags"] = tags_dict_general
 
                 if hasattr(audio, "info") and audio.info:
-                    metadata["info"] = {}
+                    info_dict_general: dict[str, Any] = {}
                     # Try to extract common info fields
                     for attr in ["length", "bitrate", "sample_rate", "channels"]:
                         if hasattr(audio.info, attr):
-                            metadata["info"][str(attr)] = getattr(audio.info, attr)  # type: ignore[index]
+                            info_dict_general[str(attr)] = getattr(audio.info, attr)
+                    metadata["info"] = info_dict_general
 
             logger.debug(f"Captured metadata snapshot for {file_path}")
             return metadata
@@ -104,7 +109,7 @@ class MetadataPreserver:
             return None
 
     @staticmethod
-    def restore_metadata(file_path: str, metadata: Dict[str, Any]) -> bool:
+    def restore_metadata(file_path: str, metadata: dict[str, Any]) -> bool:
         """Restore metadata to an audio file after rename.
 
         Args:
@@ -135,29 +140,29 @@ class MetadataPreserver:
             # Restore tags
             if "tags" in metadata and metadata["tags"] and audio.tags is not None:
                 # Clear existing tags
-                audio.tags.clear()  # type: ignore[union-attr]
+                audio.tags.clear()
 
                 # Restore all tags
-                for key, values in metadata["tags"].items():
+                for key, original_values in metadata["tags"].items():
                     # Ensure values is a list (Vorbis comments require lists)
-                    if not isinstance(values, list):
-                        values = [values]
-                    audio.tags[key] = values  # type: ignore[index]
+                    processed_values = original_values
+                    if not isinstance(processed_values, list):
+                        processed_values = [processed_values]
+                    audio.tags[key] = processed_values
 
                 # Save the changes
                 audio.save()
                 logger.info(f"Successfully restored metadata to {file_path}")
                 return True
-            else:
-                logger.warning(f"No tags to restore for {file_path}")
-                return True
+            logger.warning(f"No tags to restore for {file_path}")
+            return True
 
         except Exception as e:
             logger.error(f"Failed to restore metadata to {file_path}: {e}")
             return False
 
     @staticmethod
-    def verify_metadata(original_path: str, new_path: str, metadata_snapshot: Dict[str, Any]) -> bool:
+    def verify_metadata(original_path: str, new_path: str, metadata_snapshot: dict[str, Any]) -> bool:
         """Verify that metadata was preserved correctly after rename.
 
         Args:
@@ -204,14 +209,13 @@ class MetadataPreserver:
 
                 # Compare key technical fields
                 for field in ["length", "bitrate", "sample_rate", "channels"]:
-                    if field in original_info:
-                        if original_info[field] != current_info.get(field):
-                            logger.warning(
-                                f"Technical info mismatch for {field}: "
-                                f"original={original_info[field]}, "
-                                f"current={current_info.get(field)}"
-                            )
-                            # Technical info changes are less critical
+                    if field in original_info and original_info[field] != current_info.get(field):
+                        logger.warning(
+                            f"Technical info mismatch for {field}: "
+                            f"original={original_info[field]}, "
+                            f"current={current_info.get(field)}"
+                        )
+                        # Technical info changes are less critical
 
             logger.info(f"Metadata verification successful for {new_path}")
             return True
@@ -221,7 +225,7 @@ class MetadataPreserver:
             return False
 
     @staticmethod
-    def format_metadata_for_display(metadata: Dict[str, Any]) -> str:
+    def format_metadata_for_display(metadata: dict[str, Any]) -> str:
         """Format metadata dictionary for human-readable display.
 
         Args:
@@ -241,17 +245,16 @@ class MetadataPreserver:
             lines.append("Type: OGG Vorbis")
 
         # Format tags
-        if "tags" in metadata and metadata["tags"]:
+        if metadata.get("tags"):
             lines.append("\nTags:")
             for key, values in sorted(metadata["tags"].items()):
                 if isinstance(values, list):
-                    for value in values:
-                        lines.append(f"  {key}: {value}")
+                    lines.extend(f"  {key}: {value}" for value in values)
                 else:
                     lines.append(f"  {key}: {values}")
 
         # Format technical info
-        if "info" in metadata and metadata["info"]:
+        if metadata.get("info"):
             lines.append("\nTechnical Info:")
             info = metadata["info"]
             if "length" in info:

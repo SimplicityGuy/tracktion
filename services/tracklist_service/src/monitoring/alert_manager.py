@@ -3,14 +3,19 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta, UTC
-from enum import Enum
-from typing import Dict, List, Optional, Any, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from enum import Enum
+from typing import Any
+
 import aiohttp
 from redis.asyncio import Redis
 
-from services.tracklist_service.src.monitoring.structure_monitor import ChangeReport, StructureMonitor
+from services.tracklist_service.src.monitoring.structure_monitor import (
+    ChangeReport,
+    StructureMonitor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,15 +45,15 @@ class Alert:
 
     severity: AlertSeverity
     message: str
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
-    page_type: Optional[str] = None
-    change_report: Optional[ChangeReport] = None
-    channels: List[AlertChannel] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    page_type: str | None = None
+    change_report: ChangeReport | None = None
+    channels: list[AlertChannel] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
     resolved: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert alert to dictionary."""
         return {
             "severity": self.severity.value,
@@ -56,7 +61,7 @@ class Alert:
             "details": self.details,
             "timestamp": self.timestamp.isoformat(),
             "page_type": self.page_type,
-            "change_report": self.change_report.to_dict() if self.change_report else None,
+            "change_report": (self.change_report.to_dict() if self.change_report else None),
             "channels": [c.value for c in self.channels],
             "metadata": self.metadata,
             "resolved": self.resolved,
@@ -70,9 +75,9 @@ class HealthStatus:
     healthy: bool
     success_rate: float
     last_check: datetime
-    failed_extractions: List[str] = field(default_factory=list)
-    anomalies: List[str] = field(default_factory=list)
-    metrics: Dict[str, float] = field(default_factory=dict)
+    failed_extractions: list[str] = field(default_factory=list)
+    anomalies: list[str] = field(default_factory=list)
+    metrics: dict[str, float] = field(default_factory=dict)
 
     @property
     def requires_alert(self) -> bool:
@@ -85,10 +90,10 @@ class AlertManager:
 
     def __init__(
         self,
-        redis_client: Optional[Redis[str]] = None,
-        slack_webhook_url: Optional[str] = None,
-        email_config: Optional[Dict[str, str]] = None,
-        dashboard_url: Optional[str] = None,
+        redis_client: Redis | None = None,
+        slack_webhook_url: str | None = None,
+        email_config: dict[str, str] | None = None,
+        dashboard_url: str | None = None,
     ):
         """Initialize alert manager.
 
@@ -102,12 +107,12 @@ class AlertManager:
         self.slack_webhook_url = slack_webhook_url
         self.email_config = email_config
         self.dashboard_url = dashboard_url
-        self._alert_history: List[Alert] = []
-        self._health_checks: Dict[str, HealthStatus] = {}
-        self._anomaly_detectors: Dict[str, Callable[..., Any]] = {}
-        self._monitoring_tasks: List[asyncio.Task[Any]] = []
+        self._alert_history: list[Alert] = []
+        self._health_checks: dict[str, HealthStatus] = {}
+        self._anomaly_detectors: dict[str, Callable[..., Any]] = {}
+        self._monitoring_tasks: list[asyncio.Task[Any]] = []
 
-    async def check_parser_health(self, page_type: Optional[str] = None) -> HealthStatus:
+    async def check_parser_health(self, page_type: str | None = None) -> HealthStatus:
         """Check health status of parser(s).
 
         Args:
@@ -118,10 +123,7 @@ class AlertManager:
         """
         if self.redis_client:
             # Get recent extraction metrics from Redis
-            if page_type:
-                key = f"metrics:extraction:{page_type}"
-            else:
-                key = "metrics:extraction:*"
+            key = f"metrics:extraction:{page_type}" if page_type else "metrics:extraction:*"
 
             # Get success/failure counts
             success_key = f"{key}:success"
@@ -151,7 +153,7 @@ class AlertManager:
                 failed_key = f"failed:extractions:{page_type or '*'}"
                 failed_extractions = []
                 if page_type:
-                    failed_data = await self.redis_client.lrange(failed_key, 0, 9)  # type: ignore[misc]
+                    failed_data = await self.redis_client.lrange(failed_key, 0, 9)
                     failed_extractions = [json.loads(f) for f in failed_data if f]
 
                 status = HealthStatus(
@@ -172,7 +174,7 @@ class AlertManager:
                     healthy=False,
                     success_rate=0.0,
                     last_check=datetime.now(UTC),
-                    anomalies=[f"Health check failed: {str(e)}"],
+                    anomalies=[f"Health check failed: {e!s}"],
                 )
         else:
             # No Redis, return default healthy status
@@ -184,7 +186,7 @@ class AlertManager:
 
         return status
 
-    async def send_alert(self, severity: str, message: str, channels: List[str]) -> None:
+    async def send_alert(self, severity: str, message: str, channels: list[str]) -> None:
         """Send alert to specified channels.
 
         Args:
@@ -234,7 +236,7 @@ class AlertManager:
 
         await self._dispatch_alert(alert)
 
-    async def send_health_alert(self, health_status: HealthStatus, page_type: Optional[str] = None) -> None:
+    async def send_health_alert(self, health_status: HealthStatus, page_type: str | None = None) -> None:
         """Send alert for health status issues.
 
         Args:
@@ -339,10 +341,9 @@ class AlertManager:
 
         payload = {"attachments": [attachment]}
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(self.slack_webhook_url, json=payload) as response:
-                if response.status != 200:
-                    logger.error(f"Failed to send Slack alert: {response.status}")
+        async with aiohttp.ClientSession() as session, session.post(self.slack_webhook_url, json=payload) as response:
+            if response.status != 200:
+                logger.error(f"Failed to send Slack alert: {response.status}")
 
     async def _send_to_email(self, alert: Alert) -> None:
         """Send alert via email."""
@@ -359,10 +360,12 @@ class AlertManager:
         if not self.dashboard_url:
             return
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(self.dashboard_url, json=alert.to_dict()) as response:
-                if response.status != 200:
-                    logger.error(f"Failed to send dashboard alert: {response.status}")
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(self.dashboard_url, json=alert.to_dict()) as response,
+        ):
+            if response.status != 200:
+                logger.error(f"Failed to send dashboard alert: {response.status}")
 
     async def _store_alert_in_redis(self, alert: Alert) -> None:
         """Store alert in Redis for history."""
@@ -382,7 +385,7 @@ class AlertManager:
         if hasattr(result3, "__await__"):
             await result3
 
-    def _get_channels_for_severity(self, severity: AlertSeverity) -> List[AlertChannel]:
+    def _get_channels_for_severity(self, severity: AlertSeverity) -> list[AlertChannel]:
         """Get appropriate channels based on severity."""
         channels = [AlertChannel.LOG]
 
@@ -396,7 +399,7 @@ class AlertManager:
 
         return channels
 
-    async def _detect_anomalies(self, page_type: Optional[str] = None) -> List[str]:
+    async def _detect_anomalies(self, page_type: str | None = None) -> list[str]:
         """Detect anomalies in extraction patterns.
 
         Args:
@@ -481,7 +484,7 @@ class AlertManager:
         await asyncio.gather(*self._monitoring_tasks, return_exceptions=True)
         self._monitoring_tasks.clear()
 
-    def get_recent_alerts(self, limit: int = 10, severity: Optional[AlertSeverity] = None) -> List[Alert]:
+    def get_recent_alerts(self, limit: int = 10, severity: AlertSeverity | None = None) -> list[Alert]:
         """Get recent alerts from history.
 
         Args:
@@ -496,7 +499,7 @@ class AlertManager:
             alerts = [a for a in alerts if a.severity == severity]
         return alerts
 
-    async def get_active_alerts(self) -> List[Alert]:
+    async def get_active_alerts(self) -> list[Alert]:
         """Get currently active alerts.
 
         Returns:
@@ -506,8 +509,4 @@ class AlertManager:
         current_time = datetime.now(UTC)
         one_hour_ago = current_time - timedelta(hours=1)
 
-        active_alerts = [
-            alert for alert in self._alert_history if alert.timestamp > one_hour_ago and not alert.resolved
-        ]
-
-        return active_alerts
+        return [alert for alert in self._alert_history if alert.timestamp > one_hour_ago and not alert.resolved]

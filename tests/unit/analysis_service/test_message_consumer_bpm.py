@@ -34,34 +34,48 @@ class TestMessageConsumerBPMIntegration:
 
     def test_initialization_with_bpm_components(self):
         """Test that BPM components are initialized."""
-        with patch("services.analysis_service.src.message_consumer.BPMDetector") as mock_detector:
-            with patch("services.analysis_service.src.message_consumer.TemporalAnalyzer") as mock_analyzer:
-                with patch("services.analysis_service.src.message_consumer.AudioCache") as mock_cache:
-                    MessageConsumer(rabbitmq_url="amqp://test", enable_cache=True, enable_temporal_analysis=True)
+        with (
+            patch("services.analysis_service.src.message_consumer.BPMDetector") as mock_detector,
+            patch("services.analysis_service.src.message_consumer.TemporalAnalyzer") as mock_analyzer,
+            patch("services.analysis_service.src.message_consumer.AudioCache") as mock_cache,
+        ):
+            MessageConsumer(
+                rabbitmq_url="amqp://test",
+                enable_cache=True,
+                enable_temporal_analysis=True,
+            )
 
-                    mock_detector.assert_called_once()
-                    mock_analyzer.assert_called_once()
-                    mock_cache.assert_called_once_with(redis_host="localhost", redis_port=6379)
+            mock_detector.assert_called_once()
+            mock_analyzer.assert_called_once()
+            mock_cache.assert_called_once_with(redis_host="localhost", redis_port=6379)
 
     def test_initialization_without_cache(self):
         """Test initialization with cache disabled."""
-        with patch("services.analysis_service.src.message_consumer.BPMDetector"):
-            with patch("services.analysis_service.src.message_consumer.TemporalAnalyzer"):
-                consumer = MessageConsumer(
-                    rabbitmq_url="amqp://test", enable_cache=False, enable_temporal_analysis=True
-                )
+        with (
+            patch("services.analysis_service.src.message_consumer.BPMDetector"),
+            patch("services.analysis_service.src.message_consumer.TemporalAnalyzer"),
+        ):
+            consumer = MessageConsumer(
+                rabbitmq_url="amqp://test",
+                enable_cache=False,
+                enable_temporal_analysis=True,
+            )
 
-                assert consumer.cache is None
+            assert consumer.cache is None
 
     def test_initialization_without_temporal(self):
         """Test initialization with temporal analysis disabled."""
-        with patch("services.analysis_service.src.message_consumer.BPMDetector"):
-            with patch("services.analysis_service.src.message_consumer.AudioCache"):
-                consumer = MessageConsumer(
-                    rabbitmq_url="amqp://test", enable_cache=True, enable_temporal_analysis=False
-                )
+        with (
+            patch("services.analysis_service.src.message_consumer.BPMDetector"),
+            patch("services.analysis_service.src.message_consumer.AudioCache"),
+        ):
+            consumer = MessageConsumer(
+                rabbitmq_url="amqp://test",
+                enable_cache=True,
+                enable_temporal_analysis=False,
+            )
 
-                assert consumer.temporal_analyzer is None
+            assert consumer.temporal_analyzer is None
 
     @patch("os.path.exists")
     def test_process_audio_file_with_cache_hit(self, mock_exists):
@@ -94,8 +108,17 @@ class TestMessageConsumerBPMIntegration:
         self.consumer.cache.get_bpm_results.return_value = None
 
         # Setup BPM detection results
-        bpm_results = {"bpm": 120.0, "confidence": 0.88, "algorithm": "RhythmExtractor2013"}
-        temporal_results = {"average_bpm": 120.0, "start_bpm": 118.0, "end_bpm": 122.0, "stability_score": 0.85}
+        bpm_results = {
+            "bpm": 120.0,
+            "confidence": 0.88,
+            "algorithm": "RhythmExtractor2013",
+        }
+        temporal_results = {
+            "average_bpm": 120.0,
+            "start_bpm": 118.0,
+            "end_bpm": 122.0,
+            "stability_score": 0.85,
+        }
 
         self.consumer.bpm_detector.detect_bpm.return_value = bpm_results
         self.consumer.temporal_analyzer.analyze_temporal_bpm.return_value = temporal_results
@@ -378,13 +401,15 @@ class TestMessageConsumerCacheFailure:
 
     def test_cache_initialization_failure(self):
         """Test graceful handling of cache initialization failure."""
-        with patch("services.analysis_service.src.message_consumer.BPMDetector"):
-            with patch("services.analysis_service.src.message_consumer.TemporalAnalyzer"):
-                with patch("services.analysis_service.src.message_consumer.AudioCache") as mock_cache:
-                    # Simulate cache initialization failure
-                    mock_cache.side_effect = Exception("Redis connection failed")
+        with (
+            patch("services.analysis_service.src.message_consumer.BPMDetector"),
+            patch("services.analysis_service.src.message_consumer.TemporalAnalyzer"),
+            patch("services.analysis_service.src.message_consumer.AudioCache") as mock_cache,
+        ):
+            # Simulate cache initialization failure
+            mock_cache.side_effect = Exception("Redis connection failed")
 
-                    consumer = MessageConsumer(rabbitmq_url="amqp://test", enable_cache=True)
+            consumer = MessageConsumer(rabbitmq_url="amqp://test", enable_cache=True)
 
-                    # Should continue without cache
-                    assert consumer.cache is None
+            # Should continue without cache
+            assert consumer.cache is None

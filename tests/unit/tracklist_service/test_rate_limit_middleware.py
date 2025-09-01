@@ -7,7 +7,9 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from services.tracklist_service.src.auth.models import User, UserTier
-from services.tracklist_service.src.middleware.rate_limit_middleware import RateLimitMiddleware
+from services.tracklist_service.src.middleware.rate_limit_middleware import (
+    RateLimitMiddleware,
+)
 from services.tracklist_service.src.rate_limiting.limiter import RateLimitResult
 
 

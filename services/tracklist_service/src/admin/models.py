@@ -2,7 +2,8 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -19,13 +20,13 @@ class ParserTestResult(BaseModel):
     """Result of parser testing operation."""
 
     success: bool
-    extracted_data: Optional[Dict[str, Any]] = None
-    error_message: Optional[str] = None
+    extracted_data: dict[str, Any] | None = None
+    error_message: str | None = None
     execution_time_ms: int
     strategy_used: str
     quality_score: float = 0.0
-    warnings: List[str] = Field(default_factory=list)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class SelectorUpdate(BaseModel):
@@ -36,15 +37,15 @@ class SelectorUpdate(BaseModel):
     selector_type: SelectorType
     selector_value: str = Field(..., description="The selector string")
     priority: int = Field(default=1, description="Priority in fallback chain (lower = higher priority)")
-    test_url: Optional[str] = Field(None, description="URL to test the selector against")
-    notes: Optional[str] = Field(None, description="Admin notes about the change")
+    test_url: str | None = Field(None, description="URL to test the selector against")
+    notes: str | None = Field(None, description="Admin notes about the change")
 
 
 class ManualDataCorrection(BaseModel):
     """Manual data correction request."""
 
     tracklist_id: str
-    field_corrections: Dict[str, Any] = Field(..., description="Field name to corrected value mapping")
+    field_corrections: dict[str, Any] = Field(..., description="Field name to corrected value mapping")
     reason: str = Field(..., description="Reason for manual correction")
     admin_user: str = Field(..., description="Admin user making the correction")
     preserve_original: bool = Field(default=True, description="Keep original data for audit")
@@ -66,9 +67,9 @@ class AdminOperation(BaseModel):
     operation_type: str
     timestamp: datetime
     admin_user: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
     success: bool
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 class ParserHealthStatus(BaseModel):
@@ -78,11 +79,11 @@ class ParserHealthStatus(BaseModel):
     success_rate_24h: float
     total_extractions_24h: int
     failed_extractions_24h: int
-    active_strategies: Dict[str, int]
+    active_strategies: dict[str, int]
     last_config_update: datetime
-    alerts_active: List[str]
+    alerts_active: list[str]
     system_status: str
-    performance_metrics: Dict[str, float]
+    performance_metrics: dict[str, float]
 
 
 class SelectorTestRequest(BaseModel):
@@ -93,7 +94,7 @@ class SelectorTestRequest(BaseModel):
     field_name: str = Field(..., description="Field to extract")
     selector_type: SelectorType
     selector_value: str = Field(..., description="Selector to test")
-    expected_result: Optional[str] = Field(None, description="Expected extraction result")
+    expected_result: str | None = Field(None, description="Expected extraction result")
 
 
 class ConfigurationSnapshot(BaseModel):
@@ -101,7 +102,7 @@ class ConfigurationSnapshot(BaseModel):
 
     version: str
     timestamp: datetime
-    strategies: Dict[str, List[Dict[str, Any]]]
-    success_rates: Dict[str, float]
-    metadata: Dict[str, Any]
-    admin_notes: Optional[str] = None
+    strategies: dict[str, list[dict[str, Any]]]
+    success_rates: dict[str, float]
+    metadata: dict[str, Any]
+    admin_notes: str | None = None

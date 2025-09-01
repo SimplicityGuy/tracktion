@@ -9,9 +9,10 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
 
 try:
     # Try newer redis with async support
@@ -19,10 +20,10 @@ try:
 except ImportError:
     try:
         # Fallback to aioredis if available
-        import aioredis  # type: ignore[no-redef]
+        import aioredis
     except ImportError:
         # No redis support available
-        aioredis = None  # type: ignore
+        aioredis = None
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
@@ -47,9 +48,9 @@ class ProgressEvent:
     event_type: ProgressEventType
     timestamp: float
     progress_percent: float = 0.0
-    stage: Optional[str] = None
-    message: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    stage: str | None = None
+    message: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -64,7 +65,7 @@ class TaskProgress:
     overall_progress: float = 0.0
     start_time: float = field(default_factory=time.time)
     last_update: float = field(default_factory=time.time)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class AsyncProgressTracker:
@@ -74,7 +75,7 @@ class AsyncProgressTracker:
 
     def __init__(
         self,
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         enable_websocket: bool = True,
         update_interval_seconds: float = 1.0,
         batch_aggregation: bool = True,
@@ -94,19 +95,19 @@ class AsyncProgressTracker:
         self.batch_aggregation = batch_aggregation
 
         # Progress tracking
-        self.active_tasks: Dict[str, TaskProgress] = {}
-        self.completed_tasks: Set[str] = set()
-        self.failed_tasks: Set[str] = set()
+        self.active_tasks: dict[str, TaskProgress] = {}
+        self.completed_tasks: set[str] = set()
+        self.failed_tasks: set[str] = set()
 
         # Event listeners
-        self.listeners: List[Callable[[ProgressEvent], None]] = []
-        self.websocket_connections: Set[web.WebSocketResponse] = set()
+        self.listeners: list[Callable[[ProgressEvent], None]] = []
+        self.websocket_connections: set[web.WebSocketResponse] = set()
 
         # Redis connection
-        self.redis: Optional[aioredis.Redis] = None
+        self.redis: aioredis.Redis | None = None
 
         # Update throttling
-        self.last_update_times: Dict[str, float] = {}
+        self.last_update_times: dict[str, float] = {}
 
         logger.info("AsyncProgressTracker initialized")
 
@@ -117,7 +118,7 @@ class AsyncProgressTracker:
                 self.redis = await aioredis.from_url(self.redis_url, encoding="utf-8", decode_responses=True)
                 logger.info("Connected to Redis for progress state storage")
             except Exception as e:
-                logger.warning(f"Failed to connect to Redis: {str(e)}")
+                logger.warning(f"Failed to connect to Redis: {e!s}")
                 self.redis = None
         elif self.redis_url and not aioredis:
             logger.warning("Redis URL provided but redis library not available")
@@ -127,7 +128,7 @@ class AsyncProgressTracker:
         self,
         task_id: str,
         total_stages: int,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """
         Start tracking a new task.
@@ -164,9 +165,9 @@ class AsyncProgressTracker:
     async def update_progress(
         self,
         task_id: str,
-        stage: Optional[str] = None,
-        stage_progress: Optional[float] = None,
-        message: Optional[str] = None,
+        stage: str | None = None,
+        stage_progress: float | None = None,
+        message: str | None = None,
     ) -> None:
         """
         Update progress for a task.
@@ -228,7 +229,7 @@ class AsyncProgressTracker:
         if self.redis:
             await self._store_progress_redis(task_id, progress)
 
-    async def complete_task(self, task_id: str, message: Optional[str] = None) -> None:
+    async def complete_task(self, task_id: str, message: str | None = None) -> None:
         """
         Mark a task as completed.
 
@@ -264,7 +265,7 @@ class AsyncProgressTracker:
 
         logger.debug(f"Task {task_id} completed in {duration:.2f} seconds")
 
-    async def fail_task(self, task_id: str, error: str, message: Optional[str] = None) -> None:
+    async def fail_task(self, task_id: str, error: str, message: str | None = None) -> None:
         """
         Mark a task as failed.
 
@@ -350,7 +351,7 @@ class AsyncProgressTracker:
                 else:
                     listener(event)
             except Exception as e:
-                logger.error(f"Error in progress listener: {str(e)}")
+                logger.error(f"Error in progress listener: {e!s}")
 
         # Send to WebSocket connections
         if self.enable_websocket:
@@ -387,7 +388,7 @@ class AsyncProgressTracker:
             except ConnectionResetError:
                 dead_connections.add(ws)
             except Exception as e:
-                logger.error(f"Error broadcasting to WebSocket: {str(e)}")
+                logger.error(f"Error broadcasting to WebSocket: {e!s}")
                 dead_connections.add(ws)
 
         # Remove dead connections
@@ -418,11 +419,19 @@ class AsyncProgressTracker:
                 "metadata": json.dumps(progress.metadata),
             }
 
-            await self.redis.hset(key, mapping=data)  # type: ignore[arg-type]
-            await self.redis.expire(key, 3600)  # Expire after 1 hour
+            # Handle async redis clients
+            hset_result = self.redis.hset(key, mapping=data)
+            if hasattr(hset_result, "__await__"):
+                await hset_result
+
+            # Handle both async and sync redis clients for expire
+            expire_result = self.redis.expire(key, 3600)
+            if hasattr(expire_result, "__await__"):
+                await expire_result
+            # Note: expire() can return int or bool depending on redis client version
 
         except Exception as e:
-            logger.error(f"Failed to store progress in Redis: {str(e)}")
+            logger.error(f"Failed to store progress in Redis: {e!s}")
 
     def add_listener(self, listener: Callable[[ProgressEvent], None]) -> None:
         """
@@ -501,10 +510,10 @@ class BatchProgressAggregator:
             tracker: AsyncProgressTracker instance
         """
         self.tracker = tracker
-        self.batch_tasks: Dict[str, List[str]] = {}
-        self.batch_progress: Dict[str, Dict[str, float]] = {}
+        self.batch_tasks: dict[str, list[str]] = {}
+        self.batch_progress: dict[str, dict[str, float]] = {}
 
-    async def start_batch(self, batch_id: str, task_ids: List[str], metadata: Optional[Dict] = None) -> None:
+    async def start_batch(self, batch_id: str, task_ids: list[str], metadata: dict | None = None) -> None:
         """
         Start tracking a batch of tasks.
 
@@ -514,7 +523,7 @@ class BatchProgressAggregator:
             metadata: Optional batch metadata
         """
         self.batch_tasks[batch_id] = task_ids
-        self.batch_progress[batch_id] = {task_id: 0.0 for task_id in task_ids}
+        self.batch_progress[batch_id] = dict.fromkeys(task_ids, 0.0)
 
         # Start batch tracking
         await self.tracker.start_task(batch_id, total_stages=len(task_ids), metadata=metadata)
@@ -561,7 +570,8 @@ class BatchProgressAggregator:
         """
         if batch_id in self.batch_tasks:
             await self.tracker.complete_task(
-                batch_id, message=f"Batch completed: {len(self.batch_tasks[batch_id])} tasks"
+                batch_id,
+                message=f"Batch completed: {len(self.batch_tasks[batch_id])} tasks",
             )
             del self.batch_tasks[batch_id]
             del self.batch_progress[batch_id]

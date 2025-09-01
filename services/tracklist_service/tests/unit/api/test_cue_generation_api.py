@@ -2,21 +2,22 @@
 Tests for CUE Generation API endpoints.
 """
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
-from fastapi.testclient import TestClient
+
+import pytest
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from src.api.cue_generation_api import router
 from src.models.cue_file import (
-    CueGenerationResponse,
     BatchCueGenerationResponse,
     CueFileDB,
+    CueGenerationResponse,
     ValidationReport,
 )
-from src.models.tracklist import Tracklist, Track
+from src.models.tracklist import Track, Tracklist
 
 
 @pytest.fixture
@@ -72,8 +73,8 @@ def sample_cue_file():
         file_size=2048,
         generation_time_ms=150.5,
         is_active=True,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
 
@@ -369,8 +370,8 @@ class TestCueFileManagementEndpoints:
                 checksum=f"checksum_{i}",
                 file_size=1024 * i,
                 is_active=True,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             for i in range(3)
         ]

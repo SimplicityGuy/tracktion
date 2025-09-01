@@ -17,8 +17,7 @@ from services.tracklist_service.src.services.conflict_resolution_service import 
 @pytest.fixture
 def mock_session():
     """Create a mock database session."""
-    session = AsyncMock(spec=AsyncSession)
-    return session
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
@@ -125,9 +124,7 @@ class TestConflictResolutionService:
         current_state = {"tracks": 3}
         proposed_changes = {
             "tracks_added": [],
-            "tracks_removed": [
-                {"position": 1, "title": "Opening Track"}  # First track is critical
-            ],
+            "tracks_removed": [{"position": 1, "title": "Opening Track"}],  # First track is critical
             "tracks_modified": [],
         }
 
@@ -237,7 +234,12 @@ class TestConflictResolutionService:
 
     @pytest.mark.asyncio
     async def test_resolve_conflicts_success(
-        self, conflict_service, mock_session, mock_version_service, mock_audit_service, sample_tracklist
+        self,
+        conflict_service,
+        mock_session,
+        mock_version_service,
+        mock_audit_service,
+        sample_tracklist,
     ):
         """Test successful conflict resolution."""
         tracklist_id = sample_tracklist.id

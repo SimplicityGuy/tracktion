@@ -1,5 +1,6 @@
 """Unit tests for OGG file validation."""
 
+import stat
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -89,17 +90,15 @@ class TestOggFileValidation:
 
     def test_ogg_file_permissions_error(self):
         """Test handling of OGG files with permission issues."""
-        import os
-        import stat
-
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
             tmp.write(b"Some content")
             tmp.flush()
             tmp_path = tmp.name
 
+        tmp_path_obj = Path(tmp_path)
         try:
             # Remove read permissions
-            os.chmod(tmp_path, stat.S_IWRITE)
+            tmp_path_obj.chmod(stat.S_IWRITE)
 
             extractor = MetadataExtractor()
             # Should raise error due to permission denied
@@ -107,8 +106,8 @@ class TestOggFileValidation:
                 extractor.extract(tmp_path)
         finally:
             # Restore permissions and clean up
-            os.chmod(tmp_path, stat.S_IREAD | stat.S_IWRITE)
-            Path(tmp_path).unlink(missing_ok=True)
+            tmp_path_obj.chmod(stat.S_IREAD | stat.S_IWRITE)
+            tmp_path_obj.unlink(missing_ok=True)
 
     def test_validate_ogg_extension_case_insensitive(self):
         """Test that OGG extension validation is case-insensitive."""
@@ -142,6 +141,7 @@ class TestOggFileValidation:
     @patch("services.analysis_service.src.metadata_extractor.Path")
     def test_validate_path_is_file(self, mock_path):
         """Test validation that path is a file, not directory."""
+
         mock_path_obj = MagicMock()
         mock_path_obj.exists.return_value = True
         mock_path_obj.is_file.return_value = False  # It's a directory

@@ -4,10 +4,10 @@ BPM Detection Comparison Script
 Evaluates BPM detection accuracy and performance across multiple libraries.
 """
 
-import os
+from __future__ import annotations
+
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import essentia.standard as es
 import librosa
@@ -22,7 +22,7 @@ class BPMDetector:
     def __init__(self, name: str):
         self.name = name
 
-    def detect(self, audio_path: str) -> Dict:
+    def detect(self, audio_path: str) -> dict:
         """Detect BPM from audio file."""
         raise NotImplementedError
 
@@ -33,7 +33,7 @@ class LibrosaBPMDetector(BPMDetector):
     def __init__(self):
         super().__init__("Librosa")
 
-    def detect(self, audio_path: str) -> Dict:
+    def detect(self, audio_path: str) -> dict:
         """Detect BPM using librosa's beat tracker."""
         start_time = time.time()
 
@@ -95,7 +95,7 @@ class EssentiaBPMDetector(BPMDetector):
     def __init__(self):
         super().__init__("Essentia")
 
-    def detect(self, audio_path: str) -> Dict:
+    def detect(self, audio_path: str) -> dict:
         """Detect BPM using Essentia's RhythmExtractor2013."""
         start_time = time.time()
 
@@ -155,7 +155,7 @@ class EssentiaPercivalDetector(BPMDetector):
     def __init__(self):
         super().__init__("Essentia_Percival")
 
-    def detect(self, audio_path: str) -> Dict:
+    def detect(self, audio_path: str) -> dict:
         """Detect BPM using Essentia's PercivalBpmEstimator."""
         start_time = time.time()
 
@@ -199,7 +199,7 @@ class EssentiaPercivalDetector(BPMDetector):
             }
 
 
-def compare_bpm_detection(audio_files: List[str], ground_truth: Optional[Dict] = None) -> pd.DataFrame:
+def compare_bpm_detection(audio_files: list[str], ground_truth: dict | None = None) -> pd.DataFrame:
     """
     Compare BPM detection across multiple libraries.
 
@@ -227,7 +227,7 @@ def compare_bpm_detection(audio_files: List[str], ground_truth: Optional[Dict] =
             # Add metadata
             result["filename"] = filename
             result["detector"] = detector.name
-            result["file_size_mb"] = os.path.getsize(audio_path) / (1024 * 1024)
+            result["file_size_mb"] = Path(audio_path).stat().st_size / (1024 * 1024)
 
             # Add ground truth if available
             if ground_truth and filename in ground_truth:
@@ -242,7 +242,7 @@ def compare_bpm_detection(audio_files: List[str], ground_truth: Optional[Dict] =
     return pd.DataFrame(results)
 
 
-def analyze_results(df: pd.DataFrame) -> Dict:
+def analyze_results(df: pd.DataFrame) -> dict:
     """Analyze and summarize BPM detection results."""
     summary = {}
 
@@ -285,7 +285,7 @@ def main():
         return
 
     # Get all audio files
-    audio_files = []
+    audio_files: list[Path] = []
     for ext in ["*.mp3", "*.wav", "*.flac", "*.m4a"]:
         audio_files.extend(sample_dir.glob(ext))
 

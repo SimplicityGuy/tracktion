@@ -7,12 +7,17 @@ throughout a track, useful for DJ mixes and variable tempo music.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import essentia.standard as es
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# Constants for temporal analysis
+CONFIDENCE_THRESHOLD = 0.5  # Minimum confidence threshold for BPM detection
+STABILITY_THRESHOLD = 0.7  # Threshold for determining if tempo is stable
+MIN_BPM_VALUES = 2  # Minimum number of BPM values needed for stability calculation
 
 
 class TemporalAnalyzer:
@@ -25,9 +30,9 @@ class TemporalAnalyzer:
 
     def __init__(
         self,
-        config: Optional[Any] = None,
+        config: Any | None = None,
         window_size: float = 10.0,
-        hop_size: Optional[float] = None,
+        hop_size: float | None = None,
         sample_rate: int = 44100,
         start_duration: float = 30.0,
         end_duration: float = 30.0,
@@ -63,7 +68,7 @@ class TemporalAnalyzer:
 
         logger.info(f"TemporalAnalyzer initialized with window_size={window_size}s, hop_size={self.hop_size}s")
 
-    def analyze_temporal_bpm(self, audio_path: str) -> Dict[str, Any]:
+    def analyze_temporal_bpm(self, audio_path: str) -> dict[str, Any]:
         """
         Perform temporal BPM analysis on an audio file.
 
@@ -107,7 +112,7 @@ class TemporalAnalyzer:
             end_bpm = self._calculate_end_bpm(audio)
 
             # Calculate average BPM and stability
-            bpm_values = [w["bpm"] for w in temporal_data if w["confidence"] > 0.5]
+            bpm_values = [w["bpm"] for w in temporal_data if w["confidence"] > CONFIDENCE_THRESHOLD]
 
             if not bpm_values:
                 # No confident BPM values found
@@ -126,7 +131,7 @@ class TemporalAnalyzer:
 
             # Detect tempo changes
             tempo_changes = self._detect_tempo_changes(temporal_data)
-            is_variable = len(tempo_changes) > 0 or stability_score < 0.7
+            is_variable = len(tempo_changes) > 0 or stability_score < STABILITY_THRESHOLD
 
             result = {
                 "average_bpm": round(float(average_bpm), 1),
@@ -145,10 +150,10 @@ class TemporalAnalyzer:
             return result
 
         except Exception as e:
-            logger.error(f"Temporal analysis failed for {audio_path}: {str(e)}")
-            raise RuntimeError(f"Temporal analysis failed: {str(e)}") from e
+            logger.error(f"Temporal analysis failed for {audio_path}: {e!s}")
+            raise RuntimeError(f"Temporal analysis failed: {e!s}") from e
 
-    def _analyze_windows(self, audio: np.ndarray, duration: float) -> List[Dict[str, Any]]:
+    def _analyze_windows(self, audio: np.ndarray, duration: float) -> list[dict[str, Any]]:
         """
         Analyze BPM in overlapping windows across the track.
 
@@ -193,7 +198,7 @@ class TemporalAnalyzer:
                 )
 
             except Exception as e:
-                logger.warning(f"Failed to analyze window {i}: {str(e)}")
+                logger.warning(f"Failed to analyze window {i}: {e!s}")
                 temporal_data.append(
                     {
                         "start_time": round(start_time, 2),
@@ -206,7 +211,7 @@ class TemporalAnalyzer:
 
         return temporal_data
 
-    def _calculate_start_bpm(self, audio: np.ndarray) -> Optional[float]:
+    def _calculate_start_bpm(self, audio: np.ndarray) -> float | None:
         """
         Calculate BPM for the start of the track.
 
@@ -224,14 +229,14 @@ class TemporalAnalyzer:
 
         try:
             bpm, _, confidence, _, _ = self.rhythm_extractor(start_audio)
-            if confidence > 0.5:
+            if confidence > CONFIDENCE_THRESHOLD:
                 return float(bpm)
         except Exception as e:
-            logger.warning(f"Failed to calculate start BPM: {str(e)}")
+            logger.warning(f"Failed to calculate start BPM: {e!s}")
 
         return None
 
-    def _calculate_end_bpm(self, audio: np.ndarray) -> Optional[float]:
+    def _calculate_end_bpm(self, audio: np.ndarray) -> float | None:
         """
         Calculate BPM for the end of the track.
 
@@ -249,14 +254,14 @@ class TemporalAnalyzer:
 
         try:
             bpm, _, confidence, _, _ = self.rhythm_extractor(end_audio)
-            if confidence > 0.5:
+            if confidence > CONFIDENCE_THRESHOLD:
                 return float(bpm)
         except Exception as e:
-            logger.warning(f"Failed to calculate end BPM: {str(e)}")
+            logger.warning(f"Failed to calculate end BPM: {e!s}")
 
         return None
 
-    def _calculate_stability(self, bpm_values: List[float]) -> float:
+    def _calculate_stability(self, bpm_values: list[float]) -> float:
         """
         Calculate tempo stability score.
 
@@ -266,7 +271,7 @@ class TemporalAnalyzer:
         Returns:
             Stability score (0-1, higher is more stable)
         """
-        if len(bpm_values) < 2:
+        if len(bpm_values) < MIN_BPM_VALUES:
             return 1.0
 
         # Calculate coefficient of variation
@@ -275,18 +280,18 @@ class TemporalAnalyzer:
             return 0.0
 
         std_bpm = np.std(bpm_values)
-        cv = std_bpm / mean_bpm
+        cv = float(std_bpm / mean_bpm)
 
         # Convert CV to stability score (0-1)
         # CV of 0 = perfect stability (1.0)
         # CV of 0.2 or higher = low stability (0.0)
-        stability = max(0.0, min(1.0, 1.0 - (cv * 5)))  # type: ignore[call-overload]
+        stability = max(0.0, min(1.0, 1.0 - (cv * 5)))
 
         return float(stability)
 
     def _detect_tempo_changes(
-        self, temporal_data: List[Dict[str, Any]], threshold: float = 5.0
-    ) -> List[Dict[str, Any]]:
+        self, temporal_data: list[dict[str, Any]], threshold: float = 5.0
+    ) -> list[dict[str, Any]]:
         """
         Detect significant tempo changes in temporal data.
 
@@ -297,12 +302,14 @@ class TemporalAnalyzer:
         Returns:
             List of detected tempo changes with timestamps
         """
-        tempo_changes: List[Dict[str, Any]] = []
+        tempo_changes: list[dict[str, Any]] = []
 
         # Filter to confident detections only
-        confident_windows = [w for w in temporal_data if w["bpm"] is not None and w["confidence"] > 0.5]
+        confident_windows = [
+            w for w in temporal_data if w["bpm"] is not None and w["confidence"] > CONFIDENCE_THRESHOLD
+        ]
 
-        if len(confident_windows) < 2:
+        if len(confident_windows) < MIN_BPM_VALUES:
             return tempo_changes
 
         for i in range(1, len(confident_windows)):

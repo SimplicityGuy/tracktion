@@ -3,8 +3,6 @@
 __version__ = "0.1.0"
 
 # Sync database operations
-from .database import Base, DatabaseManager, db_manager, get_db_session, get_neo4j_driver
-
 # Async database operations
 from .async_database import (
     AsyncDatabaseManager,
@@ -13,26 +11,44 @@ from .async_database import (
     get_async_neo4j_driver,
     get_async_redis_client,
 )
+from .database import (
+    Base,
+    DatabaseManager,
+    db_manager,
+    get_db_session,
+    get_neo4j_driver,
+)
 
 # Models
-from .models import Recording, Metadata, Tracklist, RenameProposal
+from .models import Metadata, Recording, RenameProposal, Tracklist
 
 __all__ = [
-    # Sync
-    "Base",
-    "DatabaseManager",
-    "db_manager",
-    "get_db_session",
-    "get_neo4j_driver",
     # Async
     "AsyncDatabaseManager",
-    "async_db_manager",
-    "get_async_db_session",
-    "get_async_neo4j_driver",
-    "get_async_redis_client",
+    # Sync
+    "Base",
+    # Sync
+    "DatabaseManager",
+    # Models
+    "Metadata",
     # Models
     "Recording",
-    "Metadata",
-    "Tracklist",
+    # Models
     "RenameProposal",
+    # Models
+    "Tracklist",
+    # Async
+    "async_db_manager",
+    # Sync
+    "db_manager",
+    # Async
+    "get_async_db_session",
+    # Async
+    "get_async_neo4j_driver",
+    # Async
+    "get_async_redis_client",
+    # Sync
+    "get_db_session",
+    # Sync
+    "get_neo4j_driver",
 ]

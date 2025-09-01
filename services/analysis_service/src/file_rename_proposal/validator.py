@@ -1,10 +1,9 @@
 """Filesystem validation for rename proposals."""
 
 import logging
-import os
 import platform
 import unicodedata
-from typing import List, Set
+from pathlib import Path
 
 from .config import FileRenameProposalConfig
 
@@ -90,7 +89,7 @@ class FilesystemValidator:
 
         return sanitized
 
-    def validate_path(self, path: str) -> tuple[bool, List[str]]:
+    def validate_path(self, path: str) -> tuple[bool, list[str]]:
         """Validate a full file path.
 
         Args:
@@ -106,7 +105,7 @@ class FilesystemValidator:
             issues.append(f"Path exceeds maximum length ({self.config.max_path_length} chars)")
 
         # Check filename length
-        filename = os.path.basename(path)
+        filename = Path(path).name
         if len(filename) > self.config.max_filename_length:
             issues.append(f"Filename exceeds maximum length ({self.config.max_filename_length} chars)")
 
@@ -118,17 +117,17 @@ class FilesystemValidator:
         # Platform-specific checks
         if self.platform == "windows":
             # Check for reserved names
-            name_without_ext = os.path.splitext(filename)[0].upper()
+            name_without_ext = Path(filename).stem.upper()
             if name_without_ext in self.reserved_names:
                 issues.append(f"Filename uses reserved name: {name_without_ext}")
 
             # Check for trailing dots or spaces
-            if filename.endswith(".") or filename.endswith(" "):
+            if filename.endswith((".", " ")):
                 issues.append("Filename ends with dot or space (invalid on Windows)")
 
         return len(issues) == 0, issues
 
-    def check_conflicts(self, proposed_path: str, existing_paths: Set[str]) -> List[str]:
+    def check_conflicts(self, proposed_path: str, existing_paths: set[str]) -> list[str]:
         """Check for naming conflicts.
 
         Args:
@@ -149,7 +148,7 @@ class FilesystemValidator:
             proposed_lower = proposed_path.lower()
             for existing in existing_paths:
                 if existing.lower() == proposed_lower and existing != proposed_path:
-                    conflicts.append(f"Case-insensitive conflict with: {os.path.basename(existing)}")
+                    conflicts.append(f"Case-insensitive conflict with: {Path(existing).name}")
                     break
 
         return conflicts
@@ -171,7 +170,7 @@ class FilesystemValidator:
             "'": "'",  # Right single quotation mark
             """: '"',  # Left double quotation mark
             """: '"',  # Right double quotation mark
-            "–": "-",
+            "\u2013": "-",  # EN DASH
             "—": "-",
             "…": "...",
             "™": "TM",
@@ -195,9 +194,7 @@ class FilesystemValidator:
         """
         result = []
         for char in filename:
-            if char in self.invalid_chars:
-                result.append(self.config.replacement_char)
-            elif ord(char) < 32:  # Control characters
+            if char in self.invalid_chars or ord(char) < 32:
                 result.append(self.config.replacement_char)
             else:
                 result.append(char)
@@ -279,7 +276,7 @@ class FilesystemValidator:
         # If no extension or still too long, just truncate
         return filename[: self.config.max_filename_length]
 
-    def _find_invalid_chars(self, filename: str) -> Set[str]:
+    def _find_invalid_chars(self, filename: str) -> set[str]:
         """Find invalid characters in a filename.
 
         Args:

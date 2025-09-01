@@ -6,13 +6,13 @@ Provides session management, rate limiting, and anti-detection features.
 
 import random
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
-import requests
+import requests  # type: ignore[import-untyped]  # types-requests not installed in this environment
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from ..config import get_config
+from src.config import get_config
 
 
 class ScraperBase:
@@ -56,13 +56,17 @@ class ScraperBase:
 
         self.last_request_time = time.time()
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10), reraise=True)
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True,
+    )
     def _make_request(
         self,
         url: str,
         method: str = "GET",
-        params: Optional[Dict[str, Any]] = None,
-        data: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
     ) -> requests.Response:
         """Make an HTTP request with retry logic and rate limiting.
 
@@ -81,7 +85,11 @@ class ScraperBase:
         self._apply_rate_limit()
 
         response = self.session.request(
-            method=method, url=url, params=params, data=data, timeout=self.config.request_timeout
+            method=method,
+            url=url,
+            params=params,
+            data=data,
+            timeout=self.config.request_timeout,
         )
 
         response.raise_for_status()
@@ -98,7 +106,7 @@ class ScraperBase:
         """
         return BeautifulSoup(html_content, "lxml")
 
-    def get_page(self, url: str, params: Optional[Dict[str, Any]] = None) -> BeautifulSoup:
+    def get_page(self, url: str, params: dict[str, Any] | None = None) -> BeautifulSoup:
         """Get a page and return parsed HTML.
 
         Args:

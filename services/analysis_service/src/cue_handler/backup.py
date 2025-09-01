@@ -1,10 +1,9 @@
 """Backup management for CUE file editing."""
 
-from pathlib import Path
-from typing import Optional, List
-import shutil
 import logging
-from datetime import datetime
+import shutil
+from datetime import UTC, datetime
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ class BackupManager:
         self.retention_limit = retention_limit
         self.enabled = enabled
 
-    def create_backup(self, filepath: Path) -> Optional[Path]:
+    def create_backup(self, filepath: Path) -> Path | None:
         """Create a backup of the specified file.
 
         Args:
@@ -51,7 +50,7 @@ class BackupManager:
 
         return backup_path
 
-    def restore_from_backup(self, filepath: Path, backup_number: Optional[int] = None) -> bool:
+    def restore_from_backup(self, filepath: Path, backup_number: int | None = None) -> bool:
         """Restore file from backup.
 
         Args:
@@ -69,7 +68,7 @@ class BackupManager:
 
         # Create backup of current file before restoring
         if filepath.exists():
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
             temp_backup = filepath.with_suffix(f".{timestamp}.tmp")
             shutil.copy2(filepath, temp_backup)
 
@@ -79,7 +78,7 @@ class BackupManager:
 
         return True
 
-    def list_backups(self, filepath: Path) -> List[Path]:
+    def list_backups(self, filepath: Path) -> list[Path]:
         """List all backups for a file.
 
         Args:
@@ -116,7 +115,7 @@ class BackupManager:
             backup.unlink()
             logger.info(f"Removed old backup: {backup}")
 
-    def _get_backup_path(self, filepath: Path, number: Optional[int] = None) -> Path:
+    def _get_backup_path(self, filepath: Path, number: int | None = None) -> Path:
         """Get path for a specific backup.
 
         Args:
@@ -128,8 +127,7 @@ class BackupManager:
         """
         if number is None:
             return filepath.with_suffix(filepath.suffix + ".bak")
-        else:
-            return filepath.with_suffix(f"{filepath.suffix}.bak.{number}")
+        return filepath.with_suffix(f"{filepath.suffix}.bak.{number}")
 
     def _get_next_backup_path(self, filepath: Path) -> Path:
         """Get path for the next backup to create.

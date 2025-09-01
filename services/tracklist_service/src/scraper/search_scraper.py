@@ -4,20 +4,15 @@ Search scraper for 1001tracklists.com.
 Implements search functionality for DJs, events, and tracks.
 """
 
+import contextlib
 import logging
-from typing import List, Optional
 from urllib.parse import urlencode, urljoin
 from uuid import uuid4
 
 from bs4 import BeautifulSoup, Tag
 
-from ..models.search_models import (
-    PaginationInfo,
-    SearchRequest,
-    SearchResult,
-    SearchResponse,
-    SearchType,
-)
+from src.models.search_models import PaginationInfo, SearchRequest, SearchResponse, SearchResult, SearchType
+
 from .base_scraper import ScraperBase
 
 logger = logging.getLogger(__name__)
@@ -58,7 +53,7 @@ class SearchScraper(ScraperBase):
                 query_info={
                     "query": request.query,
                     "type": request.search_type.value,
-                    "start_date": str(request.start_date) if request.start_date else None,
+                    "start_date": (str(request.start_date) if request.start_date else None),
                     "end_date": str(request.end_date) if request.end_date else None,
                 },
                 cache_hit=False,
@@ -111,9 +106,9 @@ class SearchScraper(ScraperBase):
         if params:
             url += "?" + urlencode(params)
 
-        return url
+        return str(url)
 
-    def _parse_search_results(self, soup: BeautifulSoup, search_type: SearchType) -> List[SearchResult]:
+    def _parse_search_results(self, soup: BeautifulSoup, search_type: SearchType) -> list[SearchResult]:
         """Parse search results from HTML.
 
         Args:
@@ -137,7 +132,7 @@ class SearchScraper(ScraperBase):
 
         return results
 
-    def _parse_single_result(self, container: Tag, search_type: SearchType) -> Optional[SearchResult]:
+    def _parse_single_result(self, container: Tag, search_type: SearchType) -> SearchResult | None:
         """Parse a single search result.
 
         Args:
@@ -154,7 +149,7 @@ class SearchScraper(ScraperBase):
             if not title_elem:
                 return None
 
-            href = title_elem.get("href", "")  # type: ignore[attr-defined]
+            href = title_elem.get("href", "") if isinstance(title_elem, Tag) else ""
             url = urljoin(self.config.base_url, href if isinstance(href, str) else "")
 
             # Extract DJ name
@@ -169,13 +164,11 @@ class SearchScraper(ScraperBase):
             date_elem = container.find("span", class_="tlDate")
             result_date = None
             if date_elem:
-                try:
+                with contextlib.suppress(Exception):
                     # Parse date from text (format may vary)
                     _ = date_elem.text.strip()  # date_text - parsing placeholder
                     # This is a placeholder - actual date parsing logic needed
                     # result_date = parse_date(date_text)
-                except Exception:
-                    pass
 
             # Extract venue
             venue_elem = container.find("span", class_="venue")
@@ -236,15 +229,13 @@ class SearchScraper(ScraperBase):
         total_pages = 1
         total_items = 0
 
-        if pagination_elem:
+        if pagination_elem and isinstance(pagination_elem, Tag):
             # Try to find total pages
-            last_page_elem = pagination_elem.find("a", class_="last")  # type: ignore[attr-defined]
+            last_page_elem = pagination_elem.find("a", class_="last")
             if last_page_elem and isinstance(last_page_elem, Tag):
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     # Extract page number from href or text
                     total_pages = int(last_page_elem.text.strip())
-                except (ValueError, TypeError):
-                    pass
 
             # Try to find total items count
             count_elem = soup.find("span", class_="resultCount")

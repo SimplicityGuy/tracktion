@@ -3,13 +3,12 @@
 Each rule validates a specific aspect of CUE file correctness.
 """
 
+import logging
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
-import logging
 
 from .models import CueSheet
 
@@ -29,21 +28,20 @@ class ValidationIssue:
     """Represents a single validation issue."""
 
     severity: Severity
-    line_number: Optional[int]
+    line_number: int | None
     category: str
     message: str
-    suggestion: Optional[str] = None
+    suggestion: str | None = None
 
 
 class ValidationRule(ABC):
     """Base class for all validation rules."""
 
     @abstractmethod
-    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> List[ValidationIssue]:
+    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> list[ValidationIssue]:
         """Validate the CUE sheet and return any issues found."""
-        pass
 
-    def _get_line_number(self, content: str, search_text: str) -> Optional[int]:
+    def _get_line_number(self, content: str, search_text: str) -> int | None:
         """Find the line number containing the search text."""
         lines = content.split("\n")
         for i, line in enumerate(lines, 1):
@@ -55,7 +53,7 @@ class ValidationRule(ABC):
 class SyntaxValidator(ValidationRule):
     """Validates CUE command syntax and structure."""
 
-    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> List[ValidationIssue]:
+    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> list[ValidationIssue]:
         """Validate syntax rules."""
         issues = []
 
@@ -110,7 +108,9 @@ class SyntaxValidator(ValidationRule):
                             severity=Severity.WARNING,
                             line_number=line_num,
                             category="syntax",
-                            message=f"Track {track.number:02d} TITLE exceeds 80 character limit ({len(track.title)} chars)",
+                            message=(
+                                f"Track {track.number:02d} TITLE exceeds 80 character limit ({len(track.title)} chars)"
+                            ),
                             suggestion=f"Truncate to: {track.title[:77]}...",
                         )
                     )
@@ -122,24 +122,26 @@ class SyntaxValidator(ValidationRule):
                             severity=Severity.WARNING,
                             line_number=line_num,
                             category="syntax",
-                            message=f"Track {track.number:02d} PERFORMER exceeds 80 character limit ({len(track.performer)} chars)",
+                            message=(
+                                f"Track {track.number:02d} PERFORMER exceeds 80 character limit "
+                                f"({len(track.performer)} chars)"
+                            ),
                             suggestion=f"Truncate to: {track.performer[:77]}...",
                         )
                     )
 
                 # Validate ISRC format (12 characters, alphanumeric)
-                if track.isrc:
-                    if not re.match(r"^[A-Z]{2}[A-Z0-9]{3}\d{2}\d{5}$", track.isrc):
-                        line_num = self._get_line_number(cue_content, f"ISRC {track.isrc}")
-                        issues.append(
-                            ValidationIssue(
-                                severity=Severity.WARNING,
-                                line_number=line_num,
-                                category="syntax",
-                                message=f"Invalid ISRC format: {track.isrc}",
-                                suggestion="Format as XX-XXX-YY-NNNNN (country[2]-registrant[3]-year[2]-code[5])",
-                            )
+                if track.isrc and not re.match(r"^[A-Z]{2}[A-Z0-9]{3}\d{2}\d{5}$", track.isrc):
+                    line_num = self._get_line_number(cue_content, f"ISRC {track.isrc}")
+                    issues.append(
+                        ValidationIssue(
+                            severity=Severity.WARNING,
+                            line_number=line_num,
+                            category="syntax",
+                            message=f"Invalid ISRC format: {track.isrc}",
+                            suggestion="Format as XX-XXX-YY-NNNNN (country[2]-registrant[3]-year[2]-code[5])",
                         )
+                    )
 
                 # Validate FLAGS values
                 valid_flags = {"DCP", "4CH", "PRE", "SCMS"}
@@ -158,18 +160,17 @@ class SyntaxValidator(ValidationRule):
                         )
 
         # Validate CATALOG format (13 digits UPC/EAN)
-        if cue_sheet.catalog:
-            if not re.match(r"^\d{13}$", cue_sheet.catalog):
-                line_num = self._get_line_number(cue_content, f"CATALOG {cue_sheet.catalog}")
-                issues.append(
-                    ValidationIssue(
-                        severity=Severity.WARNING,
-                        line_number=line_num,
-                        category="syntax",
-                        message=f"Invalid CATALOG format: {cue_sheet.catalog}",
-                        suggestion="Use 13 digits for UPC/EAN barcode",
-                    )
+        if cue_sheet.catalog and not re.match(r"^\d{13}$", cue_sheet.catalog):
+            line_num = self._get_line_number(cue_content, f"CATALOG {cue_sheet.catalog}")
+            issues.append(
+                ValidationIssue(
+                    severity=Severity.WARNING,
+                    line_number=line_num,
+                    category="syntax",
+                    message=f"Invalid CATALOG format: {cue_sheet.catalog}",
+                    suggestion="Use 13 digits for UPC/EAN barcode",
                 )
+            )
 
         # Check disc-level character limits
         if cue_sheet.title and len(cue_sheet.title) > 80:
@@ -202,7 +203,7 @@ class SyntaxValidator(ValidationRule):
 class CommandOrderValidator(ValidationRule):
     """Validates proper command ordering in CUE file."""
 
-    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> List[ValidationIssue]:
+    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> list[ValidationIssue]:
         """Validate command order rules."""
         issues = []
         lines = [
@@ -292,7 +293,7 @@ class CommandOrderValidator(ValidationRule):
 class FileReferenceValidator(ValidationRule):
     """Validates audio file references."""
 
-    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> List[ValidationIssue]:
+    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> list[ValidationIssue]:
         """Validate file references."""
         issues = []
         cue_dir = cue_path.parent
@@ -316,19 +317,18 @@ class FileReferenceValidator(ValidationRule):
                         )
                     )
                     continue
-                else:
-                    audio_path = audio_path_abs
-                    # Warn about absolute paths
-                    line_num = self._get_line_number(cue_content, file_ref.filename)
-                    issues.append(
-                        ValidationIssue(
-                            severity=Severity.WARNING,
-                            line_number=line_num,
-                            category="file",
-                            message=f"Using absolute path: {file_ref.filename}",
-                            suggestion=f"Consider using relative path: {audio_path.name}",
-                        )
+                audio_path = audio_path_abs
+                # Warn about absolute paths
+                line_num = self._get_line_number(cue_content, file_ref.filename)
+                issues.append(
+                    ValidationIssue(
+                        severity=Severity.WARNING,
+                        line_number=line_num,
+                        category="file",
+                        message=f"Using absolute path: {file_ref.filename}",
+                        suggestion=f"Consider using relative path: {audio_path.name}",
                     )
+                )
 
             # Check file permissions
             if audio_path.exists() and not audio_path.is_file():
@@ -344,7 +344,7 @@ class FileReferenceValidator(ValidationRule):
                 )
             elif audio_path.exists():
                 try:
-                    with open(audio_path, "rb") as f:
+                    with Path(audio_path).open("rb") as f:
                         f.read(1)
                 except PermissionError:
                     line_num = self._get_line_number(cue_content, file_ref.filename)
@@ -364,7 +364,7 @@ class FileReferenceValidator(ValidationRule):
                             severity=Severity.WARNING,
                             line_number=line_num,
                             category="file",
-                            message=f"Error accessing audio file: {str(e)}",
+                            message=f"Error accessing audio file: {e!s}",
                             suggestion="Check file integrity",
                         )
                     )
@@ -383,21 +383,20 @@ class FileReferenceValidator(ValidationRule):
                 }
 
                 expected_type = format_map.get(ext)
-                if expected_type and file_type != expected_type:
-                    # Special case: FLAC can use WAVE
-                    if not (ext == ".flac" and file_type == "wave"):
-                        line_num = self._get_line_number(
-                            cue_content, f'FILE "{file_ref.filename}" {file_ref.file_type}'
+                if expected_type and file_type != expected_type and not (ext == ".flac" and file_type == "wave"):
+                    line_num = self._get_line_number(
+                        cue_content,
+                        f'FILE "{file_ref.filename}" {file_ref.file_type}',
+                    )
+                    issues.append(
+                        ValidationIssue(
+                            severity=Severity.WARNING,
+                            line_number=line_num,
+                            category="file",
+                            message=f"File extension {ext} doesn't match declared type {file_ref.file_type}",
+                            suggestion=f"Consider using type {expected_type.upper()}",
                         )
-                        issues.append(
-                            ValidationIssue(
-                                severity=Severity.WARNING,
-                                line_number=line_num,
-                                category="file",
-                                message=f"File extension {ext} doesn't match declared type {file_ref.file_type}",
-                                suggestion=f"Consider using type {expected_type.upper()}",
-                            )
-                        )
+                    )
 
         # Check for multi-file CUE
         if len(cue_sheet.files) > 1:
@@ -417,7 +416,7 @@ class FileReferenceValidator(ValidationRule):
 class TimestampValidator(ValidationRule):
     """Validates timestamp format and consistency."""
 
-    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> List[ValidationIssue]:
+    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> list[ValidationIssue]:
         """Validate timestamp rules."""
         issues = []
 
@@ -485,23 +484,22 @@ class TimestampValidator(ValidationRule):
                         prev_track_end = next_track.indices[1]
 
                 # Validate pregap/postgap timing
-                if track.pregap:
+                if track.pregap and 0 in track.indices and 1 in track.indices:
                     # PREGAP is a duration, not a timestamp
-                    if 0 in track.indices and 1 in track.indices:
-                        actual_pregap_frames = track.indices[1].to_frames() - track.indices[0].to_frames()
-                        expected_pregap_frames = track.pregap.to_frames()  # pregap is a CueTime
+                    actual_pregap_frames = track.indices[1].to_frames() - track.indices[0].to_frames()
+                    expected_pregap_frames = track.pregap.to_frames()  # pregap is a CueTime
 
-                        if abs(actual_pregap_frames - expected_pregap_frames) > 5:  # Allow small tolerance
-                            line_num = self._get_line_number(cue_content, "PREGAP")
-                            issues.append(
-                                ValidationIssue(
-                                    severity=Severity.WARNING,
-                                    line_number=line_num,
-                                    category="timing",
-                                    message="PREGAP duration doesn't match INDEX positions",
-                                    suggestion="Verify pregap duration matches actual index gap",
-                                )
+                    if abs(actual_pregap_frames - expected_pregap_frames) > 5:  # Allow small tolerance
+                        line_num = self._get_line_number(cue_content, "PREGAP")
+                        issues.append(
+                            ValidationIssue(
+                                severity=Severity.WARNING,
+                                line_number=line_num,
+                                category="timing",
+                                message="PREGAP duration doesn't match INDEX positions",
+                                suggestion="Verify pregap duration matches actual index gap",
                             )
+                        )
 
         return issues
 
@@ -509,7 +507,7 @@ class TimestampValidator(ValidationRule):
 class CrossReferenceValidator(ValidationRule):
     """Validates cross-references and internal consistency."""
 
-    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> List[ValidationIssue]:
+    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> list[ValidationIssue]:
         """Validate cross-reference rules."""
         issues = []
 
@@ -525,7 +523,9 @@ class CrossReferenceValidator(ValidationRule):
                     severity=Severity.WARNING,
                     line_number=None,
                     category="consistency",
-                    message=f"Track count mismatch: {len(track_commands)} TRACK commands but {total_tracks} parsed tracks",
+                    message=(
+                        f"Track count mismatch: {len(track_commands)} TRACK commands but {total_tracks} parsed tracks"
+                    ),
                     suggestion="Check for parsing errors or malformed track definitions",
                 )
             )
@@ -538,19 +538,17 @@ class CrossReferenceValidator(ValidationRule):
                 if file_ref.tracks:
                     first_track = file_ref.tracks[0]
 
-                    if 1 in first_track.indices and prev_file_last_time:
-                        # First track of new file should start at 00:00:00 typically
-                        if first_track.indices[1].to_frames() != 0:
-                            line_num = self._get_line_number(cue_content, f'FILE "{file_ref.filename}"')
-                            issues.append(
-                                ValidationIssue(
-                                    severity=Severity.INFO,
-                                    line_number=line_num,
-                                    category="consistency",
-                                    message=f"File {i + 1} first track doesn't start at 00:00:00",
-                                    suggestion="Multi-file CUEs typically reset timing for each file",
-                                )
+                    if 1 in first_track.indices and prev_file_last_time and first_track.indices[1].to_frames() != 0:
+                        line_num = self._get_line_number(cue_content, f'FILE "{file_ref.filename}"')
+                        issues.append(
+                            ValidationIssue(
+                                severity=Severity.INFO,
+                                line_number=line_num,
+                                category="consistency",
+                                message=f"File {i + 1} first track doesn't start at 00:00:00",
+                                suggestion="Multi-file CUEs typically reset timing for each file",
                             )
+                        )
 
                     # Track last time of this file
                     if file_ref.tracks:
@@ -620,7 +618,7 @@ class CrossReferenceValidator(ValidationRule):
 class CompatibilityValidator(ValidationRule):
     """Validates compatibility with various DJ software."""
 
-    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> List[ValidationIssue]:
+    def validate(self, cue_sheet: CueSheet, cue_path: Path, cue_content: str) -> list[ValidationIssue]:
         """Validate compatibility rules."""
         issues = []
 
@@ -672,7 +670,9 @@ class CompatibilityValidator(ValidationRule):
                             severity=Severity.INFO,
                             line_number=line_num,
                             category="compatibility",
-                            message=f"Serato: Track {track.number:02d} has multiple indices (Serato uses INDEX 01 only)",
+                            message=(
+                                f"Serato: Track {track.number:02d} has multiple indices (Serato uses INDEX 01 only)"
+                            ),
                             suggestion="Serato will ignore additional INDEX points",
                         )
                     )

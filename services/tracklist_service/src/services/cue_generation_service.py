@@ -9,29 +9,38 @@ This service manages the complete CUE file generation workflow including:
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID, uuid4
-
-# Import request/response models from models.cue_file to avoid duplication
-from ..models.cue_file import (
-    GenerateCueRequest as ModelGenerateCueRequest,
-    BatchGenerateCueRequest as ModelBatchGenerateCueRequest,
-    CueGenerationResponse as ModelCueGenerationResponse,
-    BatchCueGenerationResponse as ModelBatchCueGenerationResponse,
-    CueFormat as ModelCueFormat,  # Import the Enum from models
-)
 
 # Import time utilities
 from services.tracklist_service.src.utils.time_utils import parse_cue_time
+from src.models.cue_file import (
+    BatchCueGenerationResponse as ModelBatchCueGenerationResponse,
+)
+from src.models.cue_file import (
+    BatchGenerateCueRequest as ModelBatchGenerateCueRequest,
+)
+from src.models.cue_file import (
+    CueFormat as ModelCueFormat,  # Import the Enum from models
+)
+from src.models.cue_file import (
+    CueGenerationResponse as ModelCueGenerationResponse,
+)
+
+# Import request/response models from models.cue_file to avoid duplication
+from src.models.cue_file import (
+    GenerateCueRequest as ModelGenerateCueRequest,
+)
 
 # Import CUE handler components from Epic 5
+CueFormat: type[Any]  # Type annotation to help mypy
+
 try:
     from services.analysis_service.src.cue_handler import (  # type: ignore[attr-defined]
         CDJGenerator,
         CueConverter,
-        CueFormat as ImportedCueFormat,
         CueParser,
         CueValidator,
         KodiGenerator,
@@ -40,6 +49,9 @@ try:
         StandardGenerator,
         TraktorGenerator,
     )
+    from services.analysis_service.src.cue_handler import (
+        CueFormat as ImportedCueFormat,
+    )
 
     CUE_HANDLER_AVAILABLE = True
     CueFormat = ImportedCueFormat
@@ -47,12 +59,12 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("CUE handler not available, using placeholder implementation")
     CUE_HANDLER_AVAILABLE = False
-    CueFormat = ModelCueFormat  # type: ignore[misc,assignment]
+    CueFormat = ModelCueFormat
 
 
 logger = logging.getLogger(__name__)
 
-# Re-export with original names for backward compatibility
+# Re-export original classes for compatibility
 GenerateCueRequest = ModelGenerateCueRequest
 BatchGenerateCueRequest = ModelBatchGenerateCueRequest
 CueGenerationResponse = ModelCueGenerationResponse
@@ -72,11 +84,11 @@ class CueGenerationService:
         """
         self.storage_service = storage_service
         self.cache_service = cache_service
-        self.generators: Dict[str, Any] = {}
-        self.validator: Optional[Any] = None
-        self.converter: Optional[Any] = None
-        self.parser: Optional[Any] = None
-        self.cue_integration: Optional[Any] = None  # Placeholder for CUE integration service
+        self.generators: dict[str, Any] = {}
+        self.validator: Any | None = None
+        self.converter: Any | None = None
+        self.parser: Any | None = None
+        self.cue_integration: Any | None = None  # Placeholder for CUE integration service
 
         # Initialize format-specific generators if CUE handler is available
         if CUE_HANDLER_AVAILABLE:
@@ -94,7 +106,7 @@ class CueGenerationService:
             # Initialize cue_integration with necessary methods
             self.cue_integration = self  # Use self as integration service
 
-    async def generate_cue_file(self, tracklist: Any, request: GenerateCueRequest) -> CueGenerationResponse:
+    async def generate_cue_file(self, tracklist: Any, request: ModelGenerateCueRequest) -> ModelCueGenerationResponse:
         """
         Generate a single CUE file from a tracklist.
 
@@ -105,7 +117,7 @@ class CueGenerationService:
         Returns:
             CUE generation response with file details
         """
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
 
         try:
             if not CUE_HANDLER_AVAILABLE:
@@ -118,7 +130,7 @@ class CueGenerationService:
                 # Get appropriate generator
                 generator = self.generators.get(request.format.lower())
                 if not generator:
-                    return CueGenerationResponse(
+                    return ModelCueGenerationResponse(
                         success=False,
                         job_id=UUID("00000000-0000-0000-0000-000000000000"),
                         cue_file_id=None,
@@ -149,22 +161,22 @@ class CueGenerationService:
                     validation_report,
                 )
 
-            processing_time = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+            processing_time = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
-            return CueGenerationResponse(
+            return ModelCueGenerationResponse(
                 success=True,
                 job_id=UUID("00000000-0000-0000-0000-000000000000"),  # TODO: implement job tracking
                 cue_file_id=cue_file_id,
                 file_path=file_path,
-                validation_report=validation_report,  # type: ignore[arg-type]
+                validation_report=validation_report,
                 error=None,
                 processing_time_ms=processing_time,
             )
 
         except Exception as e:
             logger.error(f"Failed to generate CUE file: {e}", exc_info=True)
-            processing_time = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-            return CueGenerationResponse(
+            processing_time = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
+            return ModelCueGenerationResponse(
                 success=False,
                 job_id=UUID("00000000-0000-0000-0000-000000000000"),
                 cue_file_id=None,
@@ -175,8 +187,8 @@ class CueGenerationService:
             )
 
     async def generate_multiple_formats(
-        self, tracklist: Any, request: BatchGenerateCueRequest
-    ) -> BatchCueGenerationResponse:
+        self, tracklist: Any, request: ModelBatchGenerateCueRequest
+    ) -> ModelBatchCueGenerationResponse:
         """
         Generate CUE files in multiple formats.
 
@@ -187,13 +199,13 @@ class CueGenerationService:
         Returns:
             Batch generation response with all results
         """
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
         results = []
         successful_count = 0
         failed_count = 0
 
         for format_type in request.formats:
-            single_request = GenerateCueRequest(
+            single_request = ModelGenerateCueRequest(
                 format=format_type,
                 options=request.options,
                 validate_audio=request.validate_audio,
@@ -209,9 +221,9 @@ class CueGenerationService:
             else:
                 failed_count += 1
 
-        processing_time = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+        processing_time = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
-        return BatchCueGenerationResponse(
+        return ModelBatchCueGenerationResponse(
             success=failed_count == 0,
             total_files=len(request.formats),
             successful_files=successful_count,
@@ -220,7 +232,7 @@ class CueGenerationService:
             processing_time_ms=processing_time,
         )
 
-    def _transform_tracklist_to_cue(self, tracklist: Any, format_type: str) -> Dict[str, Any]:
+    def _transform_tracklist_to_cue(self, tracklist: Any, format_type: str) -> dict[str, Any]:
         """
         Transform tracklist data to CUE data structure.
 
@@ -231,13 +243,13 @@ class CueGenerationService:
         Returns:
             CUE data structure for generator
         """
-        cue_data: Dict[str, Any] = {
+        cue_data: dict[str, Any] = {
             "title": getattr(tracklist, "title", "Untitled Mix"),
             "performer": getattr(tracklist, "artist", "Unknown Artist"),
             "file": getattr(tracklist, "audio_file_path", "audio.wav"),
             "tracks": [],
             "metadata": {
-                "date": tracklist.created_at.strftime("%Y-%m-%d") if hasattr(tracklist, "created_at") else None,
+                "date": (tracklist.created_at.strftime("%Y-%m-%d") if hasattr(tracklist, "created_at") else None),
                 "genre": getattr(tracklist, "genre", None),
                 "source": getattr(tracklist, "source", "tracklist_service"),
                 "tracklist_id": str(tracklist.id) if hasattr(tracklist, "id") else None,
@@ -245,22 +257,22 @@ class CueGenerationService:
         }
 
         # Transform tracks
-        tracks_list: List[Dict[str, Any]] = []
+        tracks_list: list[dict[str, Any]] = []
         if hasattr(tracklist, "tracks"):
             for idx, track in enumerate(tracklist.tracks, 1):
-                track_data: Dict[str, Any] = {
+                track_data: dict[str, Any] = {
                     "number": idx,
                     "title": getattr(track, "title", f"Track {idx}"),
                     "performer": getattr(track, "artist", cue_data["performer"]),
                     "start_time": self._format_time(getattr(track, "start_time", "00:00:00")),
-                    "end_time": self._format_time(track.end_time)
-                    if hasattr(track, "end_time") and track.end_time
-                    else None,
+                    "end_time": (
+                        self._format_time(track.end_time) if hasattr(track, "end_time") and track.end_time else None
+                    ),
                     "metadata": {},
                 }
 
                 # Add format-specific metadata
-                metadata: Dict[str, Any] = track_data["metadata"]
+                metadata: dict[str, Any] = track_data["metadata"]
                 if format_type.lower() in ["traktor", "serato", "rekordbox"]:
                     metadata["bpm"] = getattr(track, "bpm", None)
                     metadata["key"] = getattr(track, "key", None)
@@ -290,14 +302,13 @@ class CueGenerationService:
             seconds = total_seconds % 60
             frames = 0  # Default to 0 frames
             return f"{minutes:02d}:{seconds:02d}:{frames:02d}"
-        elif isinstance(time_value, datetime):
+        if isinstance(time_value, datetime):
             # Assume it's a time offset from start
             return "00:00:00"
-        elif isinstance(time_value, str):
+        if isinstance(time_value, str):
             # Assume it's already formatted
             return time_value
-        else:
-            return "00:00:00"
+        return "00:00:00"
 
     def _generate_placeholder_cue(self, tracklist: Any, format_type: str) -> str:
         """
@@ -315,7 +326,7 @@ class CueGenerationService:
         # Add header
         lines.append("REM GENERATED BY Tracklist Service")
         lines.append(f"REM FORMAT {format_type.upper()}")
-        lines.append(f"REM DATE {datetime.now(timezone.utc).strftime('%Y-%m-%d')}")
+        lines.append(f"REM DATE {datetime.now(UTC).strftime('%Y-%m-%d')}")
 
         title = getattr(tracklist, "title", "Untitled Mix")
         performer = getattr(tracklist, "artist", "Unknown Artist")
@@ -338,16 +349,12 @@ class CueGenerationService:
 
                 # Format start time
                 start_time = getattr(track, "start_time", None)
-                if start_time:
-                    formatted_time = self._format_time(start_time)
-                else:
-                    # Calculate based on previous track
-                    formatted_time = f"{(idx - 1) * 5:02d}:00:00"  # 5 minutes per track default
+                formatted_time = self._format_time(start_time) if start_time else f"{(idx - 1) * 5:02d}:00:00"
                 lines.append(f"    INDEX 01 {formatted_time}")
 
         return "\n".join(lines)
 
-    async def _validate_against_audio(self, cue_content: str, audio_file_path: str, tracklist: Any) -> Dict[str, Any]:
+    async def _validate_against_audio(self, cue_content: str, audio_file_path: str, tracklist: Any) -> dict[str, Any]:
         """
         Validate CUE content against audio file.
 
@@ -365,9 +372,14 @@ class CueGenerationService:
                 return {
                     "valid": True,
                     "errors": [],
-                    "warnings": [{"field": "validator", "message": "CUE handler not available, basic validation only"}],
+                    "warnings": [
+                        {
+                            "field": "validator",
+                            "message": "CUE handler not available, basic validation only",
+                        }
+                    ],
                     "metadata": {
-                        "validated_at": datetime.now(timezone.utc).isoformat(),
+                        "validated_at": datetime.now(UTC).isoformat(),
                     },
                 }
 
@@ -407,7 +419,7 @@ class CueGenerationService:
                 "metadata": {
                     "track_count": len(parsed_cue.tracks),
                     "audio_file": audio_file_path,
-                    "validated_at": datetime.now(timezone.utc).isoformat(),
+                    "validated_at": datetime.now(UTC).isoformat(),
                 },
             }
 
@@ -426,8 +438,12 @@ class CueGenerationService:
         return parse_cue_time(time_str)
 
     async def _store_cue_file(
-        self, tracklist_id: UUID, format_name: str, content: str, validation_report: Optional[Dict[str, Any]]
-    ) -> Tuple[UUID, str]:
+        self,
+        tracklist_id: UUID,
+        format_name: str,
+        content: str,
+        validation_report: dict[str, Any] | None,
+    ) -> tuple[UUID, str]:
         """
         Store CUE file in storage and database.
 
@@ -454,10 +470,10 @@ class CueGenerationService:
 
     def _generate_file_path(self, tracklist_id: UUID, format_name: str) -> str:
         """Generate file path for CUE file storage."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return f"{now.year}/{now.month:02d}/{tracklist_id}/{format_name}.cue"
 
-    async def validate_tracklist_for_cue(self, tracklist: Any, format_type: Optional[str] = None) -> Any:
+    async def validate_tracklist_for_cue(self, tracklist: Any, format_type: str | None = None) -> Any:
         """
         Validate if tracklist is suitable for CUE generation.
 
@@ -472,10 +488,10 @@ class CueGenerationService:
         class ValidationResult:
             def __init__(self) -> None:
                 self.valid = True
-                self.error: Optional[str] = None
-                self.warnings: List[str] = []
-                self.errors: List[str] = []
-                self.metadata: Dict[str, Any] = {}
+                self.error: str | None = None
+                self.warnings: list[str] = []
+                self.errors: list[str] = []
+                self.metadata: dict[str, Any] = {}
 
         result = ValidationResult()
         errors = []
@@ -487,8 +503,9 @@ class CueGenerationService:
             result.error = "Tracklist is required"
             result.errors = errors
             return result
+        return None
 
-    def get_format_capabilities(self, format_type: str) -> Dict[str, Any]:
+    def get_format_capabilities(self, format_type: str) -> dict[str, Any]:
         """
         Get capabilities and features for a specific CUE format.
 
@@ -563,12 +580,15 @@ class CueGenerationService:
 
         return capabilities.get(
             format_type.lower(),
-            {"error": f"Unknown format: {format_type}", "supported_formats": list(capabilities.keys())},
+            {
+                "error": f"Unknown format: {format_type}",
+                "supported_formats": list(capabilities.keys()),
+            },
         )
 
     async def convert_cue_format(
         self, cue_content: str, source_format: str, target_format: str
-    ) -> CueGenerationResponse:
+    ) -> ModelCueGenerationResponse:
         """
         Convert CUE file from one format to another.
 
@@ -582,7 +602,7 @@ class CueGenerationService:
         """
         try:
             if not CUE_HANDLER_AVAILABLE or not self.converter:
-                return CueGenerationResponse(
+                return ModelCueGenerationResponse(
                     success=False,
                     job_id=UUID("00000000-0000-0000-0000-000000000000"),
                     cue_file_id=None,
@@ -594,7 +614,7 @@ class CueGenerationService:
 
             # Parse source content
             if not self.parser:
-                return CueGenerationResponse(
+                return ModelCueGenerationResponse(
                     success=False,
                     job_id=UUID("00000000-0000-0000-0000-000000000000"),
                     cue_file_id=None,
@@ -610,7 +630,7 @@ class CueGenerationService:
             target_fmt = getattr(CueFormat, target_format.upper(), None)
 
             if not source_fmt or not target_fmt:
-                return CueGenerationResponse(
+                return ModelCueGenerationResponse(
                     success=False,
                     job_id=UUID("00000000-0000-0000-0000-000000000000"),
                     cue_file_id=None,
@@ -624,7 +644,7 @@ class CueGenerationService:
             conversion_result = self.converter.convert(parsed_cue, source_fmt, target_fmt)
 
             if conversion_result.success:
-                return CueGenerationResponse(
+                return ModelCueGenerationResponse(
                     success=True,
                     job_id=UUID("00000000-0000-0000-0000-000000000000"),
                     cue_file_id=None,
@@ -633,20 +653,19 @@ class CueGenerationService:
                     error=None,
                     processing_time_ms=0,
                 )
-            else:
-                return CueGenerationResponse(
-                    success=False,
-                    job_id=UUID("00000000-0000-0000-0000-000000000000"),
-                    cue_file_id=None,
-                    file_path=None,
-                    validation_report=None,
-                    error="Conversion failed",
-                    processing_time_ms=0,
-                )
+            return ModelCueGenerationResponse(
+                success=False,
+                job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                cue_file_id=None,
+                file_path=None,
+                validation_report=None,
+                error="Conversion failed",
+                processing_time_ms=0,
+            )
 
         except Exception as e:
             logger.error(f"Format conversion failed: {e}", exc_info=True)
-            return CueGenerationResponse(
+            return ModelCueGenerationResponse(
                 success=False,
                 job_id=UUID("00000000-0000-0000-0000-000000000000"),
                 cue_file_id=None,
@@ -656,7 +675,7 @@ class CueGenerationService:
                 processing_time_ms=0,
             )
 
-    def get_supported_formats(self) -> List[Any]:
+    def get_supported_formats(self) -> list[Any]:
         """
         Get list of supported CUE formats.
 
@@ -696,7 +715,7 @@ class CueGenerationService:
         self,
         source_format: Any,
         target_format: Any,  # Accept both CueFormat types
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Get preview of potential issues when converting between formats.
 
@@ -715,15 +734,9 @@ class CueGenerationService:
             return warnings
 
         # Convert to string values for comparison if needed
-        if hasattr(source_format, "value"):
-            source_str = source_format.value
-        else:
-            source_str = str(source_format).lower()
+        source_str = source_format.value if hasattr(source_format, "value") else str(source_format).lower()
 
-        if hasattr(target_format, "value"):
-            target_str = target_format.value
-        else:
-            target_str = str(target_format).lower()
+        target_str = target_format.value if hasattr(target_format, "value") else str(target_format).lower()
 
         # Format-specific conversion warnings
         conversion_warnings = {
@@ -755,7 +768,7 @@ class CueGenerationService:
 
         return warnings
 
-    def validate_cue_content(self, content: str, format_type: Any, options: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_cue_content(self, content: str, format_type: Any, options: dict[str, Any]) -> dict[str, Any]:
         """
         Validate CUE file content.
 
@@ -767,9 +780,9 @@ class CueGenerationService:
         Returns:
             Validation result dictionary
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        result: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        result: dict[str, Any] = {
             "valid": True,
             "errors": errors,
             "warnings": warnings,
@@ -800,7 +813,12 @@ class CueGenerationService:
         return result
 
     def convert_cue_format_sync(
-        self, content: str, source_format: Any, target_format: Any, preserve_metadata: bool, options: Dict[str, Any]
+        self,
+        content: str,
+        source_format: Any,
+        target_format: Any,
+        preserve_metadata: bool,
+        options: dict[str, Any],
     ) -> Any:
         """
         Convert CUE content between formats (synchronous version for cue_integration compatibility).
@@ -820,9 +838,9 @@ class CueGenerationService:
             def __init__(self) -> None:
                 self.success = True
                 self.output = content  # Default to original content
-                self.warnings: List[str] = []
-                self.data_loss: List[str] = []
-                self.error: Optional[str] = None
+                self.warnings: list[str] = []
+                self.data_loss: list[str] = []
+                self.error: str | None = None
 
         result = ConversionResult()
 
@@ -838,8 +856,8 @@ class CueGenerationService:
         return result
 
     async def regenerate_cue_file(
-        self, tracklist: Any, cue_file: Any, options: Optional[Dict[str, Any]] = None
-    ) -> CueGenerationResponse:
+        self, tracklist: Any, cue_file: Any, options: dict[str, Any] | None = None
+    ) -> ModelCueGenerationResponse:
         """
         Regenerate a CUE file for an existing tracklist and CUE file record.
 
@@ -852,8 +870,8 @@ class CueGenerationService:
             CueGenerationResponse with regenerated file details
         """
         # Create a request object for regeneration
-        request = GenerateCueRequest(
-            format=CueFormat(cue_file.format if hasattr(cue_file, "format") else "standard"),  # type: ignore[arg-type]
+        request = ModelGenerateCueRequest(
+            format=CueFormat(cue_file.format if hasattr(cue_file, "format") else "standard"),
             options=options or {},
             validate_audio=False,
             audio_file_path=None,

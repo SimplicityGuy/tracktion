@@ -1,6 +1,6 @@
 """Unit tests for CUE regeneration service."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -19,8 +19,7 @@ from services.tracklist_service.src.services.cue_regeneration_service import (
 @pytest.fixture
 def mock_session():
     """Create a mock database session."""
-    session = AsyncMock(spec=AsyncSession)
-    return session
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
@@ -166,10 +165,22 @@ class TestCueRegenerationService:
         """Test queue sorting by priority."""
         # Add jobs with different priorities
         regeneration_service.regeneration_queue = [
-            {"priority": RegenerationPriority.LOW.value, "queued_at": "2025-08-27T10:00:00"},
-            {"priority": RegenerationPriority.CRITICAL.value, "queued_at": "2025-08-27T10:01:00"},
-            {"priority": RegenerationPriority.HIGH.value, "queued_at": "2025-08-27T10:02:00"},
-            {"priority": RegenerationPriority.NORMAL.value, "queued_at": "2025-08-27T10:03:00"},
+            {
+                "priority": RegenerationPriority.LOW.value,
+                "queued_at": "2025-08-27T10:00:00",
+            },
+            {
+                "priority": RegenerationPriority.CRITICAL.value,
+                "queued_at": "2025-08-27T10:01:00",
+            },
+            {
+                "priority": RegenerationPriority.HIGH.value,
+                "queued_at": "2025-08-27T10:02:00",
+            },
+            {
+                "priority": RegenerationPriority.NORMAL.value,
+                "queued_at": "2025-08-27T10:03:00",
+            },
         ]
 
         regeneration_service._sort_queue()
@@ -209,7 +220,7 @@ class TestCueRegenerationService:
             "trigger": RegenerationTrigger.MANUAL_EDIT.value,
             "priority": RegenerationPriority.HIGH.value,
             "actor": "user",
-            "queued_at": datetime.utcnow().isoformat(),
+            "queued_at": datetime.now(UTC).isoformat(),
             "status": "pending",
         }
         regeneration_service.regeneration_queue.append(job)

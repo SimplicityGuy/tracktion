@@ -1,13 +1,14 @@
 """Authentication manager for API key and JWT token handling."""
 
-import secrets
 import logging
-from datetime import datetime, timedelta, UTC
-from typing import Optional, Dict, Any
-import jwt
-from passlib.context import CryptContext  # type: ignore[import-untyped]
+import secrets
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from .models import User, ApiKey, TokenPair, UserTier
+import jwt
+from passlib.context import CryptContext
+
+from .models import ApiKey, TokenPair, User, UserTier
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +28,10 @@ class AuthenticationManager:
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
         # In-memory storage for demo - replace with database
-        self._users: Dict[str, User] = {}
-        self._api_keys: Dict[str, ApiKey] = {}
+        self._users: dict[str, User] = {}
+        self._api_keys: dict[str, ApiKey] = {}
 
-    def generate_api_key(self, user_id: str, tier: str, name: Optional[str] = None) -> ApiKey:
+    def generate_api_key(self, user_id: str, tier: str, name: str | None = None) -> ApiKey:
         """Generate a new API key for a user.
 
         Args:
@@ -71,7 +72,7 @@ class AuthenticationManager:
         logger.info(f"Generated API key {key_id} for user {user_id}")
         return api_key
 
-    def validate_api_key(self, key: str) -> Optional[User]:
+    def validate_api_key(self, key: str) -> User | None:
         """Validate an API key and return associated user.
 
         Args:
@@ -91,17 +92,16 @@ class AuthenticationManager:
                     return user
 
         # Try hash verification for existing keys
-        for stored_key, api_key in self._api_keys.items():
-            if api_key.is_active and self.pwd_context.verify(key, api_key.key_hash):
-                if api_key.user_id in self._users:
-                    user = self._users[api_key.user_id]
-                    if user.is_active:
-                        api_key.last_used_at = datetime.now(UTC)
-                        return user
+        for api_key in self._api_keys.values():
+            if api_key.is_active and self.pwd_context.verify(key, api_key.key_hash) and api_key.user_id in self._users:
+                user = self._users[api_key.user_id]
+                if user.is_active:
+                    api_key.last_used_at = datetime.now(UTC)
+                    return user
 
         return None
 
-    def generate_jwt_token(self, user: User, expires_delta: Optional[timedelta] = None) -> TokenPair:
+    def generate_jwt_token(self, user: User, expires_delta: timedelta | None = None) -> TokenPair:
         """Generate JWT token pair for a user.
 
         Args:
@@ -135,10 +135,12 @@ class AuthenticationManager:
         refresh_token = jwt.encode(refresh_payload, self.jwt_secret, algorithm=self.jwt_algorithm)
 
         return TokenPair(
-            access_token=access_token, refresh_token=refresh_token, expires_in=int(expires_delta.total_seconds())
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=int(expires_delta.total_seconds()),
         )
 
-    def validate_jwt_token(self, token: str) -> Optional[User]:
+    def validate_jwt_token(self, token: str) -> User | None:
         """Validate a JWT token and return associated user.
 
         Args:
@@ -163,7 +165,7 @@ class AuthenticationManager:
 
         return None
 
-    def refresh_jwt_token(self, refresh_token: str) -> Optional[TokenPair]:
+    def refresh_jwt_token(self, refresh_token: str) -> TokenPair | None:
         """Refresh JWT tokens using refresh token.
 
         Args:
@@ -193,7 +195,10 @@ class AuthenticationManager:
         return None
 
     def create_user(
-        self, email: str, tier: UserTier = UserTier.FREE, metadata: Optional[Dict[str, Any]] = None
+        self,
+        email: str,
+        tier: UserTier = UserTier.FREE,
+        metadata: dict[str, Any] | None = None,
     ) -> User:
         """Create a new user account.
 
@@ -220,7 +225,7 @@ class AuthenticationManager:
         logger.info(f"Created user {user_id} with email {email}")
         return user
 
-    def get_user(self, user_id: str) -> Optional[User]:
+    def get_user(self, user_id: str) -> User | None:
         """Get user by ID.
 
         Args:
@@ -263,7 +268,7 @@ class AuthenticationManager:
             return True
 
         # Try hash verification for existing keys
-        for stored_key, api_key in self._api_keys.items():
+        for api_key in self._api_keys.values():
             if self.pwd_context.verify(key, api_key.key_hash):
                 api_key.is_active = False
                 logger.info(f"Revoked API key {api_key.key_id}")
@@ -271,7 +276,7 @@ class AuthenticationManager:
 
         return False
 
-    def _get_default_permissions(self, tier: str) -> Dict[str, bool]:
+    def _get_default_permissions(self, tier: str) -> dict[str, bool]:
         """Get default permissions for a tier.
 
         Args:
@@ -290,7 +295,7 @@ class AuthenticationManager:
 
         return permissions
 
-    def setup_oauth2_provider(self, provider: str) -> Dict[str, Any]:
+    def setup_oauth2_provider(self, provider: str) -> dict[str, Any]:
         """Setup OAuth2 provider configuration.
 
         Args:

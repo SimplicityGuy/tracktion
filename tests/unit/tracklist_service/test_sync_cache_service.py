@@ -1,7 +1,7 @@
 """Unit tests for sync state caching service."""
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -42,7 +42,7 @@ def sample_sync_state():
     """Create sample sync state data."""
     return {
         "status": "completed",
-        "last_sync": datetime.utcnow().isoformat(),
+        "last_sync": datetime.now(UTC).isoformat(),
         "changes_applied": 5,
         "confidence": 0.9,
     }
@@ -219,7 +219,7 @@ class TestSyncCacheService:
         conflict_data = {
             "conflicts": sample_conflicts,
             "count": len(sample_conflicts),
-            "cached_at": datetime.utcnow().isoformat(),
+            "cached_at": datetime.now(UTC).isoformat(),
         }
         mock_redis_client.get.return_value = json.dumps(conflict_data)
 
@@ -249,7 +249,7 @@ class TestSyncCacheService:
         version_data = {
             "version_number": 5,
             "change_type": "manual",
-            "cached_at": datetime.utcnow().isoformat(),
+            "cached_at": datetime.now(UTC).isoformat(),
         }
         mock_redis_client.get.return_value = json.dumps(version_data)
 

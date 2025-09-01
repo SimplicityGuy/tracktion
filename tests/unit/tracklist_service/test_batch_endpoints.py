@@ -45,7 +45,10 @@ class TestBatchEndpoints:
         }
 
         request = BatchRequest(
-            urls=["http://1001tracklists.com/track1", "http://1001tracklists.com/track2"],
+            urls=[
+                "http://1001tracklists.com/track1",
+                "http://1001tracklists.com/track2",
+            ],
             priority=BatchPriority.NORMAL,
             user_id="user123",
         )

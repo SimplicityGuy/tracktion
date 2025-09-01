@@ -60,7 +60,10 @@ class AsyncCatalogService:
 
             # Create recording
             recording = await self.recording_repo.create(
-                file_path=file_path, file_name=file_name, sha256_hash=sha256_hash, xxh128_hash=xxh128_hash
+                file_path=file_path,
+                file_name=file_name,
+                sha256_hash=sha256_hash,
+                xxh128_hash=xxh128_hash,
             )
 
             # Add metadata if provided
@@ -109,7 +112,11 @@ class AsyncCatalogService:
             raise
 
     async def add_tracklist(
-        self, recording_id: UUID, source: str, tracks: dict[str, Any], cue_file_path: str | None = None
+        self,
+        recording_id: UUID,
+        source: str,
+        tracks: dict[str, Any],
+        cue_file_path: str | None = None,
     ) -> Tracklist:
         """Add a tracklist to a recording.
 
@@ -128,13 +135,19 @@ class AsyncCatalogService:
             if existing:
                 logger.info(f"Updating existing tracklist for recording {recording_id}")
                 updated = await self.tracklist_repo.update(
-                    tracklist_id=int(existing.id), source=source, tracks=tracks, cue_file_path=cue_file_path
+                    tracklist_id=int(existing.id),
+                    source=source,
+                    tracks=tracks,
+                    cue_file_path=cue_file_path,
                 )
                 return updated or existing
 
             # Create new tracklist
             tracklist = await self.tracklist_repo.create(
-                recording_id=recording_id, source=source, tracks=tracks, cue_file_path=cue_file_path
+                recording_id=recording_id,
+                source=source,
+                tracks=tracks,
+                cue_file_path=cue_file_path,
             )
 
             logger.info(f"Added tracklist to recording {recording_id}")
@@ -289,16 +302,18 @@ class AsyncCatalogService:
                     "file_name": recording.file_name,
                     "sha256_hash": recording.sha256_hash,
                     "xxh128_hash": recording.xxh128_hash,
-                    "created_at": recording.created_at.isoformat() if recording.created_at else None,
+                    "created_at": (recording.created_at.isoformat() if recording.created_at else None),
                 },
                 "metadata": metadata_dict,
-                "tracklist": {
-                    "source": tracklist.source,
-                    "tracks": tracklist.tracks,
-                    "cue_file_path": tracklist.cue_file_path,
-                }
-                if tracklist
-                else None,
+                "tracklist": (
+                    {
+                        "source": tracklist.source,
+                        "tracks": tracklist.tracks,
+                        "cue_file_path": tracklist.cue_file_path,
+                    }
+                    if tracklist
+                    else None
+                ),
             }
 
         except Exception as e:

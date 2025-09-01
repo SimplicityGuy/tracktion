@@ -1,7 +1,7 @@
 """Unit tests for quota scheduler."""
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -36,14 +36,16 @@ class TestQuotaScheduler:
     @pytest.mark.asyncio
     async def test_start_scheduler(self, quota_scheduler):
         """Test starting the scheduler."""
-        with patch.object(quota_scheduler.scheduler, "add_job") as mock_add_job:
-            with patch.object(quota_scheduler.scheduler, "start") as mock_start:
-                await quota_scheduler.start()
+        with (
+            patch.object(quota_scheduler.scheduler, "add_job") as mock_add_job,
+            patch.object(quota_scheduler.scheduler, "start") as mock_start,
+        ):
+            await quota_scheduler.start()
 
-                # Should add 3 jobs (daily reset, monthly reset, cleanup)
-                assert mock_add_job.call_count == 3
-                mock_start.assert_called_once()
-                assert quota_scheduler._running is True
+            # Should add 3 jobs (daily reset, monthly reset, cleanup)
+            assert mock_add_job.call_count == 3
+            mock_start.assert_called_once()
+            assert quota_scheduler._running is True
 
     @pytest.mark.asyncio
     async def test_start_already_running(self, quota_scheduler):
@@ -159,7 +161,7 @@ class TestQuotaScheduler:
         mock_job = Mock()
         mock_job.id = "daily_reset"
         mock_job.name = "Daily Reset Job"
-        mock_job.next_run_time = datetime.utcnow()
+        mock_job.next_run_time = datetime.now(UTC)
         mock_job.trigger = Mock()
         mock_job.trigger.__str__ = Mock(return_value="cron[hour=0,minute=0]")
 
@@ -174,7 +176,7 @@ class TestQuotaScheduler:
                     {
                         "id": "daily_reset",
                         "name": "Daily Reset Job",
-                        "next_run": datetime.utcnow().isoformat(),
+                        "next_run": datetime.now(UTC).isoformat(),
                         "trigger": "cron[hour=0,minute=0]",
                     }
                 ],
@@ -191,26 +193,28 @@ class TestQuotaScheduler:
 
     def test_job_configuration(self, quota_scheduler):
         """Test that jobs are configured with correct schedules."""
-        with patch.object(quota_scheduler.scheduler, "add_job") as mock_add_job:
-            with patch.object(quota_scheduler.scheduler, "start"):
-                # Start scheduler to trigger job addition
-                asyncio.run(quota_scheduler.start())
+        with (
+            patch.object(quota_scheduler.scheduler, "add_job") as mock_add_job,
+            patch.object(quota_scheduler.scheduler, "start"),
+        ):
+            # Start scheduler to trigger job addition
+            asyncio.run(quota_scheduler.start())
 
-                # Verify job calls
-                calls = mock_add_job.call_args_list
-                assert len(calls) == 3
+            # Verify job calls
+            calls = mock_add_job.call_args_list
+            assert len(calls) == 3
 
-                # Check daily reset job
-                daily_call = calls[0]
-                assert daily_call[1]["id"] == "daily_quota_reset"
-                assert daily_call[1]["name"] == "Daily Quota Reset"
+            # Check daily reset job
+            daily_call = calls[0]
+            assert daily_call[1]["id"] == "daily_quota_reset"
+            assert daily_call[1]["name"] == "Daily Quota Reset"
 
-                # Check monthly reset job
-                monthly_call = calls[1]
-                assert monthly_call[1]["id"] == "monthly_quota_reset"
-                assert monthly_call[1]["name"] == "Monthly Quota Reset"
+            # Check monthly reset job
+            monthly_call = calls[1]
+            assert monthly_call[1]["id"] == "monthly_quota_reset"
+            assert monthly_call[1]["name"] == "Monthly Quota Reset"
 
-                # Check cleanup job
-                cleanup_call = calls[2]
-                assert cleanup_call[1]["id"] == "quota_cleanup"
-                assert cleanup_call[1]["name"] == "Quota Cleanup"
+            # Check cleanup job
+            cleanup_call = calls[2]
+            assert cleanup_call[1]["id"] == "quota_cleanup"
+            assert cleanup_call[1]["name"] == "Quota Cleanup"

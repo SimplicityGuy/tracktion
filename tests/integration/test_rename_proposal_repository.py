@@ -31,7 +31,10 @@ def proposal_repo(db_manager):
 def test_recording(recording_repo):
     """Create a test recording."""
     recording = recording_repo.create(
-        file_path="/test/path/song.mp3", file_name="song.mp3", sha256_hash="test_hash", xxh128_hash="test_xxh"
+        file_path="/test/path/song.mp3",
+        file_name="song.mp3",
+        sha256_hash="test_hash",
+        xxh128_hash="test_xxh",
     )
     yield recording
     # Cleanup

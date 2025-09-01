@@ -2,6 +2,7 @@
 
 import hashlib
 from pathlib import Path
+from typing import ClassVar
 
 import structlog
 import xxhash
@@ -13,7 +14,7 @@ class FileScanner:
     """Scans directories for audio files."""
 
     # Supported audio file extensions
-    SUPPORTED_EXTENSIONS: set[str] = {
+    SUPPORTED_EXTENSIONS: ClassVar[set[str]] = {
         ".mp3",
         ".flac",
         ".wav",
@@ -33,6 +34,7 @@ class FileScanner:
 
         Args:
             tracked_files: Set of already tracked file paths
+
         """
         self.tracked_files = tracked_files or set()
 
@@ -44,6 +46,7 @@ class FileScanner:
 
         Returns:
             List of new audio file information dictionaries
+
         """
         new_files: list[dict[str, str]] = []
 
@@ -81,7 +84,11 @@ class FileScanner:
                                 extension=extension,
                             )
                         else:
-                            logger.debug("Audio file detected", path=file_str, extension=extension)
+                            logger.debug(
+                                "Audio file detected",
+                                path=file_str,
+                                extension=extension,
+                            )
                     except Exception as e:
                         logger.error("Failed to get file info", path=file_str, error=str(e))
 
@@ -103,6 +110,7 @@ class FileScanner:
 
         Returns:
             Dictionary containing file information
+
         """
         stat = file_path.stat()
         sha256_hash, xxh128_hash = self._calculate_dual_hashes(file_path)
@@ -126,12 +134,13 @@ class FileScanner:
 
         Returns:
             Tuple of (sha256_hash, xxh128_hash) as hexadecimal strings
+
         """
         sha256_hasher = hashlib.sha256()
         xxh128_hasher = xxhash.xxh128()
 
         try:
-            with open(file_path, "rb") as f:
+            with Path(file_path).open("rb") as f:
                 # Single pass through file for both hashes
                 while chunk := f.read(chunk_size):
                     sha256_hasher.update(chunk)
@@ -161,6 +170,7 @@ class FileScanner:
 
         Returns:
             Hexadecimal SHA256 hash string
+
         """
         sha256_hash, _ = self._calculate_dual_hashes(file_path)
         return sha256_hash
@@ -173,6 +183,7 @@ class FileScanner:
 
         Returns:
             Hexadecimal XXH128 hash string
+
         """
         _, xxh128_hash = self._calculate_dual_hashes(file_path)
         return xxh128_hash
@@ -185,5 +196,6 @@ class FileScanner:
 
         Returns:
             True if file has a supported audio extension
+
         """
         return file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS

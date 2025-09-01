@@ -1,6 +1,7 @@
 """Integration tests for the complete analysis pipeline."""
 
-import os
+import concurrent.futures
+import contextlib
 import tempfile
 import time
 from pathlib import Path
@@ -40,10 +41,8 @@ class TestFullPipeline:
         yield temp_path
 
         # Cleanup
-        try:
-            os.unlink(temp_path)
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            Path(temp_path).unlink()
 
     @pytest.fixture
     def mock_storage(self):
@@ -71,8 +70,8 @@ class TestFullPipeline:
     @pytest.fixture
     def message_consumer(self, mock_storage, mock_cache):
         """Create a message consumer with mocked dependencies."""
-        with patch("services.analysis_service.src.message_consumer.AudioCache") as MockCache:
-            MockCache.return_value = mock_cache
+        with patch("services.analysis_service.src.message_consumer.AudioCache") as mock_cache_class:
+            mock_cache_class.return_value = mock_cache
 
             consumer = MessageConsumer(
                 rabbitmq_url="amqp://localhost",
@@ -263,7 +262,10 @@ class TestFullPipeline:
         recording_id = str(uuid4())
 
         # Mock fast responses
-        message_consumer.bpm_detector.detect_bpm.return_value = {"bpm": 120, "confidence": 0.9}
+        message_consumer.bpm_detector.detect_bpm.return_value = {
+            "bpm": 120,
+            "confidence": 0.9,
+        }
 
         key_result = Mock()
         key_result.key = "A"
@@ -339,12 +341,12 @@ class TestPerformanceOptimization:
 
     def test_cache_performance(self):
         """Test cache operation performance."""
-        with patch("redis.Redis") as MockRedis:
+        with patch("redis.Redis") as mock_redis_class:
             mock_redis = Mock()
             mock_redis.ping.return_value = True
             mock_redis.get.return_value = None
             mock_redis.setex.return_value = True
-            MockRedis.return_value = mock_redis
+            mock_redis_class.return_value = mock_redis
 
             cache = AudioCache(enabled=True)
 
@@ -368,8 +370,6 @@ class TestPerformanceOptimization:
     def test_parallel_analysis_simulation(self):
         """Test simulated parallel analysis of multiple features."""
         # This tests the concept of parallel analysis
-        import concurrent.futures
-        import time
 
         def simulate_bpm_detection():
             time.sleep(0.1)  # Simulate processing

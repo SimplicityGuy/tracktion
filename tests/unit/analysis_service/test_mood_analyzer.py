@@ -96,9 +96,14 @@ class TestMoodAnalyzer:
 
     def test_analyze_mood_essentia_not_installed(self, mood_analyzer):
         """Test handling when Essentia is not installed."""
-        with patch.dict("sys.modules", {"essentia.standard": None}):
-            with patch("builtins.__import__", side_effect=ImportError("No module named essentia")):
-                result = mood_analyzer.analyze_mood("test.mp3")
+        with (
+            patch.dict("sys.modules", {"essentia.standard": None}),
+            patch(
+                "builtins.__import__",
+                side_effect=ImportError("No module named essentia"),
+            ),
+        ):
+            result = mood_analyzer.analyze_mood("test.mp3")
 
         assert result is None
 
@@ -386,7 +391,11 @@ class TestMoodAnalyzer:
             base_result = MoodAnalysisResult()
             base_result.genres = [
                 {"genre": "Electronic", "confidence": 0.8, "model": "model1"},
-                {"genre": "Pop", "confidence": 0.3, "model": "model1"},  # Below threshold
+                {
+                    "genre": "Pop",
+                    "confidence": 0.3,
+                    "model": "model1",
+                },  # Below threshold
             ]
 
             with patch.object(mood_analyzer, "analyze_mood", return_value=base_result):
@@ -399,10 +408,12 @@ class TestMoodAnalyzer:
 
     def test_needs_review_flag(self, mood_analyzer, mock_essentia):
         """Test that needs_review flag is set correctly."""
-        with patch.dict("sys.modules", {"essentia.standard": mock_essentia}):
+        with (
+            patch.dict("sys.modules", {"essentia.standard": mock_essentia}),
+            patch.object(mood_analyzer, "_calculate_overall_confidence", return_value=0.4),
+        ):
             # Mock low confidence analysis
-            with patch.object(mood_analyzer, "_calculate_overall_confidence", return_value=0.4):
-                result = mood_analyzer.analyze_mood("test.mp3")
+            result = mood_analyzer.analyze_mood("test.mp3")
 
         assert result is not None
         assert result.needs_review is True  # Below 0.6 threshold

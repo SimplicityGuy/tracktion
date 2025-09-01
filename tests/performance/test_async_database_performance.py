@@ -1,6 +1,7 @@
 """Performance tests for async database operations."""
 
 import asyncio
+import os
 import statistics
 import time
 from typing import Any
@@ -97,7 +98,7 @@ class PerformanceBenchmark:
             "mean_ms": statistics.mean(times) * 1000,
             "median_ms": statistics.median(times) * 1000,
             "p95_ms": statistics.quantiles(times, n=20)[18] * 1000,
-            "p99_ms": statistics.quantiles(times, n=100)[98] * 1000 if len(times) >= 100 else max(times) * 1000,
+            "p99_ms": (statistics.quantiles(times, n=100)[98] * 1000 if len(times) >= 100 else max(times) * 1000),
             "records_per_second": (batch_size * batches) / sum(times),
             "total_time_s": sum(times),
         }
@@ -144,7 +145,7 @@ class PerformanceBenchmark:
             "mean_ms": statistics.mean(times) * 1000,
             "median_ms": statistics.median(times) * 1000,
             "p95_ms": statistics.quantiles(times, n=20)[18] * 1000,
-            "p99_ms": statistics.quantiles(times, n=100)[98] * 1000 if len(times) >= 100 else max(times) * 1000,
+            "p99_ms": (statistics.quantiles(times, n=100)[98] * 1000 if len(times) >= 100 else max(times) * 1000),
             "queries_per_second": queries / total_time,
             "total_time_s": total_time,
         }
@@ -340,7 +341,6 @@ class PerformanceBenchmark:
 
 async def main():
     """Main entry point for performance benchmarks."""
-    import os
 
     # Get database URL from environment
     db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:password@localhost/tracktion")

@@ -14,6 +14,7 @@ from services.file_rename_service.api.schemas import (
     RenameFeedbackRequest,
     RenameFeedbackResponse,
     RenameHistoryResponse,
+    RenameProposal,
     RenameProposalRequest,
     RenameProposalResponse,
 )
@@ -52,7 +53,7 @@ def get_db() -> Generator[Session]:
 )
 async def analyze_patterns(
     request: RenameAnalyzeRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
 ) -> RenameAnalyzeResponse:
     """
     Analyze filename patterns.
@@ -105,7 +106,7 @@ async def analyze_patterns(
 )
 async def propose_rename(
     request: RenameProposalRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
 ) -> RenameProposalResponse:
     """
     Generate rename proposals.
@@ -126,7 +127,7 @@ async def propose_rename(
                     "file_path": request.file_path,
                     "metadata": request.metadata,
                     "use_ml": request.use_ml,
-                    "pattern_type": request.pattern_type.value if request.pattern_type else None,
+                    "pattern_type": (request.pattern_type.value if request.pattern_type else None),
                 },
             )
 
@@ -142,8 +143,6 @@ async def propose_rename(
         db.commit()
 
         # Return mock response
-        from services.file_rename_service.api.schemas import RenameProposal
-
         proposal = RenameProposal(
             proposed_name=f"renamed_{request.original_name}",
             confidence=0.75,
@@ -172,7 +171,7 @@ async def propose_rename(
 )
 async def submit_feedback(
     request: RenameFeedbackRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
 ) -> RenameFeedbackResponse:
     """
     Submit user feedback on rename operations.
@@ -213,9 +212,9 @@ async def submit_feedback(
         db.add(feedback)
 
         # Update history with feedback
-        history.was_accepted = request.was_accepted  # type: ignore[assignment]
-        history.feedback_rating = request.rating  # type: ignore[assignment]
-        history.user_feedback = request.comment  # type: ignore[assignment]
+        history.was_accepted = request.was_accepted
+        history.feedback_rating = request.rating
+        history.user_feedback = request.comment
 
         # Send to RabbitMQ for pattern learning
         if rabbitmq_manager.is_connected:
@@ -235,7 +234,7 @@ async def submit_feedback(
         db.commit()
 
         return RenameFeedbackResponse(
-            feedback_id=feedback.id,  # type: ignore[arg-type]
+            feedback_id=feedback.id,
             message="Feedback submitted successfully",
             patterns_updated=True,
         )
@@ -261,7 +260,7 @@ async def get_patterns(
     pattern_type: str | None = Query(default=None, description="Filter by pattern type"),
     skip: int = Query(default=0, ge=0, description="Number of records to skip"),
     limit: int = Query(default=100, ge=1, le=1000, description="Number of records to return"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
 ) -> list[PatternResponse]:
     """
     Retrieve learned patterns.
@@ -280,15 +279,15 @@ async def get_patterns(
 
         return [
             PatternResponse(
-                id=p.id,  # type: ignore[arg-type]
-                pattern_type=p.pattern_type,  # type: ignore[arg-type]
-                pattern_value=p.pattern_value,  # type: ignore[arg-type]
-                description=p.description,  # type: ignore[arg-type]
-                category=p.category,  # type: ignore[arg-type]
-                frequency=p.frequency,  # type: ignore[arg-type]
-                confidence_score=p.confidence_score,  # type: ignore[arg-type]
-                created_at=p.created_at,  # type: ignore[arg-type]
-                updated_at=p.updated_at,  # type: ignore[arg-type]
+                id=p.id,
+                pattern_type=p.pattern_type,
+                pattern_value=p.pattern_value,
+                description=p.description,
+                category=p.category,
+                frequency=p.frequency,
+                confidence_score=p.confidence_score,
+                created_at=p.created_at,
+                updated_at=p.updated_at,
             )
             for p in patterns
         ]
@@ -310,7 +309,7 @@ async def get_history(
     was_accepted: bool | None = Query(default=None, description="Filter by acceptance status"),
     skip: int = Query(default=0, ge=0, description="Number of records to skip"),
     limit: int = Query(default=100, ge=1, le=1000, description="Number of records to return"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
 ) -> list[RenameHistoryResponse]:
     """
     Get rename history.
@@ -327,14 +326,14 @@ async def get_history(
 
         return [
             RenameHistoryResponse(
-                id=h.id,  # type: ignore[arg-type]
-                original_name=h.original_name,  # type: ignore[arg-type]
-                proposed_name=h.proposed_name,  # type: ignore[arg-type]
-                final_name=h.final_name,  # type: ignore[arg-type]
-                confidence_score=h.confidence_score,  # type: ignore[arg-type]
-                was_accepted=h.was_accepted,  # type: ignore[arg-type]
-                feedback_rating=h.feedback_rating,  # type: ignore[arg-type]
-                created_at=h.created_at,  # type: ignore[arg-type]
+                id=h.id,
+                original_name=h.original_name,
+                proposed_name=h.proposed_name,
+                final_name=h.final_name,
+                confidence_score=h.confidence_score,
+                was_accepted=h.was_accepted,
+                feedback_rating=h.feedback_rating,
+                created_at=h.created_at,
             )
             for h in history
         ]

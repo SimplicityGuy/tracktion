@@ -36,8 +36,7 @@ def batch_queue(mock_redis, mock_pika):
     """Create BatchJobQueue instance with mocks."""
     with patch("services.tracklist_service.src.queue.batch_queue.Redis") as mock_redis_cls:
         mock_redis_cls.return_value = mock_redis
-        queue = BatchJobQueue()
-        return queue
+        return BatchJobQueue()
 
 
 class TestBatchJobQueue:
@@ -58,7 +57,11 @@ class TestBatchJobQueue:
             assert mock_channel.queue_declare.call_count >= 3  # Priority queues
 
             # Check for DLQ declaration
-            dlq_call = call(queue="batch_jobs_dlq", durable=True, arguments={"x-message-ttl": 604800000})
+            dlq_call = call(
+                queue="batch_jobs_dlq",
+                durable=True,
+                arguments={"x-message-ttl": 604800000},
+            )
             assert dlq_call in mock_channel.queue_declare.call_args_list
 
     def test_enqueue_batch(self, batch_queue, mock_redis):
@@ -199,9 +202,9 @@ class TestBatchJobQueue:
         def mock_job_data(key):
             if "job1" in key:
                 return {"status": "completed"}
-            elif "job2" in key:
+            if "job2" in key:
                 return {"status": "processing"}
-            elif "job3" in key:
+            if "job3" in key:
                 return {"status": "pending"}
             return {}
 
@@ -242,7 +245,7 @@ class TestBatchJobQueue:
         def mock_job_data(key):
             if "job1" in key:
                 return {"status": "pending"}
-            elif "job2" in key:
+            if "job2" in key:
                 return {"status": "completed"}
             return {}
 

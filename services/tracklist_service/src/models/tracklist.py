@@ -6,22 +6,29 @@ including import from 1001tracklists and CUE file generation.
 """
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import Column, String, Float, DateTime, ForeignKey, JSON, Text, Boolean, Integer
-from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy.dialects.postgresql import (
+    UUID as POSTGRES_UUID,
+)
 from sqlalchemy.orm import DeclarativeBase, relationship
-from typing import TYPE_CHECKING
 
 
 # Create Base class with proper typing
 class Base(DeclarativeBase):
-    pass
-
-
-if TYPE_CHECKING:
     pass
 
 
@@ -30,14 +37,14 @@ class TrackEntry(BaseModel):
 
     position: int = Field(description="Track position in the tracklist")
     start_time: timedelta = Field(description="Start time of the track")
-    end_time: Optional[timedelta] = Field(None, description="End time of the track")
+    end_time: timedelta | None = Field(None, description="End time of the track")
     artist: str = Field(description="Artist name(s)")
     title: str = Field(description="Track title")
-    remix: Optional[str] = Field(None, description="Remix or edit information")
-    label: Optional[str] = Field(None, description="Record label")
-    catalog_track_id: Optional[UUID] = Field(None, description="Link to catalog track")
+    remix: str | None = Field(None, description="Remix or edit information")
+    label: str | None = Field(None, description="Record label")
+    catalog_track_id: UUID | None = Field(None, description="Link to catalog track")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Confidence score")
-    transition_type: Optional[str] = Field(None, description="Type of transition to next track")
+    transition_type: str | None = Field(None, description="Type of transition to next track")
     is_manual_entry: bool = Field(default=False, description="Flag for manually entered tracks")
 
     @field_validator("position")
@@ -56,7 +63,7 @@ class TrackEntry(BaseModel):
             raise ValueError("Field cannot be empty")
         return v.strip()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON storage."""
         return {
             "position": self.position,
@@ -66,24 +73,24 @@ class TrackEntry(BaseModel):
             "title": self.title,
             "remix": self.remix,
             "label": self.label,
-            "catalog_track_id": str(self.catalog_track_id) if self.catalog_track_id else None,
+            "catalog_track_id": (str(self.catalog_track_id) if self.catalog_track_id else None),
             "confidence": self.confidence,
             "transition_type": self.transition_type,
             "is_manual_entry": self.is_manual_entry,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TrackEntry":
+    def from_dict(cls, data: dict[str, Any]) -> "TrackEntry":
         """Create from dictionary."""
         return cls(
             position=data["position"],
             start_time=timedelta(seconds=data["start_time"]),
-            end_time=timedelta(seconds=data["end_time"]) if data.get("end_time") else None,
+            end_time=(timedelta(seconds=data["end_time"]) if data.get("end_time") else None),
             artist=data["artist"],
             title=data["title"],
             remix=data.get("remix"),
             label=data.get("label"),
-            catalog_track_id=UUID(data["catalog_track_id"]) if data.get("catalog_track_id") else None,
+            catalog_track_id=(UUID(data["catalog_track_id"]) if data.get("catalog_track_id") else None),
             confidence=data.get("confidence", 1.0),
             transition_type=data.get("transition_type"),
             is_manual_entry=data.get("is_manual_entry", False),
@@ -98,13 +105,13 @@ class Tracklist(BaseModel):
     source: str = Field(description="Source of tracklist: manual, 1001tracklists, auto-detected")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
-    tracks: List[TrackEntry] = Field(default_factory=list, description="List of tracks")
-    cue_file_id: Optional[UUID] = Field(None, description="Associated CUE file ID")
+    tracks: list[TrackEntry] = Field(default_factory=list, description="List of tracks")
+    cue_file_id: UUID | None = Field(None, description="Associated CUE file ID")
     confidence_score: float = Field(default=1.0, ge=0.0, le=1.0, description="Overall confidence score")
-    draft_version: Optional[int] = Field(None, description="Version number for drafts")
+    draft_version: int | None = Field(None, description="Version number for drafts")
     is_draft: bool = Field(default=False, description="Flag for draft status")
-    parent_tracklist_id: Optional[UUID] = Field(None, description="For versioning")
-    default_cue_format: Optional[str] = Field(None, description="User preferred CUE format")
+    parent_tracklist_id: UUID | None = Field(None, description="For versioning")
+    default_cue_format: str | None = Field(None, description="User preferred CUE format")
 
     model_config = {"json_encoders": {UUID: str}}
 
@@ -119,7 +126,7 @@ class Tracklist(BaseModel):
 
     @field_validator("tracks")
     @classmethod
-    def validate_tracks_order(cls, v: List[TrackEntry]) -> List[TrackEntry]:
+    def validate_tracks_order(cls, v: list[TrackEntry]) -> list[TrackEntry]:
         """Validate tracks are in sequential order."""
         if not v:
             return v
@@ -144,26 +151,29 @@ class TracklistDB(Base):
 
     __tablename__ = "tracklists"
 
-    id: UUID = Column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid4)  # type: ignore[assignment]
-    audio_file_id: UUID = Column(PostgresUUID(as_uuid=True), nullable=False)  # type: ignore[assignment]
-    source: str = Column(String(50), nullable=False)  # type: ignore[assignment]
-    created_at: datetime = Column(DateTime, default=datetime.utcnow, nullable=False)  # type: ignore[assignment]
-    updated_at: datetime = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)  # type: ignore[assignment]
-    tracks: List[Dict[str, Any]] = Column(JSON, nullable=False, default=list)  # type: ignore[assignment]
-    cue_file_path: Optional[str] = Column(Text, nullable=True)  # type: ignore[assignment]
-    cue_file_id: Optional[UUID] = Column(PostgresUUID(as_uuid=True), nullable=True)  # type: ignore[assignment]
-    confidence_score: float = Column(Float, default=1.0, nullable=False)  # type: ignore[assignment]
-    draft_version: Optional[int] = Column(Integer, nullable=True)  # type: ignore[assignment]
-    is_draft: bool = Column(Boolean, default=False, nullable=False)  # type: ignore[assignment]
-    parent_tracklist_id: Optional[UUID] = Column(PostgresUUID(as_uuid=True), ForeignKey("tracklists.id"), nullable=True)  # type: ignore[assignment]
-    default_cue_format: Optional[str] = Column(String(20), nullable=True)  # type: ignore[assignment]
+    id = Column(POSTGRES_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    audio_file_id = Column(POSTGRES_UUID(as_uuid=True), nullable=False)
+    source = Column(String(50), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    tracks = Column(JSON, nullable=False, default=list)
+    cue_file_path = Column(Text, nullable=True)
+    cue_file_id = Column(POSTGRES_UUID(as_uuid=True), nullable=True)
+    confidence_score = Column(Float, default=1.0, nullable=False)
+    draft_version = Column(Integer, nullable=True)
+    is_draft = Column(Boolean, default=False, nullable=False)
+    parent_tracklist_id = Column(POSTGRES_UUID(as_uuid=True), ForeignKey("tracklists.id"), nullable=True)
+    default_cue_format = Column(String(20), nullable=True)
 
     # Relationships
     # Note: Recording model is in a different service, so relationship is commented out
     # recording = relationship("Recording", backref="tracklists")
     versions = relationship("TracklistVersion", back_populates="tracklist", cascade="all, delete-orphan")
     sync_configuration = relationship(
-        "SyncConfiguration", back_populates="tracklist", uselist=False, cascade="all, delete-orphan"
+        "SyncConfiguration",
+        back_populates="tracklist",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
     sync_events = relationship("SyncEvent", back_populates="tracklist", cascade="all, delete-orphan")
 
@@ -174,7 +184,7 @@ class TracklistDB(Base):
         tracks_list = [TrackEntry.from_dict(t) for t in tracks_data]
 
         return Tracklist(
-            id=self.id,  # These are instance values, not Column objects
+            id=self.id,
             audio_file_id=self.audio_file_id,
             source=self.source,
             created_at=self.created_at,
@@ -234,12 +244,12 @@ class ImportTracklistResponse(BaseModel):
     """Response model for tracklist import."""
 
     success: bool = Field(description="Whether import was successful")
-    tracklist: Optional[Tracklist] = Field(None, description="Imported tracklist")
-    cue_file_path: Optional[str] = Field(None, description="Generated CUE file path")
-    error: Optional[str] = Field(None, description="Error message if failed")
+    tracklist: Tracklist | None = Field(None, description="Imported tracklist")
+    cue_file_path: str | None = Field(None, description="Generated CUE file path")
+    error: str | None = Field(None, description="Error message if failed")
     cached: bool = Field(default=False, description="Whether data was from cache")
-    processing_time_ms: Optional[int] = Field(None, description="Processing time in milliseconds")
-    correlation_id: Optional[str] = Field(None, description="Request correlation ID")
-    message: Optional[str] = Field(None, description="Additional message")
+    processing_time_ms: int | None = Field(None, description="Processing time in milliseconds")
+    correlation_id: str | None = Field(None, description="Request correlation ID")
+    message: str | None = Field(None, description="Additional message")
 
     model_config = {"json_encoders": {UUID: str}}

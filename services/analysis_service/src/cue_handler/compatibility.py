@@ -1,15 +1,15 @@
 """Compatibility checking for CUE format conversions."""
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
 from enum import Enum
+from typing import Any
 
-from .generator import CueFormat
 from .format_mappings import (
     FORMAT_CAPABILITIES,
     get_format_capabilities,
     get_lossy_warnings,
 )
+from .generator import CueFormat
 
 
 class CompatibilityLevel(Enum):
@@ -29,7 +29,7 @@ class CompatibilityIssue:
     feature: str
     severity: CompatibilityLevel
     description: str
-    workaround: Optional[str] = None
+    workaround: str | None = None
 
 
 @dataclass
@@ -39,9 +39,9 @@ class CompatibilityReport:
     source_format: CueFormat
     target_format: CueFormat
     compatibility_level: CompatibilityLevel
-    issues: List[CompatibilityIssue] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    suggestions: List[str] = field(default_factory=list)
+    issues: list[CompatibilityIssue] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
     can_convert: bool = True
     metadata_preservation_estimate: float = 100.0
 
@@ -116,7 +116,10 @@ class CompatibilityChecker:
         self.format_capabilities = FORMAT_CAPABILITIES
 
     def check_compatibility(
-        self, source_format: CueFormat, target_format: CueFormat, cue_sheet: Optional[Any] = None
+        self,
+        source_format: CueFormat,
+        target_format: CueFormat,
+        cue_sheet: Any | None = None,
     ) -> CompatibilityReport:
         """Check compatibility between two formats.
 
@@ -129,7 +132,9 @@ class CompatibilityChecker:
             CompatibilityReport with detailed compatibility information
         """
         report = CompatibilityReport(
-            source_format=source_format, target_format=target_format, compatibility_level=CompatibilityLevel.FULL
+            source_format=source_format,
+            target_format=target_format,
+            compatibility_level=CompatibilityLevel.FULL,
         )
 
         # Get format capabilities
@@ -168,9 +173,9 @@ class CompatibilityChecker:
 
     def _check_track_limit(
         self,
-        source_caps: Dict[str, Any],
-        target_caps: Dict[str, Any],
-        cue_sheet: Optional[Any],
+        source_caps: dict[str, Any],
+        target_caps: dict[str, Any],
+        cue_sheet: Any | None,
         report: CompatibilityReport,
     ) -> None:
         """Check track count compatibility."""
@@ -204,9 +209,9 @@ class CompatibilityChecker:
 
     def _check_file_support(
         self,
-        source_caps: Dict[str, Any],
-        target_caps: Dict[str, Any],
-        cue_sheet: Optional[Any],
+        source_caps: dict[str, Any],
+        target_caps: dict[str, Any],
+        cue_sheet: Any | None,
         report: CompatibilityReport,
     ) -> None:
         """Check multi-file support compatibility."""
@@ -233,7 +238,10 @@ class CompatibilityChecker:
                 report.add_warning("Target format doesn't support multiple FILE references")
 
     def _check_command_support(
-        self, source_caps: Dict[str, Any], target_caps: Dict[str, Any], report: CompatibilityReport
+        self,
+        source_caps: dict[str, Any],
+        target_caps: dict[str, Any],
+        report: CompatibilityReport,
     ) -> None:
         """Check command support compatibility."""
         # Check PREGAP/POSTGAP
@@ -275,7 +283,10 @@ class CompatibilityChecker:
             )
 
     def _check_metadata_support(
-        self, source_caps: Dict[str, Any], target_caps: Dict[str, Any], report: CompatibilityReport
+        self,
+        source_caps: dict[str, Any],
+        target_caps: dict[str, Any],
+        report: CompatibilityReport,
     ) -> None:
         """Check metadata support compatibility."""
         source_rem = source_caps.get("rem_fields", "none")
@@ -305,7 +316,10 @@ class CompatibilityChecker:
             report.add_warning("Color coding information will be lost")
 
     def _check_encoding_support(
-        self, source_caps: Dict[str, Any], target_caps: Dict[str, Any], report: CompatibilityReport
+        self,
+        source_caps: dict[str, Any],
+        target_caps: dict[str, Any],
+        report: CompatibilityReport,
     ) -> None:
         """Check character encoding compatibility."""
         source_limit = source_caps.get("char_limit", 80)
@@ -315,7 +329,10 @@ class CompatibilityChecker:
             report.add_warning(f"Long text fields may be truncated (limit: {target_limit} chars)")
 
     def _add_conversion_suggestions(
-        self, source_format: CueFormat, target_format: CueFormat, report: CompatibilityReport
+        self,
+        source_format: CueFormat,
+        target_format: CueFormat,
+        report: CompatibilityReport,
     ) -> None:
         """Add format-specific conversion suggestions."""
         # Standard to DJ software
@@ -356,7 +373,9 @@ class CompatibilityChecker:
             report.add_suggestion("Kodi format preserves most metadata - good for archival purposes")
             report.add_suggestion("NFO companion files can be generated for additional metadata")
 
-    def get_compatibility_matrix(self) -> Dict[tuple[CueFormat, CueFormat], CompatibilityLevel]:
+    def get_compatibility_matrix(
+        self,
+    ) -> dict[tuple[CueFormat, CueFormat], CompatibilityLevel]:
         """Get a matrix of compatibility levels between all format pairs.
 
         Returns:
@@ -376,7 +395,7 @@ class CompatibilityChecker:
 
         return matrix
 
-    def recommend_conversion_path(self, source_format: CueFormat, target_format: CueFormat) -> List[CueFormat]:
+    def recommend_conversion_path(self, source_format: CueFormat, target_format: CueFormat) -> list[CueFormat]:
         """Recommend an optimal conversion path if direct conversion is lossy.
 
         Args:
@@ -389,7 +408,10 @@ class CompatibilityChecker:
         # Direct conversion is usually best
         direct_compat = self.check_compatibility(source_format, target_format)
 
-        if direct_compat.compatibility_level in [CompatibilityLevel.FULL, CompatibilityLevel.HIGH]:
+        if direct_compat.compatibility_level in [
+            CompatibilityLevel.FULL,
+            CompatibilityLevel.HIGH,
+        ]:
             return [source_format, target_format]
 
         # Check if going through STANDARD format is better
@@ -408,14 +430,17 @@ class CompatibilityChecker:
         if source_format in dj_formats and target_format in dj_formats:
             # Try intermediate DJ formats
             for intermediate in dj_formats:
-                if intermediate != source_format and intermediate != target_format:
+                if intermediate not in (source_format, target_format):
                     path1 = self.check_compatibility(source_format, intermediate)
                     path2 = self.check_compatibility(intermediate, target_format)
 
                     if path1.compatibility_level in [
                         CompatibilityLevel.FULL,
                         CompatibilityLevel.HIGH,
-                    ] and path2.compatibility_level in [CompatibilityLevel.FULL, CompatibilityLevel.HIGH]:
+                    ] and path2.compatibility_level in [
+                        CompatibilityLevel.FULL,
+                        CompatibilityLevel.HIGH,
+                    ]:
                         return [source_format, intermediate, target_format]
 
         # Default to direct conversion

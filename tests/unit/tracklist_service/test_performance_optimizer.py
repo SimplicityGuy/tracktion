@@ -26,15 +26,20 @@ def mock_batch_queue():
 @pytest.fixture
 def mock_progress_tracker():
     """Create mock progress tracker."""
-    tracker = Mock()
-    return tracker
+    return Mock()
 
 
 @pytest.fixture
 def mock_retry_manager():
     """Create mock retry manager."""
     manager = Mock()
-    manager.get_failure_stats = Mock(return_value={"total_attempts": 1000, "total_failures": 50, "total_retries": 100})
+    manager.get_failure_stats = Mock(
+        return_value={
+            "total_attempts": 1000,
+            "total_failures": 50,
+            "total_retries": 100,
+        }
+    )
     manager.default_policy = Mock()
     manager.default_policy.initial_delay = 2.0
     manager.default_policy.max_delay = 60.0
@@ -53,9 +58,14 @@ def mock_redis():
 @pytest.fixture
 def optimizer(mock_batch_queue, mock_progress_tracker, mock_retry_manager, mock_redis):
     """Create PerformanceOptimizer instance with mocks."""
-    with patch("services.tracklist_service.src.optimization.performance_optimizer.Redis", return_value=mock_redis):
+    with patch(
+        "services.tracklist_service.src.optimization.performance_optimizer.Redis",
+        return_value=mock_redis,
+    ):
         opt = PerformanceOptimizer(
-            batch_queue=mock_batch_queue, progress_tracker=mock_progress_tracker, retry_manager=mock_retry_manager
+            batch_queue=mock_batch_queue,
+            progress_tracker=mock_progress_tracker,
+            retry_manager=mock_retry_manager,
         )
         yield opt
 
@@ -127,7 +137,11 @@ class TestOptimizationConfig:
 
     def test_custom_values(self):
         """Test custom configuration."""
-        config = OptimizationConfig(strategy=OptimizationStrategy.AGGRESSIVE, target_throughput=200.0, max_workers=100)
+        config = OptimizationConfig(
+            strategy=OptimizationStrategy.AGGRESSIVE,
+            target_throughput=200.0,
+            max_workers=100,
+        )
 
         assert config.strategy == OptimizationStrategy.AGGRESSIVE
         assert config.target_throughput == 200.0
@@ -139,9 +153,14 @@ class TestPerformanceOptimizer:
 
     def test_initialization(self, mock_batch_queue, mock_progress_tracker, mock_retry_manager, mock_redis):
         """Test optimizer initialization."""
-        with patch("services.tracklist_service.src.optimization.performance_optimizer.Redis", return_value=mock_redis):
+        with patch(
+            "services.tracklist_service.src.optimization.performance_optimizer.Redis",
+            return_value=mock_redis,
+        ):
             opt = PerformanceOptimizer(
-                batch_queue=mock_batch_queue, progress_tracker=mock_progress_tracker, retry_manager=mock_retry_manager
+                batch_queue=mock_batch_queue,
+                progress_tracker=mock_progress_tracker,
+                retry_manager=mock_retry_manager,
             )
 
         assert opt.batch_queue == mock_batch_queue
@@ -156,11 +175,10 @@ class TestPerformanceOptimizer:
         # Add some latency samples
         optimizer.latency_samples.extend([10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
 
-        with patch("psutil.cpu_percent", return_value=50.0):
-            with patch("psutil.virtual_memory") as mock_memory:
-                mock_memory.return_value = Mock(percent=60.0)
+        with patch("psutil.cpu_percent", return_value=50.0), patch("psutil.virtual_memory") as mock_memory:
+            mock_memory.return_value = Mock(percent=60.0)
 
-                metrics = await optimizer.collect_metrics()
+            metrics = await optimizer.collect_metrics()
 
         assert isinstance(metrics, PerformanceMetrics)
         assert metrics.cpu_usage == 50.0

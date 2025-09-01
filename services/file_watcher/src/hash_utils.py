@@ -21,6 +21,7 @@ class HashStrategy:
 
         Returns:
             HashType.XXH128 for fast duplicate detection
+
         """
         return HashType.XXH128
 
@@ -32,6 +33,7 @@ class HashStrategy:
 
         Returns:
             HashType.SHA256 for cryptographic integrity
+
         """
         return HashType.SHA256
 
@@ -43,6 +45,7 @@ class HashStrategy:
 
         Returns:
             HashType.XXH128 for fast database lookups
+
         """
         return HashType.XXH128
 
@@ -54,6 +57,7 @@ class HashStrategy:
 
         Returns:
             List containing both hash types
+
         """
         return [HashType.SHA256, HashType.XXH128]
 
@@ -68,10 +72,10 @@ class HashStrategy:
 
         Returns:
             The selected hash value, or None if not available
+
         """
         if purpose == HashType.SHA256:
             return sha256_hash
-        elif purpose == HashType.XXH128:
+        if purpose == HashType.XXH128:
             return xxh128_hash
-        else:
-            return None
+        return None

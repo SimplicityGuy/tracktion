@@ -1,8 +1,8 @@
 """Message schemas for synchronization events."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -47,18 +47,18 @@ class BaseSyncMessage(BaseModel):
 
     message_id: UUID = Field(description="Unique message identifier")
     event_type: SyncEventType = Field(description="Type of sync event")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    correlation_id: Optional[UUID] = Field(None, description="Correlation ID for tracking")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    correlation_id: UUID | None = Field(None, description="Correlation ID for tracking")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
     def to_json(self) -> str:
         """Convert message to JSON string."""
-        return self.model_dump_json()
+        return self.model_dump_json()  # type: ignore[no-any-return]  # Pydantic returns str but typed as Any
 
     @classmethod
     def from_json(cls, json_str: str) -> "BaseSyncMessage":
         """Create message from JSON string."""
-        return cls.model_validate_json(json_str)
+        return cls.model_validate_json(json_str)  # type: ignore[no-any-return]  # Pydantic returns model but typed as Any
 
 
 class SyncEventMessage(BaseSyncMessage):
@@ -93,7 +93,7 @@ class ConflictDetectedMessage(BaseSyncMessage):
     event_type: SyncEventType = Field(SyncEventType.CONFLICT_DETECTED, frozen=True)
     tracklist_id: UUID = Field(description="ID of the tracklist")
     source: str = Field(description="Source of the conflict")
-    conflicts: List[Dict[str, Any]] = Field(description="List of detected conflicts")
+    conflicts: list[dict[str, Any]] = Field(description="List of detected conflicts")
     conflict_count: int = Field(description="Number of conflicts")
     auto_resolvable: bool = Field(description="Whether conflicts can be auto-resolved")
 
@@ -117,7 +117,7 @@ class CueRegenerationTriggeredMessage(BaseSyncMessage):
     tracklist_id: UUID = Field(description="ID of the tracklist")
     trigger: str = Field(description="What triggered regeneration")
     priority: str = Field(description="Regeneration priority")
-    cue_formats: List[str] = Field(description="CUE formats to regenerate")
+    cue_formats: list[str] = Field(description="CUE formats to regenerate")
     job_count: int = Field(description="Number of regeneration jobs")
     actor: str = Field(default="system", description="Who triggered regeneration")
 
@@ -126,17 +126,17 @@ class BatchSyncMessage(BaseSyncMessage):
     """Message for batch synchronization operations."""
 
     event_type: SyncEventType = Field(description="Batch event type")
-    tracklist_ids: List[UUID] = Field(description="List of tracklist IDs")
+    tracklist_ids: list[UUID] = Field(description="List of tracklist IDs")
     tracklist_count: int = Field(description="Number of tracklists")
     source: str = Field(description="Sync source")
     operation: str = Field(description="Batch operation type")
     actor: str = Field(default="system", description="Who triggered the batch")
-    progress: Optional[int] = Field(None, description="Progress percentage (0-100)")
+    progress: int | None = Field(None, description="Progress percentage (0-100)")
 
     class Config:
         """Pydantic configuration."""
 
-        json_encoders = {
+        json_encoders: ClassVar[dict[type, Any]] = {
             UUID: str,
             datetime: lambda v: v.isoformat(),
         }
@@ -148,8 +148,8 @@ class SyncStatusUpdateMessage(BaseSyncMessage):
     event_type: SyncEventType = Field(SyncEventType.SYNC_STATUS_UPDATE, frozen=True)
     tracklist_id: UUID = Field(description="ID of the tracklist")
     status: str = Field(description="Current status")
-    progress: Optional[int] = Field(None, description="Progress percentage (0-100)")
-    message: Optional[str] = Field(None, description="Status message")
+    progress: int | None = Field(None, description="Progress percentage (0-100)")
+    message: str | None = Field(None, description="Status message")
 
 
 class SyncConfigurationMessage(BaseSyncMessage):
@@ -157,7 +157,7 @@ class SyncConfigurationMessage(BaseSyncMessage):
 
     event_type: SyncEventType = Field(SyncEventType.SYNC_CONFIG_UPDATED, frozen=True)
     tracklist_id: UUID = Field(description="ID of the tracklist")
-    config_changes: Dict[str, Any] = Field(description="Configuration changes")
+    config_changes: dict[str, Any] = Field(description="Configuration changes")
     actor: str = Field(default="user", description="Who changed the configuration")
 
 
@@ -170,14 +170,14 @@ class SyncTriggerRequest(BaseModel):
     force: bool = Field(default=False, description="Force sync even if recently synced")
     priority: int = Field(default=5, description="Priority (1-10)")
     actor: str = Field(default="system", description="Who triggered the sync")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 
 class ConflictResolutionRequest(BaseModel):
     """Request to resolve conflicts."""
 
     tracklist_id: UUID = Field(description="ID of the tracklist")
-    conflict_resolutions: List[Dict[str, Any]] = Field(description="Conflict resolutions")
+    conflict_resolutions: list[dict[str, Any]] = Field(description="Conflict resolutions")
     auto_resolve: bool = Field(default=False, description="Auto-resolve if possible")
     actor: str = Field(default="user", description="Who is resolving conflicts")
 
@@ -189,13 +189,13 @@ class VersionRollbackRequest(BaseModel):
     version_id: UUID = Field(description="ID of version to rollback to")
     create_backup: bool = Field(default=True, description="Create backup before rollback")
     actor: str = Field(default="user", description="Who requested rollback")
-    reason: Optional[str] = Field(None, description="Reason for rollback")
+    reason: str | None = Field(None, description="Reason for rollback")
 
 
 class BatchSyncRequest(BaseModel):
     """Request for batch synchronization."""
 
-    tracklist_ids: List[UUID] = Field(description="List of tracklist IDs")
+    tracklist_ids: list[UUID] = Field(description="List of tracklist IDs")
     source: str = Field(default="all", description="Sync source")
     parallel: bool = Field(default=True, description="Process in parallel")
     max_parallel: int = Field(default=5, description="Maximum parallel operations")

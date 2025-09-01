@@ -133,7 +133,9 @@ class RabbitMQManager:
             message_body = json.dumps(message).encode()
             amqp_message = Message(
                 body=message_body,
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT if persistent else aio_pika.DeliveryMode.NOT_PERSISTENT,
+                delivery_mode=(
+                    aio_pika.DeliveryMode.PERSISTENT if persistent else aio_pika.DeliveryMode.NOT_PERSISTENT
+                ),
                 content_type="application/json",
             )
 

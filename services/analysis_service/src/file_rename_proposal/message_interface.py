@@ -1,18 +1,20 @@
 """Message-based interface for file rename proposal service."""
 
 import logging
-import os
-from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Optional, cast
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, cast
 from uuid import UUID, uuid4
 
-from .batch_processor import BatchProcessor
-from .proposal_generator import ProposalGenerator
-from .conflict_detector import ConflictDetector
-from .confidence_scorer import ConfidenceScorer
+from services.analysis_service.src.file_rename_executor.executor import FileRenameExecutor
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
 from shared.core_types.src.repositories import RecordingRepository
-from ..file_rename_executor.executor import FileRenameExecutor
+
+from .batch_processor import BatchProcessor
+from .confidence_scorer import ConfidenceScorer
+from .conflict_detector import ConflictDetector
+from .proposal_generator import ProposalGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +58,8 @@ class RenameProposalMessageInterface:
         confidence_scorer: ConfidenceScorer,
         proposal_repo: RenameProposalRepository,
         recording_repo: RecordingRepository,
-        batch_processor: Optional[BatchProcessor] = None,
-        rename_executor: Optional[FileRenameExecutor] = None,
+        batch_processor: BatchProcessor | None = None,
+        rename_executor: FileRenameExecutor | None = None,
     ) -> None:
         """Initialize message interface.
 
@@ -90,7 +92,7 @@ class RenameProposalMessageInterface:
 
         self.logger = logger
 
-    def process_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
+    def process_message(self, message: dict[str, Any]) -> dict[str, Any]:
         """Process an incoming message and return response.
 
         Args:
@@ -108,11 +110,15 @@ class RenameProposalMessageInterface:
 
             handler = self._get_message_handler(message_type)
             if not handler:
-                return self._error_response(request_id, f"Unknown message type: {message_type}", "UNKNOWN_MESSAGE_TYPE")
+                return self._error_response(
+                    request_id,
+                    f"Unknown message type: {message_type}",
+                    "UNKNOWN_MESSAGE_TYPE",
+                )
 
-            response = cast(Dict[str, Any], handler(message, request_id))
+            response = cast("dict[str, Any]", handler(message, request_id))
             response["request_id"] = request_id
-            response["timestamp"] = datetime.now(timezone.utc).isoformat()
+            response["timestamp"] = datetime.now(UTC).isoformat()
 
             return response
 
@@ -120,7 +126,7 @@ class RenameProposalMessageInterface:
             logger.error(f"Message processing error: {e}")
             return self._error_response(message.get("request_id", str(uuid4())), str(e), "PROCESSING_ERROR")
 
-    def _get_message_handler(self, message_type: str) -> Optional[Callable]:
+    def _get_message_handler(self, message_type: str) -> Callable | None:
         """Get handler function for message type.
 
         Args:
@@ -144,7 +150,7 @@ class RenameProposalMessageInterface:
 
         return handlers.get(message_type)
 
-    def _handle_generate_proposal(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+    def _handle_generate_proposal(self, message: dict[str, Any], request_id: str) -> dict[str, Any]:
         """Handle proposal generation request.
 
         Args:
@@ -166,13 +172,16 @@ class RenameProposalMessageInterface:
             # Get recording
             recording = self.recording_repo.get_by_id(recording_id)
             if not recording:
-                return self._error_response(request_id, f"Recording {recording_id} not found", "RECORDING_NOT_FOUND")
+                return self._error_response(
+                    request_id,
+                    f"Recording {recording_id} not found",
+                    "RECORDING_NOT_FOUND",
+                )
 
             # Generate proposal - need to get metadata separately
             # For now, use empty metadata and derive file extension
-            file_extension = (
-                os.path.splitext(recording.file_name)[1][1:].lower() if "." in recording.file_name else "mp3"
-            )
+            path_obj = Path(recording.file_name)
+            file_extension = path_obj.suffix[1:].lower() if path_obj.suffix else "mp3"
             proposal = self.proposal_generator.generate_proposal(
                 recording_id=recording_id,
                 original_path=recording.file_path,
@@ -203,14 +212,14 @@ class RenameProposalMessageInterface:
             # Create proposal in database
             created_proposal = self.proposal_repo.create(
                 recording_id=recording_id,
-                original_path=os.path.dirname(recording.file_path),
+                original_path=str(Path(recording.file_path).parent),
                 original_filename=recording.file_name,
                 proposed_filename=proposal.proposed_filename,
                 full_proposed_path=proposal.full_proposed_path,
                 confidence_score=confidence,
                 status="pending",
-                conflicts=conflicts_result["conflicts"] if conflicts_result["conflicts"] else None,
-                warnings=conflicts_result["warnings"] if conflicts_result["warnings"] else None,
+                conflicts=(conflicts_result["conflicts"] if conflicts_result["conflicts"] else None),
+                warnings=(conflicts_result["warnings"] if conflicts_result["warnings"] else None),
                 metadata_source=proposal.metadata_source,
                 pattern_used=proposal.pattern_used,
             )
@@ -223,14 +232,14 @@ class RenameProposalMessageInterface:
                     "original_filename": created_proposal.original_filename,
                     "proposed_filename": created_proposal.proposed_filename,
                     "full_proposed_path": created_proposal.full_proposed_path,
-                    "confidence_score": float(created_proposal.confidence_score)
-                    if created_proposal.confidence_score
-                    else None,
+                    "confidence_score": (
+                        float(created_proposal.confidence_score) if created_proposal.confidence_score else None
+                    ),
                     "status": created_proposal.status,
                     "conflicts": created_proposal.conflicts or [],
                     "warnings": created_proposal.warnings or [],
                     "confidence_components": components,
-                    "created_at": created_proposal.created_at.isoformat() if created_proposal.created_at else None,
+                    "created_at": (created_proposal.created_at.isoformat() if created_proposal.created_at else None),
                 },
             }
 
@@ -238,7 +247,7 @@ class RenameProposalMessageInterface:
             logger.error(f"Proposal generation error: {e}")
             return self._error_response(request_id, str(e), "GENERATION_ERROR")
 
-    def _handle_batch_process(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+    def _handle_batch_process(self, message: dict[str, Any], request_id: str) -> dict[str, Any]:
         """Handle batch processing request.
 
         Args:
@@ -302,7 +311,7 @@ class RenameProposalMessageInterface:
             logger.error(f"Batch processing error: {e}")
             return self._error_response(request_id, str(e), "BATCH_ERROR")
 
-    def _handle_get_proposal(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+    def _handle_get_proposal(self, message: dict[str, Any], request_id: str) -> dict[str, Any]:
         """Handle get proposal request.
 
         Args:
@@ -323,7 +332,11 @@ class RenameProposalMessageInterface:
 
                 proposal = self.proposal_repo.get(proposal_id)
                 if not proposal:
-                    return self._error_response(request_id, f"Proposal {proposal_id} not found", "PROPOSAL_NOT_FOUND")
+                    return self._error_response(
+                        request_id,
+                        f"Proposal {proposal_id} not found",
+                        "PROPOSAL_NOT_FOUND",
+                    )
 
                 proposals = [proposal]
 
@@ -336,36 +349,43 @@ class RenameProposalMessageInterface:
                 proposals = self.proposal_repo.get_by_recording(recording_id, status_filter)
 
             else:
-                return self._error_response(request_id, "Must provide proposal_id or recording_id", "MISSING_PARAMETER")
-
-            # Format proposals
-            proposal_data = []
-            for proposal in proposals:
-                proposal_data.append(
-                    {
-                        "id": str(proposal.id),
-                        "recording_id": str(proposal.recording_id),
-                        "original_filename": proposal.original_filename,
-                        "proposed_filename": proposal.proposed_filename,
-                        "full_proposed_path": proposal.full_proposed_path,
-                        "confidence_score": float(proposal.confidence_score) if proposal.confidence_score else None,
-                        "status": proposal.status,
-                        "conflicts": proposal.conflicts or [],
-                        "warnings": proposal.warnings or [],
-                        "metadata_source": proposal.metadata_source,
-                        "pattern_used": proposal.pattern_used,
-                        "created_at": proposal.created_at.isoformat() if proposal.created_at else None,
-                        "updated_at": proposal.updated_at.isoformat() if proposal.updated_at else None,
-                    }
+                return self._error_response(
+                    request_id,
+                    "Must provide proposal_id or recording_id",
+                    "MISSING_PARAMETER",
                 )
 
-            return {"type": MessageTypes.PROPOSAL_RETRIEVED, "proposals": proposal_data, "count": len(proposal_data)}
+            # Format proposals
+            proposal_data = [
+                {
+                    "id": str(proposal.id),
+                    "recording_id": str(proposal.recording_id),
+                    "original_filename": proposal.original_filename,
+                    "proposed_filename": proposal.proposed_filename,
+                    "full_proposed_path": proposal.full_proposed_path,
+                    "confidence_score": (float(proposal.confidence_score) if proposal.confidence_score else None),
+                    "status": proposal.status,
+                    "conflicts": proposal.conflicts or [],
+                    "warnings": proposal.warnings or [],
+                    "metadata_source": proposal.metadata_source,
+                    "pattern_used": proposal.pattern_used,
+                    "created_at": (proposal.created_at.isoformat() if proposal.created_at else None),
+                    "updated_at": (proposal.updated_at.isoformat() if proposal.updated_at else None),
+                }
+                for proposal in proposals
+            ]
+
+            return {
+                "type": MessageTypes.PROPOSAL_RETRIEVED,
+                "proposals": proposal_data,
+                "count": len(proposal_data),
+            }
 
         except Exception as e:
             logger.error(f"Get proposal error: {e}")
             return self._error_response(request_id, str(e), "RETRIEVAL_ERROR")
 
-    def _handle_update_proposal(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+    def _handle_update_proposal(self, message: dict[str, Any], request_id: str) -> dict[str, Any]:
         """Handle update proposal request.
 
         Args:
@@ -391,7 +411,11 @@ class RenameProposalMessageInterface:
             # Update proposal
             updated_proposal = self.proposal_repo.update(proposal_id, **updates)
             if not updated_proposal:
-                return self._error_response(request_id, f"Proposal {proposal_id} not found", "PROPOSAL_NOT_FOUND")
+                return self._error_response(
+                    request_id,
+                    f"Proposal {proposal_id} not found",
+                    "PROPOSAL_NOT_FOUND",
+                )
 
             return {
                 "type": MessageTypes.PROPOSAL_UPDATED,
@@ -399,10 +423,10 @@ class RenameProposalMessageInterface:
                     "id": str(updated_proposal.id),
                     "recording_id": str(updated_proposal.recording_id),
                     "status": updated_proposal.status,
-                    "confidence_score": float(updated_proposal.confidence_score)
-                    if updated_proposal.confidence_score
-                    else None,
-                    "updated_at": updated_proposal.updated_at.isoformat() if updated_proposal.updated_at else None,
+                    "confidence_score": (
+                        float(updated_proposal.confidence_score) if updated_proposal.confidence_score else None
+                    ),
+                    "updated_at": (updated_proposal.updated_at.isoformat() if updated_proposal.updated_at else None),
                 },
             }
 
@@ -410,7 +434,7 @@ class RenameProposalMessageInterface:
             logger.error(f"Update proposal error: {e}")
             return self._error_response(request_id, str(e), "UPDATE_ERROR")
 
-    def _handle_get_batch_status(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+    def _handle_get_batch_status(self, message: dict[str, Any], request_id: str) -> dict[str, Any]:
         """Handle get batch status request.
 
         Args:
@@ -431,16 +455,19 @@ class RenameProposalMessageInterface:
 
                 return {"type": MessageTypes.BATCH_STATUS, "job": status}
 
-            else:
-                # Get all active jobs
-                jobs = self.batch_processor.list_active_jobs()
-                return {"type": MessageTypes.BATCH_STATUS, "jobs": jobs, "count": len(jobs)}
+            # Get all active jobs
+            jobs = self.batch_processor.list_active_jobs()
+            return {
+                "type": MessageTypes.BATCH_STATUS,
+                "jobs": jobs,
+                "count": len(jobs),
+            }
 
         except Exception as e:
             logger.error(f"Get batch status error: {e}")
             return self._error_response(request_id, str(e), "STATUS_ERROR")
 
-    def _handle_cancel_batch(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+    def _handle_cancel_batch(self, message: dict[str, Any], request_id: str) -> dict[str, Any]:
         """Handle cancel batch request.
 
         Args:
@@ -459,13 +486,17 @@ class RenameProposalMessageInterface:
             if not success:
                 return self._error_response(request_id, f"Could not cancel job {job_id}", "CANCEL_FAILED")
 
-            return {"type": MessageTypes.BATCH_CANCELLED, "job_id": job_id, "cancelled": True}
+            return {
+                "type": MessageTypes.BATCH_CANCELLED,
+                "job_id": job_id,
+                "cancelled": True,
+            }
 
         except Exception as e:
             logger.error(f"Cancel batch error: {e}")
             return self._error_response(request_id, str(e), "CANCEL_ERROR")
 
-    def _handle_get_statistics(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+    def _handle_get_statistics(self, message: dict[str, Any], request_id: str) -> dict[str, Any]:
         """Handle get statistics request.
 
         Args:
@@ -484,7 +515,7 @@ class RenameProposalMessageInterface:
             logger.error(f"Get statistics error: {e}")
             return self._error_response(request_id, str(e), "STATISTICS_ERROR")
 
-    def _handle_cleanup_old_proposals(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+    def _handle_cleanup_old_proposals(self, message: dict[str, Any], request_id: str) -> dict[str, Any]:
         """Handle cleanup old proposals request.
 
         Args:
@@ -499,13 +530,17 @@ class RenameProposalMessageInterface:
 
             cleaned_count = self.proposal_repo.cleanup_old_proposals(days)
 
-            return {"type": MessageTypes.CLEANUP_COMPLETED, "cleaned_count": cleaned_count, "days": days}
+            return {
+                "type": MessageTypes.CLEANUP_COMPLETED,
+                "cleaned_count": cleaned_count,
+                "days": days,
+            }
 
         except Exception as e:
             logger.error(f"Cleanup error: {e}")
             return self._error_response(request_id, str(e), "CLEANUP_ERROR")
 
-    def _handle_execute_rename(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+    def _handle_execute_rename(self, message: dict[str, Any], request_id: str) -> dict[str, Any]:
         """Handle execute rename request.
 
         Args:
@@ -517,7 +552,11 @@ class RenameProposalMessageInterface:
         """
         try:
             if not self.rename_executor:
-                return self._error_response(request_id, "Rename executor not configured", "EXECUTOR_NOT_CONFIGURED")
+                return self._error_response(
+                    request_id,
+                    "Rename executor not configured",
+                    "EXECUTOR_NOT_CONFIGURED",
+                )
 
             proposal_id = message.get("proposal_id")
             if not proposal_id:
@@ -537,14 +576,13 @@ class RenameProposalMessageInterface:
                     "proposal_id": str(proposal_uuid),
                     "success": True,
                 }
-            else:
-                return self._error_response(request_id, error_message or "Rename failed", "RENAME_FAILED")
+            return self._error_response(request_id, error_message or "Rename failed", "RENAME_FAILED")
 
         except Exception as e:
             logger.error(f"Execute rename error: {e}")
             return self._error_response(request_id, str(e), "EXECUTION_ERROR")
 
-    def _handle_rollback_rename(self, message: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+    def _handle_rollback_rename(self, message: dict[str, Any], request_id: str) -> dict[str, Any]:
         """Handle rollback rename request.
 
         Args:
@@ -556,7 +594,11 @@ class RenameProposalMessageInterface:
         """
         try:
             if not self.rename_executor:
-                return self._error_response(request_id, "Rename executor not configured", "EXECUTOR_NOT_CONFIGURED")
+                return self._error_response(
+                    request_id,
+                    "Rename executor not configured",
+                    "EXECUTOR_NOT_CONFIGURED",
+                )
 
             proposal_id = message.get("proposal_id")
             if not proposal_id:
@@ -576,14 +618,13 @@ class RenameProposalMessageInterface:
                     "proposal_id": str(proposal_uuid),
                     "success": True,
                 }
-            else:
-                return self._error_response(request_id, error_message or "Rollback failed", "ROLLBACK_FAILED")
+            return self._error_response(request_id, error_message or "Rollback failed", "ROLLBACK_FAILED")
 
         except Exception as e:
             logger.error(f"Rollback rename error: {e}")
             return self._error_response(request_id, str(e), "ROLLBACK_ERROR")
 
-    def _error_response(self, request_id: str, message: str, error_code: str) -> Dict[str, Any]:
+    def _error_response(self, request_id: str, message: str, error_code: str) -> dict[str, Any]:
         """Create error response message.
 
         Args:
@@ -598,5 +639,5 @@ class RenameProposalMessageInterface:
             "type": MessageTypes.ERROR,
             "request_id": request_id,
             "error": {"code": error_code, "message": message},
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }

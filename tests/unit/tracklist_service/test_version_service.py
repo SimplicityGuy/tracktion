@@ -1,6 +1,6 @@
 """Unit tests for version management service."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import uuid4
 
@@ -15,8 +15,7 @@ from services.tracklist_service.src.services.version_service import VersionServi
 @pytest.fixture
 def mock_session():
     """Create a mock database session."""
-    session = AsyncMock(spec=AsyncSession)
-    return session
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
@@ -65,7 +64,10 @@ class TestVersionService:
 
         # Create version
         await version_service.create_version(
-            tracklist_id=tracklist_id, change_type="manual_edit", change_summary="Initial version", created_by="user123"
+            tracklist_id=tracklist_id,
+            change_type="manual_edit",
+            change_summary="Initial version",
+            created_by="user123",
         )
 
         # Verify session calls
@@ -194,9 +196,11 @@ class TestVersionService:
         """Test rollback when version doesn't exist."""
         tracklist_id = uuid4()
 
-        with patch.object(version_service, "get_version", return_value=None):
-            with pytest.raises(ValueError, match="Version .* not found"):
-                await version_service.rollback_to_version(tracklist_id, 99)
+        with (
+            patch.object(version_service, "get_version", return_value=None),
+            pytest.raises(ValueError, match="Version .* not found"),
+        ):
+            await version_service.rollback_to_version(tracklist_id, 99)
 
     @pytest.mark.asyncio
     async def test_get_version_diff(self, version_service):
@@ -241,7 +245,7 @@ class TestVersionService:
     async def test_prune_old_versions(self, version_service, mock_session):
         """Test pruning old versions based on retention policy."""
         tracklist_id = uuid4()
-        cutoff = datetime.utcnow() - timedelta(days=100)
+        cutoff = datetime.now(UTC) - timedelta(days=100)
 
         # Create mock old versions to delete
         old_versions = [
@@ -278,5 +282,7 @@ class TestVersionService:
 
         with pytest.raises(ValueError, match="Tracklist .* not found"):
             await version_service.create_version(
-                tracklist_id=tracklist_id, change_type="manual_edit", change_summary="Test"
+                tracklist_id=tracklist_id,
+                change_type="manual_edit",
+                change_summary="Test",
             )

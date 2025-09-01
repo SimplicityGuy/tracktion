@@ -5,7 +5,7 @@ import logging
 import time
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, cast
 from uuid import uuid4
 
 import redis
@@ -33,21 +33,21 @@ class FileProgress:
     correlation_id: str
     status: ProcessingStatus
     queued_at: float
-    started_at: Optional[float] = None
-    completed_at: Optional[float] = None
+    started_at: float | None = None
+    completed_at: float | None = None
     retry_count: int = 0
-    error_message: Optional[str] = None
+    error_message: str | None = None
     progress_percentage: float = 0.0
-    current_step: Optional[str] = None
+    current_step: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for Redis storage."""
         data = asdict(self)
         data["status"] = self.status.value
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "FileProgress":
+    def from_dict(cls, data: dict[str, Any]) -> "FileProgress":
         """Create from dictionary retrieved from Redis."""
         data["status"] = ProcessingStatus(data["status"])
         return cls(**data)
@@ -104,7 +104,7 @@ class ProgressTracker:
         self,
         file_path: str,
         recording_id: str,
-        correlation_id: Optional[str] = None,
+        correlation_id: str | None = None,
     ) -> str:
         """Track that a file has been queued for processing.
 
@@ -143,10 +143,13 @@ class ProgressTracker:
         queue_depth = self.redis_client.scard(self.queue_key)
         self._update_stat("current_queue_depth", queue_depth)
 
-        logger.debug(f"Tracked file queued: {file_path}", extra={"correlation_id": correlation_id})
+        logger.debug(
+            f"Tracked file queued: {file_path}",
+            extra={"correlation_id": correlation_id},
+        )
         return correlation_id
 
-    def track_file_started(self, correlation_id: str, current_step: Optional[str] = None) -> None:
+    def track_file_started(self, correlation_id: str, current_step: str | None = None) -> None:
         """Track that file processing has started.
 
         Args:
@@ -160,7 +163,7 @@ class ProgressTracker:
             logger.warning(f"No progress data found for correlation_id: {correlation_id}")
             return
 
-        progress = FileProgress.from_dict(json.loads(progress_data))
+        progress = FileProgress.from_dict(json.loads(str(progress_data)))
         progress.status = ProcessingStatus.IN_PROGRESS
         progress.started_at = time.time()
         progress.current_step = current_step
@@ -181,13 +184,16 @@ class ProgressTracker:
         active_count = self.redis_client.scard(self.active_key)
         self._update_stat("current_active", active_count)
 
-        logger.debug(f"Tracked file started: {progress.file_path}", extra={"correlation_id": correlation_id})
+        logger.debug(
+            f"Tracked file started: {progress.file_path}",
+            extra={"correlation_id": correlation_id},
+        )
 
     def update_progress(
         self,
         correlation_id: str,
         progress_percentage: float,
-        current_step: Optional[str] = None,
+        current_step: str | None = None,
     ) -> None:
         """Update progress percentage for a file being processed.
 
@@ -203,7 +209,7 @@ class ProgressTracker:
             logger.warning(f"No progress data found for correlation_id: {correlation_id}")
             return
 
-        progress = FileProgress.from_dict(json.loads(progress_data))
+        progress = FileProgress.from_dict(json.loads(str(progress_data)))
         progress.progress_percentage = min(100.0, max(0.0, progress_percentage))
         if current_step:
             progress.current_step = current_step
@@ -224,7 +230,7 @@ class ProgressTracker:
         self,
         correlation_id: str,
         success: bool = True,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ) -> None:
         """Track that file processing has completed.
 
@@ -240,7 +246,7 @@ class ProgressTracker:
             logger.warning(f"No progress data found for correlation_id: {correlation_id}")
             return
 
-        progress = FileProgress.from_dict(json.loads(progress_data))
+        progress = FileProgress.from_dict(json.loads(str(progress_data)))
         progress.completed_at = time.time()
         progress.progress_percentage = 100.0 if success else progress.progress_percentage
 
@@ -291,7 +297,7 @@ class ProgressTracker:
             logger.warning(f"No progress data found for correlation_id: {correlation_id}")
             return
 
-        progress = FileProgress.from_dict(json.loads(progress_data))
+        progress = FileProgress.from_dict(json.loads(str(progress_data)))
         progress.status = ProcessingStatus.RETRYING
         progress.retry_count += 1
 
@@ -313,7 +319,7 @@ class ProgressTracker:
             extra={"correlation_id": correlation_id},
         )
 
-    def get_progress(self, correlation_id: str) -> Optional[FileProgress]:
+    def get_progress(self, correlation_id: str) -> FileProgress | None:
         """Get progress information for a specific file.
 
         Args:
@@ -328,9 +334,9 @@ class ProgressTracker:
         if not progress_data:
             return None
 
-        return FileProgress.from_dict(json.loads(progress_data))
+        return FileProgress.from_dict(json.loads(str(progress_data)))
 
-    def get_queue_status(self) -> Dict[str, Any]:
+    def get_queue_status(self) -> dict[str, Any]:
         """Get current queue status and statistics.
 
         Returns:
@@ -339,10 +345,16 @@ class ProgressTracker:
         stats = self.get_statistics()
 
         # Get sample of items from each queue
-        queued_ids = list(self.redis_client.smembers(self.queue_key))[:10]
-        active_ids = list(self.redis_client.smembers(self.active_key))[:10]
-        completed_ids = list(self.redis_client.smembers(self.completed_key))[:10]
-        failed_ids = list(self.redis_client.smembers(self.failed_key))[:10]
+        # Cast to satisfy mypy - synchronous redis client with decode_responses=True returns set[str]
+        queued_members: set[str] = cast("set[str]", self.redis_client.smembers(self.queue_key) or set())
+        active_members: set[str] = cast("set[str]", self.redis_client.smembers(self.active_key) or set())
+        completed_members: set[str] = cast("set[str]", self.redis_client.smembers(self.completed_key) or set())
+        failed_members: set[str] = cast("set[str]", self.redis_client.smembers(self.failed_key) or set())
+
+        queued_ids = list(queued_members)[:10]
+        active_ids = list(active_members)[:10]
+        completed_ids = list(completed_members)[:10]
+        failed_ids = list(failed_members)[:10]
 
         return {
             "statistics": stats,
@@ -356,16 +368,16 @@ class ProgressTracker:
             "recent_failed": [self.get_progress(cid) for cid in failed_ids if self.get_progress(cid)],
         }
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """Get processing statistics.
 
         Returns:
             Dictionary with various statistics
         """
-        stats_data = self.redis_client.hgetall(self.stats_key)
+        stats_data: dict[str, str] = cast("dict[str, str]", self.redis_client.hgetall(self.stats_key) or {})
 
         # Convert string values to appropriate types
-        stats = {}
+        stats: dict[str, Any] = {}
         for key, value in stats_data.items():
             try:
                 # Try to convert to float first (handles both int and float)
@@ -374,7 +386,7 @@ class ProgressTracker:
                 if stats[key].is_integer():
                     stats[key] = int(stats[key])
             except (ValueError, AttributeError):
-                stats[key] = value  # type: ignore[assignment]
+                stats[key] = value
 
         # Calculate average processing time
         if stats.get("processed_file_count", 0) > 0:
@@ -404,18 +416,25 @@ class ProgressTracker:
         cleared_count = 0
 
         # Get all correlation IDs from all sets
-        all_ids = set()
-        all_ids.update(self.redis_client.smembers(self.queue_key))
-        all_ids.update(self.redis_client.smembers(self.active_key))
-        all_ids.update(self.redis_client.smembers(self.completed_key))
-        all_ids.update(self.redis_client.smembers(self.failed_key))
+        all_ids: set[str] = set()
+
+        # Cast to satisfy mypy - synchronous redis client with decode_responses=True returns set[str]
+        queued_members: set[str] = cast("set[str]", self.redis_client.smembers(self.queue_key) or set())
+        active_members: set[str] = cast("set[str]", self.redis_client.smembers(self.active_key) or set())
+        completed_members: set[str] = cast("set[str]", self.redis_client.smembers(self.completed_key) or set())
+        failed_members: set[str] = cast("set[str]", self.redis_client.smembers(self.failed_key) or set())
+
+        all_ids.update(queued_members)
+        all_ids.update(active_members)
+        all_ids.update(completed_members)
+        all_ids.update(failed_members)
 
         for correlation_id in all_ids:
             progress_key = f"{self.key_prefix}:file:{correlation_id}"
             progress_data = self.redis_client.get(progress_key)
 
             if progress_data:
-                progress = FileProgress.from_dict(json.loads(progress_data))
+                progress = FileProgress.from_dict(json.loads(str(progress_data)))
                 # Check if entry is old
                 check_time = progress.completed_at or progress.started_at or progress.queued_at
                 if check_time < cutoff_time:

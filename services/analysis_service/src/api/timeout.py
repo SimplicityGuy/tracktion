@@ -1,12 +1,14 @@
 """Request timeout and cancellation handling."""
 
 import asyncio
-from typing import Any, Callable, Dict, Optional
+import contextlib
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import HTTPException, Request, Response, status
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ..structured_logging import get_logger
+from services.analysis_service.src.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -37,10 +39,8 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
         # Get timeout from headers or use default
         timeout = self.default_timeout
         if "X-Request-Timeout" in request.headers:
-            try:
+            with contextlib.suppress(ValueError):
                 timeout = float(request.headers["X-Request-Timeout"])
-            except ValueError:
-                pass
 
         # Store timeout in request state for endpoint access
         request.state.timeout = timeout
@@ -52,9 +52,9 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
             # Add timeout info to response headers
             response.headers["X-Timeout"] = str(timeout)
 
-            return response  # type: ignore[no-any-return]
+            return response  # FastAPI response type
 
-        except asyncio.TimeoutError:
+        except TimeoutError as e:
             # Log timeout
             logger.warning(
                 "Request timed out",
@@ -68,8 +68,9 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
 
             # Return timeout error
             raise HTTPException(
-                status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=f"Request timed out after {timeout} seconds"
-            )
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail=f"Request timed out after {timeout} seconds",
+            ) from e
 
 
 class CancellationToken:
@@ -111,7 +112,7 @@ class RequestCancellationMiddleware(BaseHTTPMiddleware):
         """
         super().__init__(app)
         # Store active requests for cancellation
-        self.active_requests: Dict[str, CancellationToken] = {}
+        self.active_requests: dict[str, CancellationToken] = {}
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Handle request with cancellation support.
@@ -136,18 +137,21 @@ class RequestCancellationMiddleware(BaseHTTPMiddleware):
 
         try:
             # Process request
-            response = await call_next(request)
-            return response  # type: ignore[no-any-return]
+            return await call_next(request)  # FastAPI response type  # FastAPI/Starlette response
 
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as e:
             # Log cancellation
             logger.info(
                 "Request cancelled",
-                extra={"path": request.url.path, "method": request.method, "request_id": request_id},
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "request_id": request_id,
+                },
             )
 
             # Return cancellation response
-            raise HTTPException(status_code=499, detail="Request was cancelled")  # Client Closed Request
+            raise HTTPException(status_code=499, detail="Request was cancelled") from e  # Client Closed Request
 
         finally:
             # Clean up
@@ -169,7 +173,11 @@ class RequestCancellationMiddleware(BaseHTTPMiddleware):
         return False
 
 
-async def with_timeout(coroutine: Any, timeout: float, cancellation_token: Optional[CancellationToken] = None) -> Any:
+async def with_timeout(
+    coroutine: Any,
+    timeout: float,
+    cancellation_token: CancellationToken | None = None,
+) -> Any:
     """Execute coroutine with timeout and cancellation support.
 
     Args:
@@ -200,7 +208,7 @@ async def with_timeout(coroutine: Any, timeout: float, cancellation_token: Optio
 
     # Check what completed
     if not done:
-        raise asyncio.TimeoutError(f"Operation timed out after {timeout} seconds")
+        raise TimeoutError(f"Operation timed out after {timeout} seconds")
 
     completed_task = done.pop()
 

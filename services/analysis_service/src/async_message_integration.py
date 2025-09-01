@@ -9,11 +9,17 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import aio_pika
-from aio_pika import ExchangeType, IncomingMessage
-from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractExchange, AbstractQueue, AbstractIncomingMessage
+from aio_pika import ExchangeType
+from aio_pika.abc import (
+    AbstractChannel,
+    AbstractConnection,
+    AbstractExchange,
+    AbstractIncomingMessage,
+    AbstractQueue,
+)
 
 from services.analysis_service.src.async_audio_analysis import (
     AsyncAudioAnalyzer,
@@ -42,10 +48,10 @@ class AnalysisRequest:
 
     recording_id: str
     file_path: str
-    analysis_types: List[str]
+    analysis_types: list[str]
     priority: TaskPriority
-    metadata: Dict[str, Any]
-    correlation_id: Optional[str] = None
+    metadata: dict[str, Any]
+    correlation_id: str | None = None
 
 
 class AsyncMessageQueueIntegration:
@@ -96,16 +102,16 @@ class AsyncMessageQueueIntegration:
         self.batch_timeout = batch_timeout_seconds
 
         # Connection state
-        self.connection: Optional[AbstractConnection] = None
-        self.channel: Optional[AbstractChannel] = None
-        self.queue: Optional[AbstractQueue] = None
-        self.exchange: Optional[AbstractExchange] = None
+        self.connection: AbstractConnection | None = None
+        self.channel: AbstractChannel | None = None
+        self.queue: AbstractQueue | None = None
+        self.exchange: AbstractExchange | None = None
 
         # Batch processing
-        self.batch_buffer: List[AnalysisRequest] = []
-        self.batch_messages: List[AbstractIncomingMessage] = []
+        self.batch_buffer: list[AnalysisRequest] = []
+        self.batch_messages: list[AbstractIncomingMessage] = []
         self.batch_lock = asyncio.Lock()
-        self.batch_timer_task: Optional[asyncio.Task] = None
+        self.batch_timer_task: asyncio.Task | None = None
 
         # Scheduler for prioritized processing
         self.scheduler = AudioAnalysisScheduler(processor)
@@ -139,7 +145,7 @@ class AsyncMessageQueueIntegration:
             logger.info("Connected to RabbitMQ successfully")
 
         except Exception as e:
-            logger.error(f"Failed to connect to RabbitMQ: {str(e)}")
+            logger.error(f"Failed to connect to RabbitMQ: {e!s}")
             raise
 
     async def start_consuming(self) -> None:
@@ -158,7 +164,7 @@ class AsyncMessageQueueIntegration:
                 try:
                     await self._handle_message(message)
                 except Exception as e:
-                    logger.error(f"Error handling message: {str(e)}")
+                    logger.error(f"Error handling message: {e!s}")
                     await message.nack(requeue=True)
 
     async def _handle_message(self, message: AbstractIncomingMessage) -> None:
@@ -170,20 +176,20 @@ class AsyncMessageQueueIntegration:
         """
         try:
             # Parse message
-            request = await self._parse_message(message)  # type: ignore[arg-type]
+            request = await self._parse_message(message)
 
             if self.enable_batch_processing:
                 # Add to batch
-                await self._add_to_batch(request, message)  # type: ignore[arg-type]
+                await self._add_to_batch(request, message)
             else:
                 # Process immediately
-                await self._process_single_request(request, message)  # type: ignore[arg-type]
+                await self._process_single_request(request, message)
 
         except Exception as e:
-            logger.error(f"Failed to handle message: {str(e)}")
+            logger.error(f"Failed to handle message: {e!s}")
             await message.nack(requeue=True)
 
-    async def _parse_message(self, message: IncomingMessage) -> AnalysisRequest:
+    async def _parse_message(self, message: AbstractIncomingMessage) -> AnalysisRequest:
         """
         Parse incoming message to AnalysisRequest.
 
@@ -217,10 +223,10 @@ class AsyncMessageQueueIntegration:
             )
 
         except Exception as e:
-            logger.error(f"Failed to parse message: {str(e)}")
+            logger.error(f"Failed to parse message: {e!s}")
             raise
 
-    async def _add_to_batch(self, request: AnalysisRequest, message: IncomingMessage) -> None:
+    async def _add_to_batch(self, request: AnalysisRequest, message: AbstractIncomingMessage) -> None:
         """
         Add request to batch buffer.
 
@@ -270,7 +276,7 @@ class AsyncMessageQueueIntegration:
         # Process requests in parallel
         tasks = []
         for i, request in enumerate(requests):
-            task = asyncio.create_task(self._process_request_with_tracking(request, messages[i], aggregator, batch_id))  # type: ignore[arg-type]
+            task = asyncio.create_task(self._process_request_with_tracking(request, messages[i], aggregator, batch_id))
             tasks.append(task)
 
         # Wait for all to complete
@@ -279,7 +285,7 @@ class AsyncMessageQueueIntegration:
         # Handle results
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.error(f"Request {requests[i].recording_id} failed: {str(result)}")
+                logger.error(f"Request {requests[i].recording_id} failed: {result!s}")
                 await messages[i].nack(requeue=True)
             else:
                 await messages[i].ack()
@@ -290,9 +296,9 @@ class AsyncMessageQueueIntegration:
     async def _process_request_with_tracking(
         self,
         request: AnalysisRequest,
-        message: IncomingMessage,
-        aggregator: Optional[BatchProgressAggregator],
-        batch_id: Optional[str],
+        message: AbstractIncomingMessage,
+        aggregator: BatchProgressAggregator | None,
+        batch_id: str | None,
     ) -> AudioAnalysisResult:
         """
         Process request with progress tracking.
@@ -327,14 +333,13 @@ class AsyncMessageQueueIntegration:
             if result:
                 await self._publish_results(result, request)
                 return result
-            else:
-                raise RuntimeError(f"Analysis failed for {request.file_path}")
+            raise RuntimeError(f"Analysis failed for {request.file_path}")
 
         except Exception as e:
             await self.tracker.fail_task(task_id, str(e))
             raise
 
-    async def _perform_analysis(self, audio_file: str, request: AnalysisRequest) -> Optional[AudioAnalysisResult]:
+    async def _perform_analysis(self, audio_file: str, request: AnalysisRequest) -> AudioAnalysisResult | None:
         """
         Perform audio analysis with error handling.
 
@@ -345,8 +350,8 @@ class AsyncMessageQueueIntegration:
         Returns:
             Analysis result
         """
-        # Perform analysis with retry logic
-        result = await self.error_handler.handle_with_retry(
+        # Perform analysis with retry logic and return result directly
+        return await self.error_handler.handle_with_retry(  # type: ignore[no-any-return]  # Error handler returns result but typed as Any
             self.analyzer.analyze_audio_complete,
             audio_file,
             task_id=request.recording_id,
@@ -358,13 +363,11 @@ class AsyncMessageQueueIntegration:
             priority=request.priority,
         )
 
-        return result  # type: ignore[no-any-return]
-
     async def _analysis_complete_callback(
         self,
         audio_file: str,
-        result: Optional[AudioAnalysisResult],
-        error: Optional[Exception],
+        result: AudioAnalysisResult | None,
+        error: Exception | None,
     ) -> None:
         """
         Callback when analysis completes.
@@ -377,9 +380,9 @@ class AsyncMessageQueueIntegration:
         if result:
             logger.info(f"Analysis completed for {audio_file}")
         else:
-            logger.error(f"Analysis failed for {audio_file}: {str(error)}")
+            logger.error(f"Analysis failed for {audio_file}: {error!s}")
 
-    async def _process_single_request(self, request: AnalysisRequest, message: IncomingMessage) -> None:
+    async def _process_single_request(self, request: AnalysisRequest, message: AbstractIncomingMessage) -> None:
         """
         Process a single request immediately.
 
@@ -391,7 +394,7 @@ class AsyncMessageQueueIntegration:
             await self._process_request_with_tracking(request, message, None, None)
             await message.ack()
         except Exception as e:
-            logger.error(f"Failed to process request: {str(e)}")
+            logger.error(f"Failed to process request: {e!s}")
             await message.nack(requeue=True)
 
     async def _publish_results(self, result: AudioAnalysisResult, request: AnalysisRequest) -> None:
@@ -433,7 +436,7 @@ class AsyncMessageQueueIntegration:
             logger.debug(f"Published results for {request.recording_id}")
 
         except Exception as e:
-            logger.error(f"Failed to publish results: {str(e)}")
+            logger.error(f"Failed to publish results: {e!s}")
 
     async def shutdown(self) -> None:
         """Shutdown message queue integration."""

@@ -51,7 +51,11 @@ class RenameProposalRequest(BaseModel):
             "example": {
                 "original_name": "track01.mp3",
                 "file_path": "/music/album/",
-                "metadata": {"title": "Song Title", "artist": "Artist Name", "track": 1},
+                "metadata": {
+                    "title": "Song Title",
+                    "artist": "Artist Name",
+                    "track": 1,
+                },
             }
         }
     )

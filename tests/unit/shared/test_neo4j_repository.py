@@ -33,8 +33,7 @@ class TestNeo4jRepository:
         """Create a repository instance with mock driver."""
         with patch("shared.core_types.src.neo4j_repository.GraphDatabase") as mock_graph_db:
             mock_graph_db.driver.return_value = mock_driver
-            repo = Neo4jRepository("bolt://localhost:7687", "neo4j", "password")
-            return repo
+            return Neo4jRepository("bolt://localhost:7687", "neo4j", "password")
 
     def test_initialization_success(self, mock_driver):
         """Test successful initialization."""
@@ -76,7 +75,11 @@ class TestNeo4jRepository:
         mock_driver.session.return_value = mock_session
 
         # Mock the result
-        mock_record = {"uuid": "test-uuid", "file_name": "test.wav", "file_path": "/path/test.wav"}
+        mock_record = {
+            "uuid": "test-uuid",
+            "file_name": "test.wav",
+            "file_path": "/path/test.wav",
+        }
         mock_result = Mock()
         mock_result.single.return_value = {"r": mock_record}
         mock_session.run.return_value = mock_result
@@ -119,7 +122,11 @@ class TestNeo4jRepository:
         mock_driver.session.return_value = mock_session
 
         # Mock the result
-        mock_record = {"uuid": "test-uuid", "file_name": "test.wav", "file_path": "/path/test.wav"}
+        mock_record = {
+            "uuid": "test-uuid",
+            "file_name": "test.wav",
+            "file_path": "/path/test.wav",
+        }
         mock_result = Mock()
         mock_result.single.return_value = {"r": mock_record}
         mock_session.run.return_value = mock_result
@@ -172,7 +179,10 @@ class TestNeo4jRepository:
         mock_driver.session.return_value = mock_session
 
         # Mock the result
-        mock_result = [{"key": "artist", "value": "Test Artist"}, {"key": "album", "value": "Test Album"}]
+        mock_result = [
+            {"key": "artist", "value": "Test Artist"},
+            {"key": "album", "value": "Test Album"},
+        ]
         mock_session.run.return_value = mock_result
 
         # Call get_recording_metadata

@@ -4,9 +4,11 @@
 import argparse
 import json
 import shutil
+import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -16,42 +18,37 @@ import structlog
 logger = structlog.get_logger()
 
 
+@dataclass
+class StressTestConfig:
+    """Configuration for stress test."""
+
+    num_instances: int = 3
+    files_per_instance: int = 10
+    rabbitmq_host: str = "localhost"
+    rabbitmq_port: int = 5672
+    rabbitmq_user: str = "guest"
+    rabbitmq_pass: str = "guest"
+
+
 class MultiInstanceStressTest:
     """Stress test for multi-instance file watcher deployment."""
 
-    def __init__(
-        self,
-        num_instances: int = 3,
-        files_per_instance: int = 10,
-        rabbitmq_host: str = "localhost",
-        rabbitmq_port: int = 5672,
-        rabbitmq_user: str = "guest",
-        rabbitmq_pass: str = "guest",
-    ) -> None:
+    def __init__(self, config: StressTestConfig | None = None) -> None:
         """Initialize stress test.
 
         Args:
-            num_instances: Number of file watcher instances to simulate
-            files_per_instance: Number of files to create per instance
-            rabbitmq_host: RabbitMQ hostname
-            rabbitmq_port: RabbitMQ port
-            rabbitmq_user: RabbitMQ username
-            rabbitmq_pass: RabbitMQ password
+            config: Stress test configuration object
+
         """
-        self.num_instances = num_instances
-        self.files_per_instance = files_per_instance
-        self.rabbitmq_host = rabbitmq_host
-        self.rabbitmq_port = rabbitmq_port
-        self.rabbitmq_user = rabbitmq_user
-        self.rabbitmq_pass = rabbitmq_pass
+        self.config = config or StressTestConfig()
         self.test_dirs: list[Path] = []
-        self.received_messages: list[dict] = []
+        self.received_messages: list[dict[str, Any]] = []
 
     def setup_test_directories(self) -> None:
         """Create temporary directories for testing."""
-        logger.info("Setting up test directories", num_instances=self.num_instances)
+        logger.info("Setting up test directories", num_instances=self.config.num_instances)
 
-        for i in range(self.num_instances):
+        for i in range(self.config.num_instances):
             temp_dir = Path(tempfile.mkdtemp(prefix=f"tracktion_test_{i}_"))
             self.test_dirs.append(temp_dir)
             logger.info("Created test directory", instance=i, path=str(temp_dir))
@@ -67,32 +64,45 @@ class MultiInstanceStressTest:
 
     def create_test_files(self) -> None:
         """Create test audio files in each directory."""
-        logger.info("Creating test files", num_instances=self.num_instances, files_per_instance=self.files_per_instance)
+        logger.info(
+            "Creating test files",
+            num_instances=self.config.num_instances,
+            files_per_instance=self.config.files_per_instance,
+        )
 
         def create_files_for_instance(instance_idx: int) -> None:
             test_dir = self.test_dirs[instance_idx]
-            for file_idx in range(self.files_per_instance):
+            for file_idx in range(self.config.files_per_instance):
                 # Create a simple MP3 file (just header bytes for testing)
                 file_name = f"test_file_{instance_idx}_{file_idx}.mp3"
                 file_path = test_dir / file_name
 
                 # Write minimal MP3 header (ID3v2)
-                with open(file_path, "wb") as f:
+                with Path(file_path).open("wb") as f:
                     f.write(b"ID3\x03\x00\x00\x00\x00\x00\x00")
                     f.write(b"\xff\xfb")  # MP3 sync word
                     f.write(b"\x00" * 100)  # Some dummy data
 
-                logger.debug("Created test file", instance=instance_idx, file=file_name, path=str(file_path))
+                logger.debug(
+                    "Created test file",
+                    instance=instance_idx,
+                    file=file_name,
+                    path=str(file_path),
+                )
 
         # Create files in parallel for all instances
-        with ThreadPoolExecutor(max_workers=self.num_instances) as executor:
-            executor.map(create_files_for_instance, range(self.num_instances))
+        with ThreadPoolExecutor(max_workers=self.config.num_instances) as executor:
+            executor.map(create_files_for_instance, range(self.config.num_instances))
 
     def setup_rabbitmq_consumer(self) -> Any:
         """Set up RabbitMQ consumer to receive messages."""
-        credentials = pika.PlainCredentials(self.rabbitmq_user, self.rabbitmq_pass)
+        credentials = pika.PlainCredentials(self.config.rabbitmq_user, self.config.rabbitmq_pass)
         connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=self.rabbitmq_host, port=self.rabbitmq_port, credentials=credentials)
+            pika.ConnectionParameters(
+                host=self.config.rabbitmq_host,
+                port=self.config.rabbitmq_port,
+                credentials=credentials,
+            ),
         )
         channel = connection.channel()
 
@@ -123,7 +133,7 @@ class MultiInstanceStressTest:
         """Analyze test results for conflicts and performance."""
         results: dict[str, Any] = {
             "total_messages": len(self.received_messages),
-            "expected_messages": self.num_instances * self.files_per_instance,
+            "expected_messages": self.config.num_instances * self.config.files_per_instance,
             "instances": {},
             "conflicts": [],
             "performance": {},
@@ -143,17 +153,20 @@ class MultiInstanceStressTest:
             results["instances"][instance_id]["files"].append(msg.get("file_info", {}).get("path"))
 
         # Check for conflicts (duplicate file paths from different instances)
-        file_instance_map: dict = {}
+        file_instance_map: dict[str, str] = {}
         for msg in self.received_messages:
             file_path = msg.get("file_info", {}).get("path")
             instance_id = msg.get("instance_id")
 
-            if file_path in file_instance_map:
+            if file_path and instance_id and file_path in file_instance_map:
                 if file_instance_map[file_path] != instance_id:
                     results["conflicts"].append(
-                        {"file": file_path, "instances": [file_instance_map[file_path], instance_id]}
+                        {
+                            "file": file_path,
+                            "instances": [file_instance_map[file_path], instance_id],
+                        },
                     )
-            else:
+            elif file_path and instance_id:
                 file_instance_map[file_path] = instance_id
 
         # Calculate performance metrics
@@ -173,11 +186,12 @@ class MultiInstanceStressTest:
 
         Returns:
             Test results dictionary
+
         """
         logger.info(
             "Starting multi-instance stress test",
-            num_instances=self.num_instances,
-            files_per_instance=self.files_per_instance,
+            num_instances=self.config.num_instances,
+            files_per_instance=self.config.files_per_instance,
             duration=duration,
         )
 
@@ -236,11 +250,28 @@ def main() -> None:
     """Main entry point for stress test."""
     parser = argparse.ArgumentParser(description="Multi-instance file watcher stress test")
     parser.add_argument(
-        "--instances", type=int, default=3, help="Number of file watcher instances to simulate (default: 3)"
+        "--instances",
+        type=int,
+        default=3,
+        help="Number of file watcher instances to simulate (default: 3)",
     )
-    parser.add_argument("--files", type=int, default=10, help="Number of files per instance (default: 10)")
-    parser.add_argument("--duration", type=int, default=30, help="Test duration in seconds (default: 30)")
-    parser.add_argument("--rabbitmq-host", default="localhost", help="RabbitMQ host (default: localhost)")
+    parser.add_argument(
+        "--files",
+        type=int,
+        default=10,
+        help="Number of files per instance (default: 10)",
+    )
+    parser.add_argument(
+        "--duration",
+        type=int,
+        default=30,
+        help="Test duration in seconds (default: 30)",
+    )
+    parser.add_argument(
+        "--rabbitmq-host",
+        default="localhost",
+        help="RabbitMQ host (default: localhost)",
+    )
     parser.add_argument("--rabbitmq-port", type=int, default=5672, help="RabbitMQ port (default: 5672)")
     parser.add_argument("--rabbitmq-user", default="guest", help="RabbitMQ username (default: guest)")
     parser.add_argument("--rabbitmq-pass", default="guest", help="RabbitMQ password (default: guest)")
@@ -260,7 +291,7 @@ def main() -> None:
     )
 
     # Run stress test
-    stress_test = MultiInstanceStressTest(
+    config = StressTestConfig(
         num_instances=args.instances,
         files_per_instance=args.files,
         rabbitmq_host=args.rabbitmq_host,
@@ -268,14 +299,15 @@ def main() -> None:
         rabbitmq_user=args.rabbitmq_user,
         rabbitmq_pass=args.rabbitmq_pass,
     )
+    stress_test = MultiInstanceStressTest(config)
 
     results = stress_test.run_stress_test(duration=args.duration)
 
     # Exit with appropriate code
     if results["conflicts"]:
-        exit(1)
+        sys.exit(1)
     else:
-        exit(0)
+        sys.exit(0)
 
 
 if __name__ == "__main__":

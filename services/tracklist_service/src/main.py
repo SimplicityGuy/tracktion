@@ -7,22 +7,24 @@ Provides both FastAPI web service and message queue consumer functionality.
 import asyncio
 import logging
 import signal
-from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Callable, Dict
+import sys
+from collections.abc import AsyncGenerator, Callable
+from contextlib import asynccontextmanager, suppress
+from typing import Any
 
+import redis.asyncio as redis
 import structlog
 import uvicorn
-import redis.asyncio as redis
 from fastapi import FastAPI, Request, Response
 
-from .api.search import router as search_router
 from .api.developer_endpoints import router as developer_router
-from .config import get_config
-from .messaging.message_handler import TracklistMessageHandler
+from .api.search import router as search_router
 from .auth.authentication import AuthenticationManager
 from .auth.dependencies import set_auth_manager
-from .rate_limiting.limiter import RateLimiter
+from .config import get_config
+from .messaging.message_handler import TracklistMessageHandler
 from .middleware.rate_limit_middleware import RateLimitMiddleware
+from .rate_limiting.limiter import RateLimiter
 
 
 # Configure structured logging
@@ -61,9 +63,9 @@ rate_limiter: RateLimiter | None = None
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Manage application lifespan events."""
-    global message_handler, redis_client, rate_limiter
+    global message_handler, redis_client, rate_limiter  # noqa: PLW0603 - Global pattern necessary for FastAPI lifespan management
 
     logger = structlog.get_logger(__name__)
     config = get_config()
@@ -109,10 +111,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Cancel consume task
         if not consume_task.done():
             consume_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await consume_task
-            except asyncio.CancelledError:
-                pass
 
         # Close Redis connection
         if redis_client:
@@ -143,7 +143,7 @@ def create_app() -> FastAPI:
             middleware = RateLimitMiddleware(app, rate_limiter)
             return await middleware.dispatch(request, call_next)
         # If rate limiter not initialized yet, pass through
-        return await call_next(request)  # type: ignore[no-any-return]
+        return await call_next(request)
 
     # Include API routes
     app.include_router(search_router, prefix=config.api.api_prefix)
@@ -151,7 +151,7 @@ def create_app() -> FastAPI:
 
     # Health check endpoint
     @app.get("/health")
-    async def health_check() -> Dict[str, str]:
+    async def health_check() -> dict[str, str]:
         """Health check endpoint."""
         return {"status": "healthy", "service": "tracklist_service", "version": "0.1.0"}
 
@@ -164,7 +164,7 @@ def handle_shutdown(signum: int, frame: Any) -> None:
     logger.info("Received shutdown signal", signal=signum)
 
     # The lifespan manager will handle cleanup
-    exit(0)
+    sys.exit(0)
 
 
 async def main() -> None:
@@ -177,7 +177,7 @@ async def main() -> None:
     if errors:
         logger = structlog.get_logger(__name__)
         logger.error("Configuration validation failed", errors=errors)
-        exit(1)
+        sys.exit(1)
 
     # Set up signal handlers
     signal.signal(signal.SIGINT, handle_shutdown)

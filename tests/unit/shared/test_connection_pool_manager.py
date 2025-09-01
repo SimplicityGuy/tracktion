@@ -161,7 +161,10 @@ class TestConnectionPoolManager:
 
         # Add some test data
         pool_manager._request_queue_times["test_service"] = [0.1, 0.2, 0.3, 0.4, 0.5]
-        pool_manager._connection_timestamps["test_service"] = {1: time.time(), 2: time.time()}
+        pool_manager._connection_timestamps["test_service"] = {
+            1: time.time(),
+            2: time.time(),
+        }
 
         stats = pool_manager.get_statistics("test_service")
         assert stats.average_wait_time == 0.3  # Average of [0.1, 0.2, 0.3, 0.4, 0.5]

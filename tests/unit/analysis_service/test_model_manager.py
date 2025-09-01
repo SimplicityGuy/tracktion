@@ -33,7 +33,10 @@ class TestModelManager:
     def test_initialization(self, temp_models_dir):
         """Test ModelManager initialization."""
         manager = ModelManager(
-            models_dir=str(temp_models_dir), auto_download=True, verify_checksum=True, lazy_load=False
+            models_dir=str(temp_models_dir),
+            auto_download=True,
+            verify_checksum=True,
+            lazy_load=False,
         )
 
         assert manager.models_dir == temp_models_dir
@@ -54,10 +57,13 @@ class TestModelManager:
         """Test successful manifest loading."""
         with tempfile.TemporaryDirectory() as tmpdir:
             manifest_data = {
-                "genre_discogs_effnet": {"checksum": "abc123", "filename": "genre_discogs-effnet-bs64-1.pb"}
+                "genre_discogs_effnet": {
+                    "checksum": "abc123",
+                    "filename": "genre_discogs-effnet-bs64-1.pb",
+                }
             }
             manifest_path = Path(tmpdir) / "manifest.json"
-            with open(manifest_path, "w") as f:
+            with Path(manifest_path).open("w") as f:
                 json.dump(manifest_data, f)
 
             manager = ModelManager(models_dir=str(tmpdir))
@@ -67,9 +73,7 @@ class TestModelManager:
         """Test manifest loading when file doesn't exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create fresh manager - KNOWN_MODELS should be copied not referenced
-            from services.analysis_service.src.model_manager import ModelManager as MM
-
-            manager = MM(models_dir=str(tmpdir))
+            manager = ModelManager(models_dir=str(tmpdir))
             # Should not raise error, just proceed without manifest
             # Check all models have no checksum when no manifest
             for model_id in manager._model_metadata:
@@ -83,7 +87,7 @@ class TestModelManager:
         manifest_path = temp_models_dir / "manifest.json"
         assert manifest_path.exists()
 
-        with open(manifest_path) as f:
+        with manifest_path.open() as f:
             manifest = json.load(f)
         assert manifest["genre_discogs_effnet"]["checksum"] == "test_checksum"
 
@@ -234,9 +238,11 @@ class TestModelManager:
         mock_tf = MagicMock()
         mock_tf.saved_model.load.return_value = mock_model
 
-        with patch.dict("sys.modules", {"tensorflow": mock_tf}):
-            with patch.object(model_manager, "get_model_path", return_value=model_file):
-                model = model_manager.load_model("genre_discogs_effnet")
+        with (
+            patch.dict("sys.modules", {"tensorflow": mock_tf}),
+            patch.object(model_manager, "get_model_path", return_value=model_file),
+        ):
+            model = model_manager.load_model("genre_discogs_effnet")
 
         assert model == mock_model
         assert model_manager._loaded_models["genre_discogs_effnet"] == mock_model
@@ -268,9 +274,14 @@ class TestModelManager:
         model_file = temp_models_dir / "genre_discogs-effnet-bs64-1.pb"
         model_file.write_bytes(b"model data")
 
-        with patch.object(model_manager, "get_model_path", return_value=model_file):
-            with patch("builtins.__import__", side_effect=ImportError("No module named tensorflow")):
-                model = model_manager.load_model("genre_discogs_effnet")
+        with (
+            patch.object(model_manager, "get_model_path", return_value=model_file),
+            patch(
+                "builtins.__import__",
+                side_effect=ImportError("No module named tensorflow"),
+            ),
+        ):
+            model = model_manager.load_model("genre_discogs_effnet")
 
         assert model is None
 
@@ -286,9 +297,11 @@ class TestModelManager:
         mock_tf = MagicMock()
         mock_tf.saved_model.load.return_value = Mock()
 
-        with patch.dict("sys.modules", {"tensorflow": mock_tf}):
-            with patch.object(model_manager, "_verify_model", return_value=True):
-                results = model_manager.preload_models(["genre_discogs_effnet", "mood_happy", "unknown"])
+        with (
+            patch.dict("sys.modules", {"tensorflow": mock_tf}),
+            patch.object(model_manager, "_verify_model", return_value=True),
+        ):
+            results = model_manager.preload_models(["genre_discogs_effnet", "mood_happy", "unknown"])
 
         assert results["genre_discogs_effnet"] is True
         assert results["mood_happy"] is True
@@ -341,5 +354,6 @@ class TestModelManager:
 
     def test_get_cache_size_empty(self, model_manager):
         """Test cache size when no models cached."""
+
         size = model_manager.get_cache_size()
         assert size == 0.0

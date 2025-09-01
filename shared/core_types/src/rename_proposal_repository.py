@@ -1,14 +1,14 @@
 """Repository for RenameProposal database operations."""
 
 import logging
-from typing import Any, Dict, List, Optional, cast
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
-from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, func
 
-from .models import RenameProposal
 from .database import DatabaseManager
+from .models import RenameProposal
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class RenameProposalRepository:
             logger.info(f"Created rename proposal: {proposal.id}")
             return proposal
 
-    def get(self, proposal_id: UUID) -> Optional[RenameProposal]:
+    def get(self, proposal_id: UUID) -> RenameProposal | None:
         """Get a rename proposal by ID.
 
         Args:
@@ -54,10 +54,9 @@ class RenameProposalRepository:
             RenameProposal instance or None if not found
         """
         with self.db.get_db_session() as session:
-            result = session.query(RenameProposal).filter(RenameProposal.id == proposal_id).first()
-            return cast(Optional[RenameProposal], result)
+            return session.query(RenameProposal).filter(RenameProposal.id == proposal_id).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns RenameProposal | None
 
-    def get_by_recording(self, recording_id: UUID, status: Optional[str] = None) -> List[RenameProposal]:
+    def get_by_recording(self, recording_id: UUID, status: str | None = None) -> list[RenameProposal]:
         """Get all proposals for a recording.
 
         Args:
@@ -74,10 +73,9 @@ class RenameProposalRepository:
                 query = query.filter(RenameProposal.status == status)
 
             query = query.order_by(RenameProposal.created_at.desc())
-            result = query.all()
-            return cast(List[RenameProposal], result)
+            return query.all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[RenameProposal]
 
-    def get_pending_proposals(self, limit: Optional[int] = None) -> List[RenameProposal]:
+    def get_pending_proposals(self, limit: int | None = None) -> list[RenameProposal]:
         """Get all pending rename proposals.
 
         Args:
@@ -93,10 +91,9 @@ class RenameProposalRepository:
             if limit:
                 query = query.limit(limit)
 
-            result = query.all()
-            return cast(List[RenameProposal], result)
+            return query.all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[RenameProposal]
 
-    def get_by_status(self, status: str, limit: Optional[int] = None) -> List[RenameProposal]:
+    def get_by_status(self, status: str, limit: int | None = None) -> list[RenameProposal]:
         """Get proposals by status.
 
         Args:
@@ -113,10 +110,9 @@ class RenameProposalRepository:
             if limit:
                 query = query.limit(limit)
 
-            result = query.all()
-            return cast(List[RenameProposal], result)
+            return query.all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[RenameProposal]
 
-    def update(self, proposal_id: UUID, **kwargs: Any) -> Optional[RenameProposal]:
+    def update(self, proposal_id: UUID, **kwargs: Any) -> RenameProposal | None:
         """Update a rename proposal.
 
         Args:
@@ -136,12 +132,12 @@ class RenameProposalRepository:
                 if hasattr(proposal, key):
                     setattr(proposal, key, value)
 
-            proposal.updated_at = datetime.now(timezone.utc)
+            proposal.updated_at = datetime.now(UTC)
             session.flush()
             session.refresh(proposal)
 
             logger.info(f"Updated rename proposal: {proposal_id}")
-            return cast(Optional[RenameProposal], proposal)
+            return proposal  # type: ignore[no-any-return] # RenameProposal object from database refresh, known to be RenameProposal type
 
     def update_status(self, proposal_id: UUID, status: str) -> bool:
         """Update the status of a rename proposal.
@@ -160,13 +156,13 @@ class RenameProposalRepository:
                 return False
 
             proposal.status = status
-            proposal.updated_at = datetime.now(timezone.utc)
+            proposal.updated_at = datetime.now(UTC)
             session.flush()
 
             logger.info(f"Updated status of proposal {proposal_id} to {status}")
             return True
 
-    def batch_update_status(self, proposal_ids: List[UUID], status: str) -> int:
+    def batch_update_status(self, proposal_ids: list[UUID], status: str) -> int:
         """Update status for multiple proposals.
 
         Args:
@@ -182,7 +178,7 @@ class RenameProposalRepository:
                 proposal = session.query(RenameProposal).filter(RenameProposal.id == proposal_id).first()
                 if proposal:
                     proposal.status = status
-                    proposal.updated_at = datetime.now(timezone.utc)
+                    proposal.updated_at = datetime.now(UTC)
                     count += 1
 
             session.flush()
@@ -208,7 +204,7 @@ class RenameProposalRepository:
             logger.info(f"Deleted rename proposal: {proposal_id}")
             return True
 
-    def find_conflicts(self, proposed_path: str, recording_id: UUID) -> List[RenameProposal]:
+    def find_conflicts(self, proposed_path: str, recording_id: UUID) -> list[RenameProposal]:
         """Find proposals with conflicting paths.
 
         Args:
@@ -227,10 +223,9 @@ class RenameProposalRepository:
                 )
             )
 
-            result = query.all()
-            return cast(List[RenameProposal], result)
+            return query.all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[RenameProposal]
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """Get statistics about rename proposals.
 
         Returns:
@@ -238,11 +233,8 @@ class RenameProposalRepository:
         """
         with self.db.get_db_session() as session:
             # Count by status
-            status_counts = {}
             query = session.query(RenameProposal.status, func.count(RenameProposal.id)).group_by(RenameProposal.status)
-
-            for status, count in query:
-                status_counts[status] = count
+            status_counts: dict[str, int] = dict(query)
 
             # Average confidence scores
             avg_confidence = (
@@ -280,12 +272,15 @@ class RenameProposalRepository:
             Number of proposals deleted
         """
         with self.db.get_db_session() as session:
-            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+            cutoff_date = datetime.now(UTC) - timedelta(days=days)
 
             proposals = (
                 session.query(RenameProposal)
                 .filter(
-                    and_(RenameProposal.status.in_(["rejected", "applied"]), RenameProposal.updated_at < cutoff_date)
+                    and_(
+                        RenameProposal.status.in_(["rejected", "applied"]),
+                        RenameProposal.updated_at < cutoff_date,
+                    )
                 )
                 .all()
             )

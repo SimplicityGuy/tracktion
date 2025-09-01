@@ -2,22 +2,28 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set, Tuple
-from uuid import UUID, uuid4
-from enum import Enum
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from enum import Enum
+from typing import Any
+from uuid import UUID, uuid4
 
+import psutil
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
 
-from services.tracklist_service.src.models.synchronization import SyncConfiguration, SyncEvent
+from services.tracklist_service.src.messaging.sync_event_publisher import (
+    SyncEventPublisher,
+)
+from services.tracklist_service.src.models.synchronization import (
+    SyncConfiguration,
+    SyncEvent,
+)
 from services.tracklist_service.src.services.sync_service import (
     SynchronizationService,
     SyncSource,
     SyncStatus,
 )
-from services.tracklist_service.src.messaging.sync_event_publisher import SyncEventPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +57,10 @@ class BatchProgress:
     successful: int = 0
     failed: int = 0
     skipped: int = 0
-    in_progress: Set[UUID] = field(default_factory=set)
-    errors: List[Dict[str, Any]] = field(default_factory=list)
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
+    in_progress: set[UUID] = field(default_factory=set)
+    errors: list[dict[str, Any]] = field(default_factory=list)
+    start_time: datetime | None = None
+    end_time: datetime | None = None
 
     @property
     def progress_percentage(self) -> int:
@@ -64,12 +70,12 @@ class BatchProgress:
         return int((self.completed / self.total) * 100)
 
     @property
-    def duration(self) -> Optional[timedelta]:
+    def duration(self) -> timedelta | None:
         """Calculate operation duration."""
         if self.start_time and self.end_time:
             return self.end_time - self.start_time
-        elif self.start_time:
-            return datetime.utcnow() - self.start_time
+        if self.start_time:
+            return datetime.now(UTC) - self.start_time
         return None
 
 
@@ -80,8 +86,8 @@ class BatchResult:
     batch_id: UUID
     status: BatchStatus
     progress: BatchProgress
-    results: List[Dict[str, Any]]
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    results: list[dict[str, Any]]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class BatchSyncService:
@@ -90,8 +96,8 @@ class BatchSyncService:
     def __init__(
         self,
         session: AsyncSession,
-        sync_service: Optional[SynchronizationService] = None,
-        event_publisher: Optional[SyncEventPublisher] = None,
+        sync_service: SynchronizationService | None = None,
+        event_publisher: SyncEventPublisher | None = None,
     ):
         """Initialize batch sync service.
 
@@ -105,7 +111,7 @@ class BatchSyncService:
         self.event_publisher = event_publisher
 
         # Track active batch operations
-        self.active_batches: Dict[UUID, BatchProgress] = {}
+        self.active_batches: dict[UUID, BatchProgress] = {}
 
         # Concurrency control
         self.max_parallel = 10
@@ -113,12 +119,12 @@ class BatchSyncService:
 
     async def batch_sync_tracklists(
         self,
-        tracklist_ids: List[UUID],
+        tracklist_ids: list[UUID],
         source: SyncSource = SyncSource.ALL,
         strategy: BatchStrategy = BatchStrategy.ADAPTIVE,
-        max_parallel: Optional[int] = None,
+        max_parallel: int | None = None,
         continue_on_error: bool = True,
-        priority_order: Optional[List[UUID]] = None,
+        priority_order: list[UUID] | None = None,
         actor: str = "system",
     ) -> BatchResult:
         """Perform batch synchronization of multiple tracklists.
@@ -138,7 +144,7 @@ class BatchSyncService:
         batch_id = uuid4()
         progress = BatchProgress(
             total=len(tracklist_ids),
-            start_time=datetime.utcnow(),
+            start_time=datetime.now(UTC),
         )
         self.active_batches[batch_id] = progress
 
@@ -195,7 +201,7 @@ class BatchSyncService:
                 raise ValueError(f"Unknown strategy: {strategy}")
 
             # Update final progress
-            progress.end_time = datetime.utcnow()
+            progress.end_time = datetime.now(UTC)
 
             # Determine final status
             if progress.failed == 0:
@@ -228,7 +234,7 @@ class BatchSyncService:
 
         except Exception as e:
             logger.error(f"Batch sync failed: {e}")
-            progress.end_time = datetime.utcnow()
+            progress.end_time = datetime.now(UTC)
 
             return BatchResult(
                 batch_id=batch_id,
@@ -243,13 +249,13 @@ class BatchSyncService:
 
     async def _process_parallel(
         self,
-        tracklist_ids: List[UUID],
+        tracklist_ids: list[UUID],
         source: SyncSource,
         max_parallel: int,
         continue_on_error: bool,
         progress: BatchProgress,
         actor: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Process tracklists in parallel.
 
         Args:
@@ -266,7 +272,7 @@ class BatchSyncService:
         results = []
         semaphore = asyncio.Semaphore(max_parallel)
 
-        async def sync_with_semaphore(tracklist_id: UUID) -> Dict[str, Any]:
+        async def sync_with_semaphore(tracklist_id: UUID) -> dict[str, Any]:
             async with semaphore:
                 progress.in_progress.add(tracklist_id)
                 try:
@@ -324,12 +330,12 @@ class BatchSyncService:
 
     async def _process_sequential(
         self,
-        tracklist_ids: List[UUID],
+        tracklist_ids: list[UUID],
         source: SyncSource,
         continue_on_error: bool,
         progress: BatchProgress,
         actor: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Process tracklists sequentially.
 
         Args:
@@ -382,12 +388,12 @@ class BatchSyncService:
 
     async def _process_adaptive(
         self,
-        tracklist_ids: List[UUID],
+        tracklist_ids: list[UUID],
         source: SyncSource,
         continue_on_error: bool,
         progress: BatchProgress,
         actor: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Process tracklists with adaptive strategy.
 
         Dynamically adjusts parallelism based on system load.
@@ -436,12 +442,12 @@ class BatchSyncService:
 
     async def _process_priority_based(
         self,
-        tracklist_ids: List[UUID],
+        tracklist_ids: list[UUID],
         source: SyncSource,
         continue_on_error: bool,
         progress: BatchProgress,
         actor: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Process tracklists based on priority.
 
         High-priority tracklists are processed first with more resources.
@@ -501,8 +507,8 @@ class BatchSyncService:
 
     async def _categorize_by_priority(
         self,
-        tracklist_ids: List[UUID],
-    ) -> Tuple[List[UUID], List[UUID], List[UUID]]:
+        tracklist_ids: list[UUID],
+    ) -> tuple[list[UUID], list[UUID], list[UUID]]:
         """Categorize tracklists by priority.
 
         Args:
@@ -528,7 +534,7 @@ class BatchSyncService:
 
         return high_priority, normal_priority, low_priority
 
-    async def _get_sync_config(self, tracklist_id: UUID) -> Optional[SyncConfiguration]:
+    async def _get_sync_config(self, tracklist_id: UUID) -> SyncConfiguration | None:
         """Get sync configuration for a tracklist.
 
         Args:
@@ -539,7 +545,8 @@ class BatchSyncService:
         """
         query = select(SyncConfiguration).where(SyncConfiguration.tracklist_id == tracklist_id)
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        config: SyncConfiguration | None = result.scalar_one_or_none()
+        return config
 
     async def _get_system_load(self) -> float:
         """Get current system load.
@@ -549,7 +556,6 @@ class BatchSyncService:
         """
         # Simplified load calculation
         # In production, this would check CPU, memory, and I/O
-        import psutil
 
         try:
             cpu_percent = psutil.cpu_percent(interval=0.1)
@@ -564,9 +570,9 @@ class BatchSyncService:
 
     def _apply_priority_order(
         self,
-        tracklist_ids: List[UUID],
-        priority_order: List[UUID],
-    ) -> List[UUID]:
+        tracklist_ids: list[UUID],
+        priority_order: list[UUID],
+    ) -> list[UUID]:
         """Apply priority ordering to tracklist IDs.
 
         Args:
@@ -588,7 +594,7 @@ class BatchSyncService:
 
         return ordered
 
-    async def get_batch_status(self, batch_id: UUID) -> Optional[Dict[str, Any]]:
+    async def get_batch_status(self, batch_id: UUID) -> dict[str, Any] | None:
         """Get status of a batch operation.
 
         Args:
@@ -608,7 +614,7 @@ class BatchSyncService:
                 "successful": progress.successful,
                 "failed": progress.failed,
                 "skipped": progress.skipped,
-                "duration": progress.duration.total_seconds() if progress.duration else None,
+                "duration": (progress.duration.total_seconds() if progress.duration else None),
             }
 
         return None
@@ -632,8 +638,8 @@ class BatchSyncService:
 
     async def aggregate_batch_conflicts(
         self,
-        tracklist_ids: List[UUID],
-    ) -> Dict[str, Any]:
+        tracklist_ids: list[UUID],
+    ) -> dict[str, Any]:
         """Aggregate conflicts across multiple tracklists.
 
         Args:
@@ -642,8 +648,9 @@ class BatchSyncService:
         Returns:
             Aggregated conflict information
         """
+
         total_conflicts = 0
-        conflict_types: Dict[str, int] = {}
+        conflict_types: dict[str, int] = {}
         affected_tracklists = []
 
         for tracklist_id in tracklist_ids:

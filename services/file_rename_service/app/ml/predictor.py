@@ -74,15 +74,11 @@ class Predictor:
         features = self.trainer.feature_extractor.extract_features(tokens, filename)
 
         # Get statistical features for prediction
-        stats = []
-        for key in sorted(features.keys()):
-            if (
-                key.startswith("num_")
-                or key.startswith("has_")
-                or key == "filename_length"
-                or key == "avg_token_length"
-            ):
-                stats.append(features[key])
+        stats = [
+            features[key]
+            for key in sorted(features.keys())
+            if key.startswith(("num_", "has_")) or key in {"filename_length", "avg_token_length"}
+        ]
 
         x = np.array([stats])
 
@@ -123,9 +119,9 @@ class Predictor:
             "filename_original": filename,
             "predictions": predictions,
             "inference_time_ms": inference_time,
-            "model_version": self.trainer.current_model_metadata.version
-            if self.trainer.current_model_metadata
-            else "unknown",
+            "model_version": (
+                self.trainer.current_model_metadata.version if self.trainer.current_model_metadata else "unknown"
+            ),
         }
 
         # Update cache
@@ -144,7 +140,7 @@ class Predictor:
         if not self.model_loaded:
             self.load_latest_model()
 
-        results = []
+        results: list[Any] = []
         uncached_samples = []
         cached_results = {}
 
@@ -164,21 +160,17 @@ class Predictor:
             start_time = time.time()
 
             # Extract features for all samples
-            x_batch = []
+            x_batch_list = []
             for filename, tokens in uncached_samples:
                 features = self.trainer.feature_extractor.extract_features(tokens, filename)
-                stats = []
-                for key in sorted(features.keys()):
-                    if (
-                        key.startswith("num_")
-                        or key.startswith("has_")
-                        or key == "filename_length"
-                        or key == "avg_token_length"
-                    ):
-                        stats.append(features[key])
-                x_batch.append(stats)
+                stats = [
+                    features[key]
+                    for key in sorted(features.keys())
+                    if key.startswith(("num_", "has_")) or key in {"filename_length", "avg_token_length"}
+                ]
+                x_batch_list.append(stats)
 
-            x_batch = np.array(x_batch)
+            x_batch = np.array(x_batch_list)
 
             # Get batch predictions
             assert self.trainer.model is not None, "Model not loaded"
@@ -202,9 +194,11 @@ class Predictor:
                         }
                     ],
                     "inference_time_ms": avg_time,
-                    "model_version": self.trainer.current_model_metadata.version
-                    if self.trainer.current_model_metadata
-                    else "unknown",
+                    "model_version": (
+                        self.trainer.current_model_metadata.version
+                        if self.trainer.current_model_metadata
+                        else "unknown"
+                    ),
                 }
 
                 # Update cache
@@ -215,9 +209,7 @@ class Predictor:
                 results.append(result)
 
         # Add cached results
-        for filename in [f for f, _ in samples]:
-            if filename in cached_results:
-                results.append(cached_results[filename])
+        results.extend(cached_results[filename] for filename, _ in samples if filename in cached_results)
 
         return results
 
@@ -257,7 +249,8 @@ class Predictor:
 
     def _generate_cache_key(self, filename: str) -> str:
         """Generate cache key for filename."""
-        return f"{self.trainer.current_model_metadata.version if self.trainer.current_model_metadata else 'unknown'}:{filename}"
+        version = self.trainer.current_model_metadata.version if self.trainer.current_model_metadata else "unknown"
+        return f"{version}:{filename}"
 
     def _update_cache(self, key: str, value: dict[str, Any]) -> None:
         """Update prediction cache with LRU eviction."""

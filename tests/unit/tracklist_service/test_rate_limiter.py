@@ -38,7 +38,13 @@ class TestRateLimitResult:
 
     def test_initialization(self):
         """Test rate limit result initialization."""
-        result = RateLimitResult(allowed=True, remaining=50, reset_time=1234567890, retry_after=None, limit=100)
+        result = RateLimitResult(
+            allowed=True,
+            remaining=50,
+            reset_time=1234567890,
+            retry_after=None,
+            limit=100,
+        )
 
         assert result.allowed is True
         assert result.remaining == 50

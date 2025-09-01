@@ -8,10 +8,11 @@ refines analysis results through coordinated execution stages.
 import asyncio
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class WaveConfig:
     """Configuration for wave orchestration."""
 
     # Wave stages configuration
-    enabled_stages: List[WaveStage] = field(
+    enabled_stages: list[WaveStage] = field(
         default_factory=lambda: [
             WaveStage.PREPARATION,
             WaveStage.INITIAL_ANALYSIS,
@@ -84,12 +85,12 @@ class WaveContext:
 
     wave_id: str
     start_time: datetime
-    current_stage: Optional[WaveStage] = None
-    completed_stages: Set[WaveStage] = field(default_factory=set)
-    failed_stages: Set[WaveStage] = field(default_factory=set)
-    stage_results: Dict[WaveStage, Any] = field(default_factory=dict)
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    errors: List[Dict[str, Any]] = field(default_factory=list)
+    current_stage: WaveStage | None = None
+    completed_stages: set[WaveStage] = field(default_factory=set)
+    failed_stages: set[WaveStage] = field(default_factory=set)
+    stage_results: dict[WaveStage, Any] = field(default_factory=dict)
+    metrics: dict[str, Any] = field(default_factory=dict)
+    errors: list[dict[str, Any]] = field(default_factory=list)
     status: WaveStatus = WaveStatus.PENDING
 
 
@@ -100,9 +101,9 @@ class StageResult:
     stage: WaveStage
     status: WaveStatus
     data: Any
-    metrics: Dict[str, Any]
+    metrics: dict[str, Any]
     duration_ms: float
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class WaveOrchestrator:
@@ -115,9 +116,9 @@ class WaveOrchestrator:
 
     def __init__(
         self,
-        config: Optional[WaveConfig] = None,
-        async_processor: Optional[Any] = None,
-        batch_processor: Optional[Any] = None,
+        config: WaveConfig | None = None,
+        async_processor: Any | None = None,
+        batch_processor: Any | None = None,
     ):
         """
         Initialize the wave orchestrator.
@@ -132,11 +133,11 @@ class WaveOrchestrator:
         self.batch_processor = batch_processor
 
         # Stage handlers
-        self.stage_handlers: Dict[WaveStage, Callable] = {}
-        self.stage_dependencies: Dict[WaveStage, List[WaveStage]] = defaultdict(list)
+        self.stage_handlers: dict[WaveStage, Callable] = {}
+        self.stage_dependencies: dict[WaveStage, list[WaveStage]] = defaultdict(list)
 
         # Wave tracking
-        self.active_waves: Dict[str, WaveContext] = {}
+        self.active_waves: dict[str, WaveContext] = {}
         self.wave_lock = asyncio.Lock()
 
         # Metrics
@@ -165,7 +166,7 @@ class WaveOrchestrator:
         self,
         stage: WaveStage,
         handler: Callable,
-        dependencies: Optional[List[WaveStage]] = None,
+        dependencies: list[WaveStage] | None = None,
     ) -> None:
         """
         Register a handler for a specific stage.
@@ -184,7 +185,7 @@ class WaveOrchestrator:
         self,
         wave_id: str,
         input_data: Any,
-        stages: Optional[List[WaveStage]] = None,
+        stages: list[WaveStage] | None = None,
     ) -> WaveContext:
         """
         Execute a wave of processing through multiple stages.
@@ -198,85 +199,125 @@ class WaveOrchestrator:
             WaveContext with execution results
         """
         stages = stages or self.config.enabled_stages
-        context = WaveContext(
-            wave_id=wave_id,
-            start_time=datetime.now(),
-        )
+        context = self._create_wave_context(wave_id)
 
         async with self.wave_lock:
             self.active_waves[wave_id] = context
 
         try:
-            context.status = WaveStatus.IN_PROGRESS
-            logger.info(f"Starting wave {wave_id} with {len(stages)} stages")
-
-            # Execute stages in order
-            for stage in stages:
-                if not await self._can_execute_stage(stage, context):
-                    logger.warning(f"Skipping stage {stage.value} due to unmet dependencies")
-                    continue
-
-                result = await self._execute_stage(stage, input_data, context)
-
-                if result.status == WaveStatus.FAILED:
-                    if not self.config.allow_partial_results:
-                        context.status = WaveStatus.FAILED
-                        break
-                    context.failed_stages.add(stage)
-                else:
-                    context.completed_stages.add(stage)
-                    context.stage_results[stage] = result.data
-
-                    # Check for early termination based on quality
-                    if self.config.early_termination_on_quality:
-                        # Check if the latest result has a quality metric
-                        if isinstance(result.data, dict) and "quality" in result.data:
-                            quality = result.data["quality"]
-                            if quality >= self.config.quality_threshold:
-                                logger.info(f"Early termination: quality threshold {quality:.2f} reached")
-                                break
-
-                # Inter-stage delay
-                if self.config.inter_stage_delay_ms > 0:
-                    await asyncio.sleep(self.config.inter_stage_delay_ms / 1000)
-
-            # Determine final status
-            if context.failed_stages and not self.config.allow_partial_results:
-                context.status = WaveStatus.FAILED
-                self.failed_waves += 1
-            elif context.completed_stages:
-                if len(context.completed_stages) == len(stages):
-                    context.status = WaveStatus.COMPLETED
-                    self.successful_waves += 1
-                else:
-                    context.status = WaveStatus.PARTIAL
-            else:
-                context.status = WaveStatus.FAILED
-                self.failed_waves += 1
-
-            self.total_waves_processed += 1
-
-            # Calculate final metrics
-            context.metrics = self._calculate_wave_metrics(context)
-
-            logger.info(
-                f"Wave {wave_id} completed with status {context.status.value}, "
-                f"completed stages: {len(context.completed_stages)}/{len(stages)}"
-            )
-
+            await self._execute_wave_stages(context, stages, input_data)
+            self._finalize_wave_context(context, stages)
             return context
 
         except Exception as e:
-            logger.error(f"Wave {wave_id} failed with error: {str(e)}")
-            context.status = WaveStatus.FAILED
-            context.errors.append({"error": str(e), "timestamp": datetime.now()})
-            self.failed_waves += 1
+            self._handle_wave_error(context, e)
             return context
 
         finally:
             async with self.wave_lock:
                 if wave_id in self.active_waves:
                     del self.active_waves[wave_id]
+
+    def _create_wave_context(self, wave_id: str) -> WaveContext:
+        """Create and initialize wave context."""
+        return WaveContext(
+            wave_id=wave_id,
+            start_time=datetime.now(tz=UTC),
+        )
+
+    async def _execute_wave_stages(
+        self,
+        context: WaveContext,
+        stages: list[WaveStage],
+        input_data: Any,
+    ) -> None:
+        """Execute all stages in the wave."""
+        context.status = WaveStatus.IN_PROGRESS
+        logger.info(f"Starting wave {context.wave_id} with {len(stages)} stages")
+
+        for stage in stages:
+            if not await self._can_execute_stage(stage, context):
+                logger.warning(f"Skipping stage {stage.value} due to unmet dependencies")
+                continue
+
+            result = await self._execute_stage(stage, input_data, context)
+
+            if not await self._process_stage_result(context, stage, result):
+                break  # Early termination
+
+            # Inter-stage delay
+            if self.config.inter_stage_delay_ms > 0:
+                await asyncio.sleep(self.config.inter_stage_delay_ms / 1000)
+
+    async def _process_stage_result(
+        self,
+        context: WaveContext,
+        stage: WaveStage,
+        result: Any,
+    ) -> bool:
+        """Process stage result and determine if execution should continue."""
+        if result.status == WaveStatus.FAILED:
+            if not self.config.allow_partial_results:
+                context.status = WaveStatus.FAILED
+                return False
+            context.failed_stages.add(stage)
+        else:
+            context.completed_stages.add(stage)
+            context.stage_results[stage] = result.data
+
+            # Check for early termination based on quality
+            if self._should_terminate_early(result):
+                return False
+
+        return True
+
+    def _should_terminate_early(self, result: Any) -> bool:
+        """Check if wave should terminate early based on quality."""
+        if not self.config.early_termination_on_quality:
+            return False
+
+        if not isinstance(result.data, dict) or "quality" not in result.data:
+            return False
+
+        quality = result.data["quality"]
+        if quality >= self.config.quality_threshold:
+            logger.info(f"Early termination: quality threshold {quality:.2f} reached")
+            return True
+
+        return False
+
+    def _finalize_wave_context(self, context: WaveContext, stages: list[WaveStage]) -> None:
+        """Finalize wave context with status and metrics."""
+        # Determine final status
+        if context.failed_stages and not self.config.allow_partial_results:
+            context.status = WaveStatus.FAILED
+            self.failed_waves += 1
+        elif context.completed_stages:
+            if len(context.completed_stages) == len(stages):
+                context.status = WaveStatus.COMPLETED
+                self.successful_waves += 1
+            else:
+                context.status = WaveStatus.PARTIAL
+        else:
+            context.status = WaveStatus.FAILED
+            self.failed_waves += 1
+
+        self.total_waves_processed += 1
+
+        # Calculate final metrics
+        context.metrics = self._calculate_wave_metrics(context)
+
+        logger.info(
+            f"Wave {context.wave_id} completed with status {context.status.value}, "
+            f"completed stages: {len(context.completed_stages)}/{len(stages)}"
+        )
+
+    def _handle_wave_error(self, context: WaveContext, error: Exception) -> None:
+        """Handle wave execution error."""
+        logger.error(f"Wave {context.wave_id} failed with error: {error!s}")
+        context.status = WaveStatus.FAILED
+        context.errors.append({"error": str(error), "timestamp": datetime.now(tz=UTC)})
+        self.failed_waves += 1
 
     async def _can_execute_stage(self, stage: WaveStage, context: WaveContext) -> bool:
         """
@@ -290,10 +331,7 @@ class WaveOrchestrator:
             True if stage can be executed
         """
         dependencies = self.stage_dependencies.get(stage, [])
-        for dep in dependencies:
-            if dep not in context.completed_stages:
-                return False
-        return True
+        return all(dep in context.completed_stages for dep in dependencies)
 
     async def _execute_stage(
         self,
@@ -312,7 +350,7 @@ class WaveOrchestrator:
         Returns:
             StageResult with execution outcome
         """
-        start_time = datetime.now()
+        start_time = datetime.now(tz=UTC)
         context.current_stage = stage
 
         try:
@@ -332,7 +370,7 @@ class WaveOrchestrator:
                 timeout=self.config.stage_timeout_seconds,
             )
 
-            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            duration_ms = (datetime.now(tz=UTC) - start_time).total_seconds() * 1000
 
             return StageResult(
                 stage=stage,
@@ -342,9 +380,9 @@ class WaveOrchestrator:
                 duration_ms=duration_ms,
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Stage {stage.value} timed out after {self.config.stage_timeout_seconds}s")
-            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            duration_ms = (datetime.now(tz=UTC) - start_time).total_seconds() * 1000
             return StageResult(
                 stage=stage,
                 status=WaveStatus.FAILED,
@@ -355,8 +393,8 @@ class WaveOrchestrator:
             )
 
         except Exception as e:
-            logger.error(f"Stage {stage.value} failed: {str(e)}")
-            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            logger.error(f"Stage {stage.value} failed: {e!s}")
+            duration_ms = (datetime.now(tz=UTC) - start_time).total_seconds() * 1000
             return StageResult(
                 stage=stage,
                 status=WaveStatus.FAILED,
@@ -385,10 +423,9 @@ class WaveOrchestrator:
         """
         if asyncio.iscoroutinefunction(handler):
             return await handler(input_data, context)
-        else:
-            # Run sync handler in executor
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, handler, input_data, context)
+        # Run sync handler in executor
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, handler, input_data, context)
 
     def _prepare_stage_input(
         self,
@@ -412,14 +449,12 @@ class WaveOrchestrator:
             return original_input
 
         # For later stages, combine original input with previous results
-        stage_input = {
+        return {
             "original": original_input,
             "previous_results": dict(context.stage_results),
             "stage": stage.value,
             "wave_id": context.wave_id,
         }
-
-        return stage_input
 
     async def _default_stage_handler(self, input_data: Any, context: WaveContext) -> Any:
         """
@@ -435,7 +470,10 @@ class WaveOrchestrator:
         logger.debug(f"Default handler for stage {context.current_stage.value if context.current_stage else 'unknown'}")
         # Simulate some processing
         await asyncio.sleep(0.1)
-        return {"processed": True, "stage": context.current_stage.value if context.current_stage else None}
+        return {
+            "processed": True,
+            "stage": context.current_stage.value if context.current_stage else None,
+        }
 
     def _calculate_quality_score(self, context: WaveContext) -> float:
         """
@@ -461,7 +499,7 @@ class WaveOrchestrator:
         # Consider stage-specific quality metrics if available
         quality_sum = 0.0
         quality_count = 0
-        for stage, result in context.stage_results.items():
+        for result in context.stage_results.values():
             if isinstance(result, dict) and "quality" in result:
                 quality_sum += result["quality"]
                 quality_count += 1
@@ -472,7 +510,7 @@ class WaveOrchestrator:
 
         return max(0.0, min(1.0, stage_score))
 
-    def _calculate_wave_metrics(self, context: WaveContext) -> Dict[str, Any]:
+    def _calculate_wave_metrics(self, context: WaveContext) -> dict[str, Any]:
         """
         Calculate metrics for the completed wave.
 
@@ -482,7 +520,7 @@ class WaveOrchestrator:
         Returns:
             Dictionary of metrics
         """
-        total_duration = (datetime.now() - context.start_time).total_seconds()
+        total_duration = (datetime.now(tz=UTC) - context.start_time).total_seconds()
 
         # Calculate stage durations
         stage_durations = {}
@@ -494,9 +532,9 @@ class WaveOrchestrator:
             "total_duration_seconds": total_duration,
             "completed_stages": len(context.completed_stages),
             "failed_stages": len(context.failed_stages),
-            "success_rate": len(context.completed_stages) / len(self.config.enabled_stages)
-            if self.config.enabled_stages
-            else 0,
+            "success_rate": (
+                len(context.completed_stages) / len(self.config.enabled_stages) if self.config.enabled_stages else 0
+            ),
             "quality_score": self._calculate_quality_score(context),
             "stage_durations": stage_durations,
             "errors": len(context.errors),
@@ -504,9 +542,9 @@ class WaveOrchestrator:
 
     async def execute_parallel_waves(
         self,
-        waves: List[Tuple[str, Any]],
-        max_concurrent: Optional[int] = None,
-    ) -> Dict[str, WaveContext]:
+        waves: list[tuple[str, Any]],
+        max_concurrent: int | None = None,
+    ) -> dict[str, WaveContext]:
         """
         Execute multiple waves in parallel.
 
@@ -535,17 +573,17 @@ class WaveOrchestrator:
                     context = await task
                     results[wave_id] = context
                 except Exception as e:
-                    logger.error(f"Failed to execute wave {wave_id}: {str(e)}")
+                    logger.error(f"Failed to execute wave {wave_id}: {e!s}")
                     results[wave_id] = WaveContext(
                         wave_id=wave_id,
-                        start_time=datetime.now(),
+                        start_time=datetime.now(tz=UTC),
                         status=WaveStatus.FAILED,
                         errors=[{"error": str(e)}],
                     )
 
         return results
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get orchestrator statistics.
 

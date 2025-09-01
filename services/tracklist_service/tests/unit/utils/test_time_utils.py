@@ -1,16 +1,17 @@
 """Unit tests for time parsing and formatting utilities."""
 
-import pytest
 from datetime import timedelta
 
+import pytest
+
 from services.tracklist_service.src.utils.time_utils import (
+    format_timedelta,
+    milliseconds_to_timedelta,
+    parse_cue_time,
     parse_time_string,
+    seconds_to_cue_time,
     time_string_to_seconds,
     timedelta_to_milliseconds,
-    milliseconds_to_timedelta,
-    format_timedelta,
-    parse_cue_time,
-    seconds_to_cue_time,
     validate_time_range,
 )
 

@@ -4,17 +4,19 @@ import json
 import logging
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, Optional, Any, List
+from typing import Any
 from uuid import UUID
-from datetime import datetime
 
 # Add shared modules to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "shared"))
 
+import contextlib
+
 from core_types.src.database import get_db_session
-from core_types.src.repositories import RecordingRepository, MetadataRepository
 from core_types.src.neo4j_repository import Neo4jRepository
+from core_types.src.repositories import MetadataRepository, RecordingRepository
 
 logger = logging.getLogger(__name__)
 
@@ -22,17 +24,15 @@ logger = logging.getLogger(__name__)
 class StorageError(Exception):
     """Raised when storage operations fail."""
 
-    pass
-
 
 class StorageHandler:
     """Handles storage of extracted metadata to databases."""
 
     def __init__(self) -> None:
         """Initialize storage handler with database connections."""
-        self.recording_repo: Optional[RecordingRepository] = None
-        self.metadata_repo: Optional[MetadataRepository] = None
-        self.neo4j_repo: Optional[Neo4jRepository] = None
+        self.recording_repo: RecordingRepository | None = None
+        self.metadata_repo: MetadataRepository | None = None
+        self.neo4j_repo: Neo4jRepository | None = None
         self._initialize_repositories()
 
     def _initialize_repositories(self) -> None:
@@ -57,9 +57,14 @@ class StorageHandler:
 
         except Exception as e:
             logger.error(f"Failed to initialize repositories: {e}")
-            raise StorageError(f"Database initialization failed: {e}")
+            raise StorageError(f"Database initialization failed: {e}") from e
 
-    def store_metadata(self, recording_id: UUID, metadata: Dict[str, Optional[str]], correlation_id: str) -> bool:
+    def store_metadata(
+        self,
+        recording_id: UUID,
+        metadata: dict[str, str | None],
+        correlation_id: str,
+    ) -> bool:
         """Store extracted metadata in both databases.
 
         Args:
@@ -86,18 +91,23 @@ class StorageHandler:
             self._store_neo4j_metadata(recording_id, metadata, correlation_id)
 
             logger.info(
-                f"Successfully stored metadata for recording {recording_id}", extra={"correlation_id": correlation_id}
+                f"Successfully stored metadata for recording {recording_id}",
+                extra={"correlation_id": correlation_id},
             )
             return True
 
         except Exception as e:
             logger.error(
-                f"Failed to store metadata for recording {recording_id}: {e}", extra={"correlation_id": correlation_id}
+                f"Failed to store metadata for recording {recording_id}: {e}",
+                extra={"correlation_id": correlation_id},
             )
-            raise StorageError(f"Failed to store metadata: {e}")
+            raise StorageError(f"Failed to store metadata: {e}") from e
 
     def _store_postgresql_metadata(
-        self, recording_id: UUID, metadata: Dict[str, Optional[str]], correlation_id: str
+        self,
+        recording_id: UUID,
+        metadata: dict[str, str | None],
+        correlation_id: str,
     ) -> None:
         """Store metadata in PostgreSQL.
 
@@ -125,22 +135,30 @@ class StorageHandler:
             # Store each metadata item
             stored_count = 0
             for key, value in metadata.items():
-                if value is not None:  # Only store non-null values
-                    if self.metadata_repo:
-                        self.metadata_repo.create(recording_id=recording_id, key=key, value=value)
-                        stored_count += 1
+                if value is not None and self.metadata_repo:  # Only store non-null values
+                    self.metadata_repo.create(recording_id=recording_id, key=key, value=value)
+                    stored_count += 1
 
             logger.info(
                 f"Stored {stored_count} metadata items in PostgreSQL",
-                extra={"correlation_id": correlation_id, "recording_id": str(recording_id)},
+                extra={
+                    "correlation_id": correlation_id,
+                    "recording_id": str(recording_id),
+                },
             )
 
         except Exception as e:
-            logger.error(f"PostgreSQL storage failed: {e}", extra={"correlation_id": correlation_id})
+            logger.error(
+                f"PostgreSQL storage failed: {e}",
+                extra={"correlation_id": correlation_id},
+            )
             raise
 
     def _store_neo4j_metadata(
-        self, recording_id: UUID, metadata: Dict[str, Optional[str]], correlation_id: str
+        self,
+        recording_id: UUID,
+        metadata: dict[str, str | None],
+        correlation_id: str,
     ) -> None:
         """Store metadata in Neo4j graph database.
 
@@ -167,8 +185,8 @@ class StorageHandler:
                         file_hash=recording.file_hash,
                         properties={
                             "file_size": recording.file_size,
-                            "created_at": recording.created_at.isoformat() if recording.created_at else None,
-                            "updated_at": recording.updated_at.isoformat() if recording.updated_at else None,
+                            "created_at": (recording.created_at.isoformat() if recording.created_at else None),
+                            "updated_at": (recording.updated_at.isoformat() if recording.updated_at else None),
                         },
                     )
 
@@ -180,14 +198,17 @@ class StorageHandler:
                     metadata_id = self.neo4j_repo.create_metadata(
                         key=key,
                         value=value,
-                        properties={"extracted_at": datetime.utcnow().isoformat(), "correlation_id": correlation_id},
+                        properties={
+                            "extracted_at": datetime.now(UTC).isoformat(),
+                            "correlation_id": correlation_id,
+                        },
                     )
 
                     # Create HAS_METADATA relationship
                     self.neo4j_repo.create_has_metadata_relationship(
                         recording_id=recording_id,
                         metadata_id=metadata_id,
-                        properties={"created_at": datetime.utcnow().isoformat()},
+                        properties={"created_at": datetime.now(UTC).isoformat()},
                     )
                     stored_count += 1
 
@@ -199,7 +220,10 @@ class StorageHandler:
 
             logger.info(
                 f"Stored {stored_count} metadata nodes in Neo4j",
-                extra={"correlation_id": correlation_id, "recording_id": str(recording_id)},
+                extra={
+                    "correlation_id": correlation_id,
+                    "recording_id": str(recording_id),
+                },
             )
 
         except Exception as e:
@@ -207,7 +231,10 @@ class StorageHandler:
             raise
 
     def _create_semantic_relationships(
-        self, recording_id: UUID, metadata: Dict[str, Optional[str]], correlation_id: str
+        self,
+        recording_id: UUID,
+        metadata: dict[str, str | None],
+        correlation_id: str,
     ) -> None:
         """Create semantic relationships in Neo4j based on metadata.
 
@@ -234,7 +261,10 @@ class StorageHandler:
                     from_id=recording_id,
                     to_id=album_id,
                     relationship_type="PART_OF",
-                    properties={"track_number": metadata.get("track"), "source": "metadata_extraction"},
+                    properties={
+                        "track_number": metadata.get("track"),
+                        "source": "metadata_extraction",
+                    },
                 )
 
             # Create Genre node and relationship if genre exists
@@ -249,20 +279,24 @@ class StorageHandler:
 
             logger.debug(
                 "Created semantic relationships in Neo4j",
-                extra={"correlation_id": correlation_id, "recording_id": str(recording_id)},
+                extra={
+                    "correlation_id": correlation_id,
+                    "recording_id": str(recording_id),
+                },
             )
 
         except Exception as e:
             # Log but don't fail - semantic relationships are supplementary
             logger.warning(
-                f"Failed to create some semantic relationships: {e}", extra={"correlation_id": correlation_id}
+                f"Failed to create some semantic relationships: {e}",
+                extra={"correlation_id": correlation_id},
             )
 
     def store_bpm_data(
         self,
         recording_id: UUID,
-        bpm_data: Dict[str, Any],
-        temporal_data: Optional[Dict[str, Any]] = None,
+        bpm_data: dict[str, Any],
+        temporal_data: dict[str, Any] | None = None,
         correlation_id: str = "unknown",
     ) -> bool:
         """Store BPM analysis results in both databases.
@@ -278,7 +312,7 @@ class StorageHandler:
         """
         try:
             # Prepare BPM metadata for storage
-            bpm_metadata: Dict[str, Optional[str]] = {}
+            bpm_metadata: dict[str, str | None] = {}
 
             # Store core BPM values
             if "bpm" in bpm_data:
@@ -302,7 +336,7 @@ class StorageHandler:
                     bpm_metadata["bpm_stability"] = str(temporal_data["stability_score"])
 
                 # Optionally store temporal array (based on configuration)
-                if "temporal_bpm" in temporal_data and temporal_data["temporal_bpm"]:
+                if temporal_data.get("temporal_bpm"):
                     # Store as JSON string for complex data
                     bpm_metadata["bpm_temporal"] = json.dumps(temporal_data["temporal_bpm"])
 
@@ -337,10 +371,13 @@ class StorageHandler:
                 f"Failed to store BPM data for recording {recording_id}: {e}",
                 extra={"correlation_id": correlation_id},
             )
-            raise StorageError(f"Failed to store BPM data: {e}")
+            raise StorageError(f"Failed to store BPM data: {e}") from e
 
     def _create_bpm_relationships(
-        self, recording_id: UUID, metadata: Dict[str, Optional[str]], correlation_id: str
+        self,
+        recording_id: UUID,
+        metadata: dict[str, str | None],
+        correlation_id: str,
     ) -> None:
         """Create BPM-based relationships in Neo4j.
 
@@ -389,7 +426,10 @@ class StorageHandler:
                         from_id=recording_id,
                         to_id=tempo_id,
                         relationship_type="HAS_TEMPO_TYPE",
-                        properties={"stability_score": stability, "source": "temporal_analysis"},
+                        properties={
+                            "stability_score": stability,
+                            "source": "temporal_analysis",
+                        },
                     )
                 except (ValueError, TypeError):
                     pass
@@ -409,7 +449,7 @@ class StorageHandler:
     def store_key_data(
         self,
         recording_id: UUID,
-        key_data: Dict[str, Any],
+        key_data: dict[str, Any],
         correlation_id: str = "unknown",
     ) -> bool:
         """Store musical key detection results in both databases.
@@ -424,7 +464,7 @@ class StorageHandler:
         """
         try:
             # Prepare key metadata for storage
-            key_metadata: Dict[str, Optional[str]] = {}
+            key_metadata: dict[str, str | None] = {}
 
             # Store core key values
             if "key" in key_data:
@@ -482,12 +522,12 @@ class StorageHandler:
                 f"Failed to store key data for recording {recording_id}: {e}",
                 extra={"correlation_id": correlation_id},
             )
-            raise StorageError(f"Failed to store key data: {e}")
+            raise StorageError(f"Failed to store key data: {e}") from e
 
     def store_mood_data(
         self,
         recording_id: UUID,
-        mood_data: Dict[str, Any],
+        mood_data: dict[str, Any],
         correlation_id: str = "unknown",
     ) -> bool:
         """Store mood and genre analysis results in both databases.
@@ -502,10 +542,10 @@ class StorageHandler:
         """
         try:
             # Prepare mood metadata for storage
-            mood_metadata: Dict[str, Optional[str]] = {}
+            mood_metadata: dict[str, str | None] = {}
 
             # Store mood scores
-            if "mood_scores" in mood_data and mood_data["mood_scores"]:
+            if mood_data.get("mood_scores"):
                 for mood_dimension, score in mood_data["mood_scores"].items():
                     mood_metadata[f"mood_{mood_dimension}"] = str(score)
 
@@ -517,7 +557,7 @@ class StorageHandler:
                 mood_metadata["genre_confidence"] = str(mood_data["genre_confidence"])
 
             # Store top 3 genres
-            if "genres" in mood_data and mood_data["genres"]:
+            if mood_data.get("genres"):
                 for i, genre_info in enumerate(mood_data["genres"][:3]):
                     if isinstance(genre_info, dict):
                         mood_metadata[f"genre_{i + 1}"] = genre_info.get("genre", "")
@@ -576,10 +616,13 @@ class StorageHandler:
                 f"Failed to store mood data for recording {recording_id}: {e}",
                 extra={"correlation_id": correlation_id},
             )
-            raise StorageError(f"Failed to store mood data: {e}")
+            raise StorageError(f"Failed to store mood data: {e}") from e
 
     def _create_key_relationships(
-        self, recording_id: UUID, metadata: Dict[str, Optional[str]], correlation_id: str
+        self,
+        recording_id: UUID,
+        metadata: dict[str, str | None],
+        correlation_id: str,
     ) -> None:
         """Create musical key-based relationships in Neo4j.
 
@@ -627,7 +670,10 @@ class StorageHandler:
             )
 
     def _create_mood_relationships(
-        self, recording_id: UUID, metadata: Dict[str, Optional[str]], correlation_id: str
+        self,
+        recording_id: UUID,
+        metadata: dict[str, str | None],
+        correlation_id: str,
     ) -> None:
         """Create mood and genre-based relationships in Neo4j.
 
@@ -661,10 +707,8 @@ class StorageHandler:
                 if key.startswith("mood_") and not key.endswith("_status") and not key.endswith("_error"):
                     mood_name = key.replace("mood_", "")
                     if value and mood_name not in ["confidence", "needs_review"]:
-                        try:
+                        with contextlib.suppress(ValueError):
                             mood_scores[mood_name] = float(value)
-                        except ValueError:
-                            pass
 
             if mood_scores:
                 # Get dominant mood
@@ -713,7 +757,7 @@ class StorageHandler:
                 extra={"correlation_id": correlation_id},
             )
 
-    def _get_bpm_range(self, bpm: float) -> Optional[str]:
+    def _get_bpm_range(self, bpm: float) -> str | None:
         """Categorize BPM into standard ranges.
 
         Args:
@@ -724,22 +768,21 @@ class StorageHandler:
         """
         if bpm < 60:
             return "very_slow"  # Largo
-        elif bpm < 76:
+        if bpm < 76:
             return "slow"  # Adagio
-        elif bpm < 108:
+        if bpm < 108:
             return "moderate"  # Andante/Moderato
-        elif bpm < 120:
+        if bpm < 120:
             return "moderate_fast"  # Allegretto
-        elif bpm < 140:
+        if bpm < 140:
             return "fast"  # Allegro
-        elif bpm < 168:
+        if bpm < 168:
             return "very_fast"  # Vivace
-        elif bpm < 200:
+        if bpm < 200:
             return "extremely_fast"  # Presto
-        else:
-            return "ultra_fast"  # Prestissimo
+        return "ultra_fast"  # Prestissimo
 
-    def get_bpm_statistics(self, recording_ids: Optional[List[UUID]] = None) -> Dict[str, Any]:
+    def get_bpm_statistics(self, recording_ids: list[UUID] | None = None) -> dict[str, Any]:
         """Get BPM statistics for recordings.
 
         Args:
@@ -749,7 +792,7 @@ class StorageHandler:
             Dictionary with BPM statistics
         """
         try:
-            stats: Dict[str, Any] = {
+            stats: dict[str, Any] = {
                 "total_analyzed": 0,
                 "successful": 0,
                 "failed": 0,
@@ -777,10 +820,8 @@ class StorageHandler:
                             except ValueError:
                                 stats["failed"] += 1
                         elif item.key == "bpm_confidence" and item.value:
-                            try:
+                            with contextlib.suppress(ValueError):
                                 confidence_values.append(float(item.value))
-                            except ValueError:
-                                pass
 
             stats["total_analyzed"] = stats["successful"] + stats["failed"]
 
@@ -804,7 +845,11 @@ class StorageHandler:
             return {"error": str(e)}
 
     def update_recording_status(
-        self, recording_id: UUID, status: str, error_message: Optional[str] = None, correlation_id: Optional[str] = None
+        self,
+        recording_id: UUID,
+        status: str,
+        error_message: str | None = None,
+        correlation_id: str | None = None,
     ) -> bool:
         """Update the processing status of a recording.
 
@@ -823,7 +868,8 @@ class StorageHandler:
             recording = self.recording_repo.get(recording_id)
             if not recording:
                 logger.error(
-                    f"Recording {recording_id} not found for status update", extra={"correlation_id": correlation_id}
+                    f"Recording {recording_id} not found for status update",
+                    extra={"correlation_id": correlation_id},
                 )
                 return False
 
@@ -841,18 +887,22 @@ class StorageHandler:
                     {
                         "processing_status": status,
                         "processing_error": error_message,
-                        "last_processed": datetime.utcnow().isoformat(),
+                        "last_processed": datetime.now(UTC).isoformat(),
                     },
                 )
 
             logger.info(
-                f"Updated recording {recording_id} status to {status}", extra={"correlation_id": correlation_id}
+                f"Updated recording {recording_id} status to {status}",
+                extra={"correlation_id": correlation_id},
             )
 
             return updated is not None
 
         except Exception as e:
-            logger.error(f"Failed to update recording status: {e}", extra={"correlation_id": correlation_id})
+            logger.error(
+                f"Failed to update recording status: {e}",
+                extra={"correlation_id": correlation_id},
+            )
             return False
 
     def close(self) -> None:

@@ -44,11 +44,10 @@ class TraktorGenerator(CueGenerator):
 
         Traktor uses REM fields for BPM and KEY information.
         """
-        lines = super()._generate_track_commands(track)
+        return super()._generate_track_commands(track)
 
         # Traktor-specific fields are already in REM fields
         # Just ensure proper formatting
-        return lines
 
 
 class SeratoGenerator(CueGenerator):
@@ -75,9 +74,9 @@ class SeratoGenerator(CueGenerator):
             lines.append(f'PERFORMER "{disc.performer}"')
 
         # Serato uses these REM fields
-        for key in ["GENRE", "DATE", "DISCID"]:
-            if value := disc.rem_fields.get(key):
-                lines.append(f'REM {key} "{value}"')
+        lines.extend(
+            f'REM {key} "{value}"' for key in ["GENRE", "DATE", "DISCID"] if (value := disc.rem_fields.get(key))
+        )
 
         return lines
 
@@ -109,9 +108,7 @@ class RekordboxGenerator(CueGenerator):
 
         # Rekordbox-specific REM fields
         rekordbox_fields = ["BPM", "KEY", "GENRE", "LABEL", "YEAR", "COMMENT"]
-        for key in rekordbox_fields:
-            if value := track.rem_fields.get(key):
-                lines.append(f'    REM {key} "{value}"')
+        lines.extend(f'    REM {key} "{value}"' for key in rekordbox_fields if (value := track.rem_fields.get(key)))
 
         # INDEX commands
         for index_num in sorted(track.indices.keys()):
@@ -156,10 +153,8 @@ class KodiGenerator(CueGenerator):
             "COMPILATION",
         ]
 
-        for key in kodi_fields:
-            if value := disc.rem_fields.get(key):
-                # Always quote REM values for consistency
-                lines.append(f'REM {key} "{value}"')
+        # Always quote REM values for consistency
+        lines.extend(f'REM {key} "{value}"' for key in kodi_fields if (value := disc.rem_fields.get(key)))
 
         # Add signature if not present
         if "COMMENT" not in disc.rem_fields:

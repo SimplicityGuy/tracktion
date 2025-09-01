@@ -2,7 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
-from services.analysis_service.src.file_rename_executor.metadata_preserver import MetadataPreserver
+from services.analysis_service.src.file_rename_executor.metadata_preserver import (
+    MetadataPreserver,
+)
 
 
 class TestMetadataPreserver:
@@ -80,7 +82,10 @@ class TestMetadataPreserver:
             mock_audio = MagicMock()
             mock_audio.mime = ["audio/mp3"]
             mock_tags = MagicMock()
-            mock_tags.__getitem__ = lambda self, key: {"title": "MP3 Song", "artist": "MP3 Artist"}[key]
+            mock_tags.__getitem__ = lambda self, key: {
+                "title": "MP3 Song",
+                "artist": "MP3 Artist",
+            }[key]
             mock_tags.keys = MagicMock(return_value=["title", "artist"])
             mock_audio.tags = mock_tags
             mock_audio.info.length = 200.0

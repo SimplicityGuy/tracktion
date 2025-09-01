@@ -1,16 +1,20 @@
 """Test async metadata extraction functionality."""
 
 import asyncio
-import os
+import contextlib
 import tempfile
 import time
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest_asyncio
 
-from src.async_metadata_extractor import AsyncMetadataExtractor, AsyncMetadataProgressTracker
+from src.async_metadata_extractor import (
+    AsyncMetadataExtractor,
+    AsyncMetadataProgressTracker,
+)
 
 
 @pytest_asyncio.fixture
@@ -31,10 +35,8 @@ async def test_audio_file() -> AsyncGenerator[str]:
     yield temp_path
 
     # Cleanup
-    try:
-        os.unlink(temp_path)
-    except Exception:
-        pass
+    with contextlib.suppress(Exception):
+        Path(temp_path).unlink()
 
 
 class TestAsyncMetadataExtractor:
@@ -88,10 +90,8 @@ class TestAsyncMetadataExtractor:
         finally:
             # Cleanup
             for path in test_files:
-                try:
-                    os.unlink(path)
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    Path(path).unlink()
 
     async def test_concurrent_extraction(self, metadata_extractor: Any) -> None:
         """Test concurrent metadata extraction."""
@@ -120,10 +120,8 @@ class TestAsyncMetadataExtractor:
         finally:
             # Cleanup
             for path in test_files:
-                try:
-                    os.unlink(path)
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    Path(path).unlink()
 
     async def test_error_handling(self, metadata_extractor: Any) -> None:
         """Test error handling for non-existent files."""
@@ -148,7 +146,10 @@ class TestAsyncMetadataExtractor:
 
     @patch("src.async_metadata_extractor.File")
     async def test_mutagen_metadata_extraction(
-        self, mock_file: Any, metadata_extractor: Any, test_audio_file: str
+        self,
+        mock_file: Any,
+        metadata_extractor: Any,
+        test_audio_file: str,
     ) -> None:
         """Test extraction with mutagen metadata."""
         # Mock mutagen File object

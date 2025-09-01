@@ -8,6 +8,17 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
+# Import analysis service components
+from services.analysis_service.src.audio_cache import AudioCache
+from services.analysis_service.src.bpm_detector import BPMDetector
+from services.analysis_service.src.key_detector import KeyDetector
+from services.analysis_service.src.message_consumer import MessageConsumer
+from services.analysis_service.src.model_manager import ModelManager
+from services.analysis_service.src.mood_analyzer import MoodAnalyzer
+
+# Create a random number generator
+rng = np.random.default_rng()
+
 
 class AnalysisPerformanceBenchmark:
     """Benchmark suite for analysis service performance."""
@@ -25,12 +36,11 @@ class AnalysisPerformanceBenchmark:
         Returns:
             Performance metrics
         """
-        from services.analysis_service.src.bpm_detector import BPMDetector
 
         # Mock essentia to avoid actual audio processing
         with patch("services.analysis_service.src.bpm_detector.es") as mock_es:
             # Setup mocks
-            mock_es.MonoLoader.return_value.return_value = np.random.randn(44100 * 30)  # 30 seconds
+            mock_es.MonoLoader.return_value.return_value = rng.standard_normal(44100 * 30)  # 30 seconds
             mock_es.RhythmExtractor2013.return_value.return_value = (120.0, [120] * 100, [0.9] * 100, [], 0.9)
 
             detector = BPMDetector()
@@ -59,17 +69,16 @@ class AnalysisPerformanceBenchmark:
         Returns:
             Performance metrics
         """
-        from services.analysis_service.src.key_detector import KeyDetector
 
         with patch("services.analysis_service.src.key_detector.es") as mock_es:
             # Setup mocks
-            mock_audio = np.random.randn(44100 * 30)
+            mock_audio = rng.standard_normal(44100 * 30)
             mock_es.MonoLoader.return_value.return_value = mock_audio
             mock_es.KeyExtractor.return_value.return_value = ("C", "major", 0.85)
             mock_es.Windowing.return_value.return_value = mock_audio[:2048]
-            mock_es.Spectrum.return_value.return_value = np.random.rand(1025)
+            mock_es.Spectrum.return_value.return_value = rng.random(1025)
             mock_es.SpectralPeaks.return_value.return_value = (np.array([100, 200]), np.array([0.5, 0.3]))
-            mock_es.HPCP.return_value.return_value = np.random.rand(12)
+            mock_es.HPCP.return_value.return_value = rng.random(12)
             mock_es.Key.return_value.return_value = ("C", "major", 0.85, 0.9)
 
             detector = KeyDetector()
@@ -98,11 +107,10 @@ class AnalysisPerformanceBenchmark:
         Returns:
             Performance metrics
         """
-        from services.analysis_service.src.model_manager import ModelManager
-        from services.analysis_service.src.mood_analyzer import MoodAnalyzer
+        # ModelManager imported at top level
 
         with patch("services.analysis_service.src.mood_analyzer.es") as mock_es:
-            mock_es.MonoLoader.return_value.return_value = np.random.randn(16000 * 30)
+            mock_es.MonoLoader.return_value.return_value = rng.standard_normal(16000 * 30)
 
             # Mock model manager
             mock_manager = Mock(spec=ModelManager)
@@ -141,14 +149,13 @@ class AnalysisPerformanceBenchmark:
         Returns:
             Performance metrics for cache operations
         """
-        from services.analysis_service.src.audio_cache import AudioCache
 
-        with patch("redis.Redis") as MockRedis:
+        with patch("redis.Redis") as mock_redis_class:
             mock_redis = Mock()
             mock_redis.ping.return_value = True
             mock_redis.get.return_value = None
             mock_redis.setex.return_value = True
-            MockRedis.return_value = mock_redis
+            mock_redis_class.return_value = mock_redis
 
             cache = AudioCache(enabled=True)
 
@@ -201,20 +208,19 @@ class AnalysisPerformanceBenchmark:
         Returns:
             Performance metrics for full pipeline
         """
-        from services.analysis_service.src.message_consumer import MessageConsumer
 
         # Setup mocks for all components
         with (
-            patch("services.analysis_service.src.message_consumer.BPMDetector") as MockBPM,
-            patch("services.analysis_service.src.message_consumer.KeyDetector") as MockKey,
-            patch("services.analysis_service.src.message_consumer.MoodAnalyzer") as MockMood,
-            patch("services.analysis_service.src.message_consumer.AudioCache") as MockCache,
-            patch("services.analysis_service.src.message_consumer.ModelManager") as MockManager,
+            patch("services.analysis_service.src.message_consumer.BPMDetector") as mock_bpm_class,
+            patch("services.analysis_service.src.message_consumer.KeyDetector") as mock_key_class,
+            patch("services.analysis_service.src.message_consumer.MoodAnalyzer") as mock_mood_class,
+            patch("services.analysis_service.src.message_consumer.AudioCache") as mock_cache_class,
+            patch("services.analysis_service.src.message_consumer.ModelManager") as mock_manager_class,
         ):
             # Setup mock responses
             mock_bpm = Mock()
             mock_bpm.detect_bpm.return_value = {"bpm": 120, "confidence": 0.9}
-            MockBPM.return_value = mock_bpm
+            mock_bpm_class.return_value = mock_bpm
 
             mock_key = Mock()
             key_result = Mock()
@@ -226,7 +232,7 @@ class AnalysisPerformanceBenchmark:
             key_result.alternative_key = None
             key_result.alternative_scale = None
             mock_key.detect_key.return_value = key_result
-            MockKey.return_value = mock_key
+            mock_key_class.return_value = mock_key
 
             mock_mood = Mock()
             mood_result = Mock()
@@ -242,7 +248,7 @@ class AnalysisPerformanceBenchmark:
             mood_result.overall_confidence = 0.85
             mood_result.needs_review = False
             mock_mood.analyze_mood.return_value = mood_result
-            MockMood.return_value = mock_mood
+            mock_mood_class.return_value = mock_mood
 
             mock_cache = Mock()
             mock_cache.get_bpm_results.return_value = None
@@ -251,9 +257,9 @@ class AnalysisPerformanceBenchmark:
             mock_cache.set_bpm_results.return_value = True
             mock_cache.set_key_results.return_value = True
             mock_cache.set_mood_results.return_value = True
-            MockCache.return_value = mock_cache
+            mock_cache_class.return_value = mock_cache
 
-            MockManager.return_value = Mock()
+            mock_manager_class.return_value = Mock()
 
             consumer = MessageConsumer(
                 rabbitmq_url="amqp://localhost",
@@ -386,6 +392,8 @@ class AnalysisPerformanceBenchmark:
 
 def main():
     """Run benchmarks from command line."""
+    # MessageConsumer imported at top level
+
     benchmark = AnalysisPerformanceBenchmark()
     results = benchmark.run_all_benchmarks()
     benchmark.print_results(results)
@@ -397,9 +405,9 @@ def main():
         def convert_numpy(obj):
             if isinstance(obj, np.ndarray):
                 return obj.tolist()
-            elif isinstance(obj, np.float32 | np.float64):
+            if isinstance(obj, np.float32 | np.float64):
                 return float(obj)
-            elif isinstance(obj, np.int32 | np.int64):
+            if isinstance(obj, np.int32 | np.int64):
                 return int(obj)
             return obj
 

@@ -7,9 +7,17 @@ and confidence scoring.
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, ClassVar
 
 import numpy as np
+
+try:
+    import essentia.standard as es
+
+    HAS_ESSENTIA = True
+except ImportError:
+    HAS_ESSENTIA = False
+    es = None
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +29,8 @@ class KeyDetectionResult:
     key: str  # e.g., "C", "F#", "Bb"
     scale: str  # "major" or "minor"
     confidence: float  # 0.0 to 1.0
-    alternative_key: Optional[str] = None
-    alternative_scale: Optional[str] = None
+    alternative_key: str | None = None
+    alternative_scale: str | None = None
     agreement: bool = False
     needs_review: bool = False
 
@@ -36,7 +44,7 @@ class KeyDetector:
     """
 
     # Map Essentia key names to standard notation
-    KEY_NAMES = [
+    KEY_NAMES: ClassVar[list[str]] = [
         "C",
         "C#",
         "D",
@@ -72,7 +80,7 @@ class KeyDetector:
         self.disagreement_penalty = disagreement_penalty
         self.needs_review_threshold = needs_review_threshold
 
-    def detect_key(self, audio_file: str) -> Optional[KeyDetectionResult]:
+    def detect_key(self, audio_file: str) -> KeyDetectionResult | None:
         """
         Detect the musical key of an audio file.
 
@@ -83,9 +91,6 @@ class KeyDetector:
             KeyDetectionResult with detected key, scale, and confidence
         """
         try:
-            # Import Essentia (lazy import to avoid issues if not installed)
-            import essentia.standard as es
-
             # Load audio file
             logger.info(f"Loading audio file: {audio_file}")
             audio = es.MonoLoader(filename=audio_file)()
@@ -110,10 +115,10 @@ class KeyDetector:
             logger.error("Essentia not installed. Install with: uv pip install essentia")
             return None
         except Exception as e:
-            logger.error(f"Error detecting key for {audio_file}: {str(e)}")
+            logger.error(f"Error detecting key for {audio_file}: {e!s}")
             return None
 
-    def _detect_with_key_extractor(self, audio: np.ndarray, es: Any) -> Tuple[str, str, float]:
+    def _detect_with_key_extractor(self, audio: np.ndarray, es: Any) -> tuple[str, str, float]:
         """
         Primary key detection using Essentia's KeyExtractor.
 
@@ -133,11 +138,11 @@ class KeyDetector:
             return key, scale, strength
 
         except Exception as e:
-            logger.error(f"KeyExtractor failed: {str(e)}")
+            logger.error(f"KeyExtractor failed: {e!s}")
             # Return default values on error
             return "C", "major", 0.0
 
-    def _detect_with_hpcp(self, audio: np.ndarray, es: Any) -> Tuple[str, str, float]:
+    def _detect_with_hpcp(self, audio: np.ndarray, es: Any) -> tuple[str, str, float]:
         """
         Alternative key detection using HPCP (Harmonic Pitch Class Profile).
 
@@ -163,14 +168,14 @@ class KeyDetector:
             return key, scale, strength
 
         except Exception as e:
-            logger.error(f"HPCP key detection failed: {str(e)}")
+            logger.error(f"HPCP key detection failed: {e!s}")
             # Return default values on error
             return "C", "major", 0.0
 
     def _combine_results(
         self,
-        primary: Tuple[str, str, float],
-        alternative: Tuple[str, str, float],
+        primary: tuple[str, str, float],
+        alternative: tuple[str, str, float],
     ) -> KeyDetectionResult:
         """
         Combine results from multiple algorithms.
@@ -218,7 +223,7 @@ class KeyDetector:
             needs_review=needs_review,
         )
 
-    def detect_key_with_segments(self, audio_file: str, num_segments: int = 3) -> Optional[KeyDetectionResult]:
+    def detect_key_with_segments(self, audio_file: str, num_segments: int = 3) -> KeyDetectionResult | None:
         """
         Detect key using multiple segments for improved accuracy.
 
@@ -229,9 +234,11 @@ class KeyDetector:
         Returns:
             KeyDetectionResult based on segment analysis
         """
-        try:
-            import essentia.standard as es
+        if not HAS_ESSENTIA:
+            logger.error("Essentia not installed. Install with: uv pip install essentia")
+            return None
 
+        try:
             # Load audio file
             audio = es.MonoLoader(filename=audio_file)()
             segment_length = len(audio) // num_segments
@@ -255,7 +262,7 @@ class KeyDetector:
             return self._vote_on_segments(segment_results)
 
         except Exception as e:
-            logger.error(f"Segment-based key detection failed: {str(e)}")
+            logger.error(f"Segment-based key detection failed: {e!s}")
             return None
 
     def _vote_on_segments(self, results: list[KeyDetectionResult]) -> KeyDetectionResult:
@@ -268,9 +275,8 @@ class KeyDetector:
         Returns:
             Final KeyDetectionResult based on voting
         """
-
         # Count key/scale combinations weighted by confidence
-        key_votes: Dict[Tuple[str, str], float] = {}
+        key_votes: dict[tuple[str, str], float] = {}
 
         for result in results:
             key_scale = (result.key, result.scale)

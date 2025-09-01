@@ -15,7 +15,9 @@ from services.tracklist_service.src.models.cue_file import (
     ValidationResult,
 )
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
-from services.tracklist_service.src.services.cue_generation_service import CueGenerationService
+from services.tracklist_service.src.services.cue_generation_service import (
+    CueGenerationService,
+)
 from services.tracklist_service.src.services.storage_service import StorageResult
 
 
@@ -53,24 +55,42 @@ class TestCueGenerationService:
             ),
         ]
 
-        return Tracklist(audio_file_id=uuid4(), source="manual", tracks=tracks, confidence_score=0.87, is_draft=False)
+        return Tracklist(
+            audio_file_id=uuid4(),
+            source="manual",
+            tracks=tracks,
+            confidence_score=0.87,
+            is_draft=False,
+        )
 
     @pytest.fixture
     def generation_request(self):
         """Create a sample generation request."""
         return GenerateCueRequest(
-            format=CueFormat.STANDARD, options={}, validate_audio=True, audio_file_path="test_mix.wav"
+            format=CueFormat.STANDARD,
+            options={},
+            validate_audio=True,
+            audio_file_path="test_mix.wav",
         )
 
     @patch("services.tracklist_service.src.services.cue_generation_service.CueIntegrationService")
     @pytest.mark.asyncio
     async def test_generate_cue_file_success(
-        self, mock_integration_class, service, sample_tracklist, generation_request, mock_storage_service
+        self,
+        mock_integration_class,
+        service,
+        sample_tracklist,
+        generation_request,
+        mock_storage_service,
     ):
         """Test successful CUE file generation."""
         # Setup mocks
         mock_integration = MagicMock()
-        mock_integration.generate_cue_content.return_value = (True, "MOCK CUE CONTENT", None)
+        mock_integration.generate_cue_content.return_value = (
+            True,
+            "MOCK CUE CONTENT",
+            None,
+        )
         mock_integration.validate_cue_content.return_value = ValidationResult(valid=True)
         mock_integration_class.return_value = mock_integration
 
@@ -106,7 +126,11 @@ class TestCueGenerationService:
         """Test CUE file generation failure."""
         # Setup mock to fail generation
         mock_integration = MagicMock()
-        mock_integration.generate_cue_content.return_value = (False, "", "Generation failed")
+        mock_integration.generate_cue_content.return_value = (
+            False,
+            "",
+            "Generation failed",
+        )
         mock_integration_class.return_value = mock_integration
 
         # Recreate service with mocked integration
@@ -122,12 +146,21 @@ class TestCueGenerationService:
     @patch("services.tracklist_service.src.services.cue_generation_service.CueIntegrationService")
     @pytest.mark.asyncio
     async def test_generate_cue_file_validation_failure(
-        self, mock_integration_class, service, sample_tracklist, generation_request, mock_storage_service
+        self,
+        mock_integration_class,
+        service,
+        sample_tracklist,
+        generation_request,
+        mock_storage_service,
     ):
         """Test CUE file validation failure."""
         # Setup mocks
         mock_integration = MagicMock()
-        mock_integration.generate_cue_content.return_value = (True, "INVALID CUE CONTENT", None)
+        mock_integration.generate_cue_content.return_value = (
+            True,
+            "INVALID CUE CONTENT",
+            None,
+        )
         mock_integration.validate_cue_content.return_value = ValidationResult(valid=False, error="Invalid CUE format")
         mock_integration_class.return_value = mock_integration
 
@@ -144,12 +177,21 @@ class TestCueGenerationService:
     @patch("services.tracklist_service.src.services.cue_generation_service.CueIntegrationService")
     @pytest.mark.asyncio
     async def test_generate_cue_file_storage_failure(
-        self, mock_integration_class, service, sample_tracklist, generation_request, mock_storage_service
+        self,
+        mock_integration_class,
+        service,
+        sample_tracklist,
+        generation_request,
+        mock_storage_service,
     ):
         """Test CUE file storage failure."""
         # Setup mocks
         mock_integration = MagicMock()
-        mock_integration.generate_cue_content.return_value = (True, "MOCK CUE CONTENT", None)
+        mock_integration.generate_cue_content.return_value = (
+            True,
+            "MOCK CUE CONTENT",
+            None,
+        )
         mock_integration.validate_cue_content.return_value = ValidationResult(valid=True)
         mock_integration_class.return_value = mock_integration
 
@@ -239,7 +281,10 @@ class TestCueGenerationService:
     def test_get_conversion_preview(self, service):
         """Test getting conversion warnings."""
         with patch.object(service.cue_integration, "get_conversion_warnings") as mock_warnings:
-            mock_warnings.return_value = ["ISRC codes will be lost", "REM fields may be truncated"]
+            mock_warnings.return_value = [
+                "ISRC codes will be lost",
+                "REM fields may be truncated",
+            ]
 
             warnings = service.get_conversion_preview(CueFormat.STANDARD, CueFormat.CDJ)
 
@@ -249,7 +294,11 @@ class TestCueGenerationService:
     def test_get_supported_formats(self, service):
         """Test getting supported formats."""
         with patch.object(service.cue_integration, "get_supported_formats") as mock_formats:
-            mock_formats.return_value = [CueFormat.STANDARD, CueFormat.CDJ, CueFormat.TRAKTOR]
+            mock_formats.return_value = [
+                CueFormat.STANDARD,
+                CueFormat.CDJ,
+                CueFormat.TRAKTOR,
+            ]
 
             formats = service.get_supported_formats()
 

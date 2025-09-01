@@ -1,6 +1,6 @@
 """Unit tests for audit service."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -14,8 +14,7 @@ from services.tracklist_service.src.services.audit_service import AuditService
 @pytest.fixture
 def mock_session():
     """Create a mock database session."""
-    session = AsyncMock(spec=AsyncSession)
-    return session
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
@@ -117,8 +116,8 @@ class TestAuditService:
     async def test_query_audit_logs_with_filters(self, audit_service, mock_session):
         """Test querying audit logs with various filters."""
         entity_id = uuid4()
-        date_from = datetime.utcnow() - timedelta(days=7)
-        date_to = datetime.utcnow()
+        date_from = datetime.now(UTC) - timedelta(days=7)
+        date_to = datetime.now(UTC)
 
         # Mock query result
         mock_logs = [MagicMock(), MagicMock()]
@@ -170,7 +169,7 @@ class TestAuditService:
     @pytest.mark.asyncio
     async def test_get_actor_activity(self, audit_service):
         """Test getting actor activity."""
-        date_from = datetime.utcnow() - timedelta(hours=24)
+        date_from = datetime.now(UTC) - timedelta(hours=24)
         mock_logs = [MagicMock(), MagicMock()]
 
         # Mock query_audit_logs
@@ -228,8 +227,8 @@ class TestAuditService:
     @pytest.mark.asyncio
     async def test_get_audit_statistics_with_dates(self, audit_service, mock_session):
         """Test getting audit statistics with date filters."""
-        date_from = datetime.utcnow() - timedelta(days=7)
-        date_to = datetime.utcnow()
+        date_from = datetime.now(UTC) - timedelta(days=7)
+        date_to = datetime.now(UTC)
 
         mock_result = MagicMock()
         mock_result.all.return_value = []

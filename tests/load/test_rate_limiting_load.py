@@ -1,14 +1,19 @@
 """Load tests for rate limiting accuracy verification."""
 
 import asyncio
+import os
 import time
 from unittest.mock import AsyncMock, MagicMock
 
+import psutil
 import pytest
 from fastapi import Request
 
 from services.tracklist_service.src.auth.models import User, UserTier
-from services.tracklist_service.src.rate_limiting.limiter import RateLimiter, RateLimitResult
+from services.tracklist_service.src.rate_limiting.limiter import (
+    RateLimiter,
+    RateLimitResult,
+)
 
 
 class TestRateLimitingAccuracy:
@@ -27,7 +32,11 @@ class TestRateLimitingAccuracy:
         return {
             "free": User(id="free-user", email="free@test.com", tier=UserTier.FREE),
             "premium": User(id="premium-user", email="premium@test.com", tier=UserTier.PREMIUM),
-            "enterprise": User(id="enterprise-user", email="enterprise@test.com", tier=UserTier.ENTERPRISE),
+            "enterprise": User(
+                id="enterprise-user",
+                email="enterprise@test.com",
+                tier=UserTier.ENTERPRISE,
+            ),
         }
 
     @pytest.fixture
@@ -46,7 +55,10 @@ class TestRateLimitingAccuracy:
         user = test_users["free"]
 
         # Mock Redis responses for token bucket
-        mock_redis.hgetall.return_value = {"tokens": "10", "last_update": str(time.time())}
+        mock_redis.hgetall.return_value = {
+            "tokens": "10",
+            "last_update": str(time.time()),
+        }
         mock_redis.hmset.return_value = True
 
         # Simulate 100 concurrent requests within 1 minute
@@ -79,7 +91,10 @@ class TestRateLimitingAccuracy:
         user = test_users["premium"]
 
         # Mock Redis responses for higher limit
-        mock_redis.hgetall.return_value = {"tokens": "100", "last_update": str(time.time())}
+        mock_redis.hgetall.return_value = {
+            "tokens": "100",
+            "last_update": str(time.time()),
+        }
         mock_redis.hmset.return_value = True
 
         # Simulate 200 concurrent requests
@@ -148,7 +163,10 @@ class TestRateLimitingAccuracy:
         user = test_users["premium"]
 
         # Mock full token bucket
-        mock_redis.hgetall.return_value = {"tokens": "120", "last_update": str(time.time())}
+        mock_redis.hgetall.return_value = {
+            "tokens": "120",
+            "last_update": str(time.time()),
+        }
         mock_redis.hmset.return_value = True
 
         # Send burst of requests
@@ -177,9 +195,9 @@ class TestRateLimitingAccuracy:
         def mock_hgetall(key):
             if "free-user" in key:
                 return {"tokens": "10", "last_update": str(time.time())}
-            elif "premium-user" in key:
+            if "premium-user" in key:
                 return {"tokens": "100", "last_update": str(time.time())}
-            elif "enterprise-user" in key:
+            if "enterprise-user" in key:
                 return {"tokens": "1000", "last_update": str(time.time())}
             return {"tokens": "0", "last_update": str(time.time())}
 
@@ -285,7 +303,10 @@ class TestRateLimitingStress:
         user = User(id="stress-test", email="stress@test.com", tier=UserTier.PREMIUM)
 
         # Mock Redis for stress test
-        mock_redis.hgetall.return_value = {"tokens": "100", "last_update": str(time.time())}
+        mock_redis.hgetall.return_value = {
+            "tokens": "100",
+            "last_update": str(time.time()),
+        }
         mock_redis.hmset.return_value = True
 
         # Create mock request
@@ -324,9 +345,6 @@ class TestRateLimitingStress:
     @pytest.mark.asyncio
     async def test_memory_usage_under_load(self):
         """Test memory usage doesn't grow excessively under load."""
-        import os
-
-        import psutil
 
         process = psutil.Process(os.getpid())
         initial_memory = process.memory_info().rss
@@ -335,7 +353,10 @@ class TestRateLimitingStress:
         limiter = RateLimiter(mock_redis)
 
         # Mock Redis responses
-        mock_redis.hgetall.return_value = {"tokens": "10", "last_update": str(time.time())}
+        mock_redis.hgetall.return_value = {
+            "tokens": "10",
+            "last_update": str(time.time()),
+        }
         mock_redis.hmset.return_value = True
 
         # Create multiple users and requests

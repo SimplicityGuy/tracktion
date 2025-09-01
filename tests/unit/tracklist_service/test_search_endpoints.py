@@ -8,15 +8,15 @@ pagination, caching, and error handling.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from services.tracklist_service.src.api.search_api import SearchResult, router
+from services.tracklist_service.src.api.search_api import SearchResult, _perform_search, router
 
 
 @pytest.fixture
 def client():
     """Create test client."""
-    from fastapi import FastAPI
 
     app = FastAPI()
     app.include_router(router)
@@ -68,7 +68,8 @@ class TestSearchEndpoints:
 
         # Make request
         response = client.get(
-            "/api/v1/tracklists/search/1001tracklists", params={"query": "trance", "page": 1, "page_size": 20}
+            "/api/v1/tracklists/search/1001tracklists",
+            params={"query": "trance", "page": 1, "page_size": 20},
         )
 
         # Assertions
@@ -104,7 +105,8 @@ class TestSearchEndpoints:
         mock_perform_search.return_value = mock_search_results
 
         response = client.get(
-            "/api/v1/tracklists/search/1001tracklists", params={"artist": "DJ Example", "page": 1, "page_size": 10}
+            "/api/v1/tracklists/search/1001tracklists",
+            params={"artist": "DJ Example", "page": 1, "page_size": 10},
         )
 
         assert response.status_code == 200
@@ -129,7 +131,8 @@ class TestSearchEndpoints:
         mock_perform_search.return_value = large_results
 
         response = client.get(
-            "/api/v1/tracklists/search/1001tracklists", params={"query": "test", "page": 2, "page_size": 5}
+            "/api/v1/tracklists/search/1001tracklists",
+            params={"query": "test", "page": 2, "page_size": 5},
         )
 
         assert response.status_code == 200
@@ -222,7 +225,12 @@ class TestSearchEndpoints:
 
         response = client.get(
             "/api/v1/tracklists/search/1001tracklists",
-            params={"query": "house", "date_from": "2024-01-01", "date_to": "2024-12-31", "genre": "House"},
+            params={
+                "query": "house",
+                "date_from": "2024-01-01",
+                "date_to": "2024-12-31",
+                "genre": "House",
+            },
         )
 
         assert response.status_code == 200
@@ -247,7 +255,8 @@ class TestSearchEndpoints:
         mock_perform_search.return_value = mock_search_results
 
         response = client.get(
-            "/api/v1/tracklists/search/1001tracklists", params={"query": "test", "force_refresh": True}
+            "/api/v1/tracklists/search/1001tracklists",
+            params={"query": "test", "force_refresh": True},
         )
 
         assert response.status_code == 200
@@ -300,7 +309,6 @@ class TestPerformSearch:
     @pytest.mark.asyncio
     async def test_perform_search_query_matching(self):
         """Test search query matching logic."""
-        from services.tracklist_service.src.api.search_api import _perform_search
 
         # Test query matching
         search_params = {"query": "trance"}
@@ -313,7 +321,6 @@ class TestPerformSearch:
     @pytest.mark.asyncio
     async def test_perform_search_artist_filtering(self):
         """Test search artist filtering logic."""
-        from services.tracklist_service.src.api.search_api import _perform_search
 
         # Test artist filtering
         search_params = {"artist": "DJ Example"}
@@ -326,7 +333,6 @@ class TestPerformSearch:
     @pytest.mark.asyncio
     async def test_perform_search_genre_filtering(self):
         """Test search genre filtering logic."""
-        from services.tracklist_service.src.api.search_api import _perform_search
 
         # Test genre filtering
         search_params = {"genre": "Progressive House"}
@@ -339,7 +345,6 @@ class TestPerformSearch:
     @pytest.mark.asyncio
     async def test_perform_search_no_matches(self):
         """Test search with no matching results."""
-        from services.tracklist_service.src.api.search_api import _perform_search
 
         # Test search that should return no results
         search_params = {"query": "nonexistent genre"}

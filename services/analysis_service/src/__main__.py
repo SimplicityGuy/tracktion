@@ -1,21 +1,21 @@
 """Main entry point for the analysis service with structured logging."""
 
-import os
-import sys
-import signal
 import logging
+import os
+import signal
+import sys
 import threading
-from typing import Optional
 
-from .message_consumer import MessageConsumer
 from .lifecycle_consumer import LifecycleEventConsumer
+from .message_consumer import MessageConsumer, MessageConsumerConfig
 from .structured_logging import configure_structured_logging
 
 logger = logging.getLogger(__name__)
 
 
 def setup_signal_handlers(
-    consumer: MessageConsumer, lifecycle_consumer: Optional[LifecycleEventConsumer] = None
+    consumer: MessageConsumer,
+    lifecycle_consumer: LifecycleEventConsumer | None = None,
 ) -> None:
     """Set up signal handlers for graceful shutdown.
 
@@ -24,7 +24,7 @@ def setup_signal_handlers(
         lifecycle_consumer: Optional LifecycleEventConsumer to stop
     """
 
-    def signal_handler(signum: int, frame: Optional[object]) -> None:
+    def signal_handler(signum: int, frame: object | None) -> None:
         """Handle shutdown signals."""
         signal_name = signal.Signals(signum).name
         logger.info(
@@ -75,7 +75,8 @@ def main() -> None:
     lifecycle_thread = None
 
     try:
-        consumer = MessageConsumer(
+        # Create consumer configuration
+        config = MessageConsumerConfig(
             rabbitmq_url=rabbitmq_url,
             redis_host=redis_host,
             redis_port=redis_port,
@@ -85,6 +86,8 @@ def main() -> None:
             enable_mood_analysis=True,
             enable_batch_processing=os.getenv("ENABLE_BATCH_PROCESSING", "false").lower() == "true",
         )
+
+        consumer = MessageConsumer(config)
 
         # Create lifecycle event consumer if enabled
         enable_lifecycle_consumer = os.getenv("ENABLE_LIFECYCLE_CONSUMER", "true").lower() == "true"
@@ -99,7 +102,9 @@ def main() -> None:
 
             # Start lifecycle consumer in a separate thread
             lifecycle_thread = threading.Thread(
-                target=lifecycle_consumer.start_consuming, name="lifecycle-consumer", daemon=True
+                target=lifecycle_consumer.start_consuming,
+                name="lifecycle-consumer",
+                daemon=True,
             )
             lifecycle_thread.start()
             logger.info("Lifecycle event consumer started in background")

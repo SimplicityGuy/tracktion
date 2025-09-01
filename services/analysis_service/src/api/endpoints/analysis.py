@@ -1,12 +1,13 @@
 """Analysis endpoints for Analysis Service."""
 
-from typing import Any, Dict, List, Optional
+import uuid
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from ...structured_logging import get_logger
+from services.analysis_service.src.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -17,7 +18,7 @@ class AnalysisRequest(BaseModel):
     """Request model for analysis."""
 
     recording_id: UUID
-    analysis_types: List[str] = ["bpm", "key", "mood", "energy"]
+    analysis_types: list[str] = ["bpm", "key", "mood", "energy"]
     priority: int = 5
 
 
@@ -27,7 +28,7 @@ class AnalysisResult(BaseModel):
     type: str
     value: Any
     confidence: float
-    metadata: Dict[str, Any] = {}
+    metadata: dict[str, Any] = {}
 
 
 class AnalysisResponse(BaseModel):
@@ -36,13 +37,13 @@ class AnalysisResponse(BaseModel):
     recording_id: UUID
     status: str
     progress: float
-    results: List[AnalysisResult]
-    started_at: Optional[str]
-    completed_at: Optional[str]
+    results: list[AnalysisResult]
+    started_at: str | None
+    completed_at: str | None
 
 
 @router.post("")
-async def start_analysis(request: AnalysisRequest) -> Dict[str, Any]:
+async def start_analysis(request: AnalysisRequest) -> dict[str, Any]:
     """Start analysis for a recording.
 
     Args:
@@ -61,8 +62,6 @@ async def start_analysis(request: AnalysisRequest) -> Dict[str, Any]:
     )
 
     # In real implementation, send to processing queue
-    import uuid
-
     task_id = uuid.uuid4()
 
     return {
@@ -86,10 +85,30 @@ async def get_analysis_status(recording_id: UUID) -> AnalysisResponse:
     """
     # In real implementation, fetch from database
     results = [
-        AnalysisResult(type="bpm", value=128.5, confidence=0.95, metadata={"method": "onset_detection"}),
-        AnalysisResult(type="key", value="Am", confidence=0.88, metadata={"scale": "minor", "camelot": "8A"}),
-        AnalysisResult(type="mood", value="energetic", confidence=0.82, metadata={"valence": 0.7, "arousal": 0.8}),
-        AnalysisResult(type="energy", value=0.75, confidence=0.90, metadata={"peak": 0.85, "average": 0.75}),
+        AnalysisResult(
+            type="bpm",
+            value=128.5,
+            confidence=0.95,
+            metadata={"method": "onset_detection"},
+        ),
+        AnalysisResult(
+            type="key",
+            value="Am",
+            confidence=0.88,
+            metadata={"scale": "minor", "camelot": "8A"},
+        ),
+        AnalysisResult(
+            type="mood",
+            value="energetic",
+            confidence=0.82,
+            metadata={"valence": 0.7, "arousal": 0.8},
+        ),
+        AnalysisResult(
+            type="energy",
+            value=0.75,
+            confidence=0.90,
+            metadata={"peak": 0.85, "average": 0.75},
+        ),
     ]
 
     return AnalysisResponse(
@@ -103,7 +122,7 @@ async def get_analysis_status(recording_id: UUID) -> AnalysisResponse:
 
 
 @router.get("/{recording_id}/bpm")
-async def get_bpm_analysis(recording_id: UUID) -> Dict[str, Any]:
+async def get_bpm_analysis(recording_id: UUID) -> dict[str, Any]:
     """Get BPM analysis for a recording.
 
     Args:
@@ -126,7 +145,7 @@ async def get_bpm_analysis(recording_id: UUID) -> Dict[str, Any]:
 
 
 @router.get("/{recording_id}/key")
-async def get_key_analysis(recording_id: UUID) -> Dict[str, Any]:
+async def get_key_analysis(recording_id: UUID) -> dict[str, Any]:
     """Get key detection analysis for a recording.
 
     Args:
@@ -142,12 +161,15 @@ async def get_key_analysis(recording_id: UUID) -> Dict[str, Any]:
         "scale": "minor",
         "camelot": "8A",
         "open_key": "1m",
-        "alternatives": [{"key": "C", "confidence": 0.72}, {"key": "F", "confidence": 0.65}],
+        "alternatives": [
+            {"key": "C", "confidence": 0.72},
+            {"key": "F", "confidence": 0.65},
+        ],
     }
 
 
 @router.get("/{recording_id}/mood")
-async def get_mood_analysis(recording_id: UUID) -> Dict[str, Any]:
+async def get_mood_analysis(recording_id: UUID) -> dict[str, Any]:
     """Get mood analysis for a recording.
 
     Args:
@@ -176,7 +198,7 @@ async def generate_waveform(
     width: int = Query(1920, description="Waveform image width"),
     height: int = Query(256, description="Waveform image height"),
     color: str = Query("#00ff00", description="Waveform color"),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Generate waveform visualization for a recording.
 
     Args:
@@ -199,8 +221,6 @@ async def generate_waveform(
     )
 
     # In real implementation, send to processing queue
-    import uuid
-
     task_id = uuid.uuid4()
 
     return {
@@ -218,7 +238,7 @@ async def generate_spectrogram(
     fft_size: int = Query(2048, description="FFT window size"),
     hop_size: int = Query(512, description="Hop size"),
     color_map: str = Query("viridis", description="Color map"),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Generate spectrogram for a recording.
 
     Args:
@@ -241,8 +261,6 @@ async def generate_spectrogram(
     )
 
     # In real implementation, send to processing queue
-    import uuid
-
     task_id = uuid.uuid4()
 
     return {
@@ -250,5 +268,9 @@ async def generate_spectrogram(
         "recording_id": str(recording_id),
         "status": "generating",
         "message": "Spectrogram generation started",
-        "parameters": {"fft_size": fft_size, "hop_size": hop_size, "color_map": color_map},
+        "parameters": {
+            "fft_size": fft_size,
+            "hop_size": hop_size,
+            "color_map": color_map,
+        },
     }

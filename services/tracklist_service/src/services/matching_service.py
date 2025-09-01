@@ -6,13 +6,19 @@ with local audio files using metadata and fuzzy matching.
 """
 
 import logging
-from difflib import SequenceMatcher
-from typing import Any, Dict, List, Optional, Tuple
-from uuid import UUID
+import re
 from dataclasses import dataclass
+from datetime import datetime
+from difflib import SequenceMatcher
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
-from ..models.tracklist import Tracklist
-from ..models.tracklist_models import Tracklist as ScrapedTracklist
+if TYPE_CHECKING:
+    from src.models.tracklist import Tracklist
+
+from src.models.tracklist_models import CuePoint, Track, TracklistMetadata
+from src.models.tracklist_models import Tracklist as ScrapedTracklist
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +28,7 @@ class MatchingResult:
     """Result from matching a tracklist with an audio file."""
 
     confidence_score: float
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 class MatchingService:
@@ -30,11 +36,17 @@ class MatchingService:
 
     def __init__(self) -> None:
         """Initialize the matching service."""
-        self.confidence_weights = {"title": 0.3, "artist": 0.25, "duration": 0.25, "date": 0.1, "event": 0.1}
+        self.confidence_weights = {
+            "title": 0.3,
+            "artist": 0.25,
+            "duration": 0.25,
+            "date": 0.1,
+            "event": 0.1,
+        }
 
     def match_tracklist_to_audio(
-        self, scraped_tracklist: ScrapedTracklist, audio_metadata: Dict[str, Any]
-    ) -> Tuple[float, Dict[str, Any]]:
+        self, scraped_tracklist: ScrapedTracklist, audio_metadata: dict[str, Any]
+    ) -> tuple[float, dict[str, Any]]:
         """
         Match a scraped tracklist to audio file metadata.
 
@@ -50,15 +62,16 @@ class MatchingService:
         scores = []
 
         # Match title
-        if "title" in audio_metadata and audio_metadata["title"]:
+        if audio_metadata.get("title"):
             title_score = self._fuzzy_match(
-                self._normalize_title(scraped_tracklist, audio_metadata), audio_metadata["title"]
+                self._normalize_title(scraped_tracklist, audio_metadata),
+                audio_metadata["title"],
             )
             match_details["title_score"] = title_score
             scores.append(("title", title_score))
 
         # Match artist
-        if "artist" in audio_metadata and audio_metadata["artist"]:
+        if audio_metadata.get("artist"):
             artist_score = self._fuzzy_match(scraped_tracklist.dj_name, audio_metadata["artist"])
             match_details["artist_score"] = artist_score
             scores.append(("artist", artist_score))
@@ -87,7 +100,7 @@ class MatchingService:
 
         return confidence, match_details
 
-    def validate_audio_file(self, audio_file_path: str, expected_duration: Optional[int] = None) -> bool:
+    def validate_audio_file(self, audio_file_path: str, expected_duration: int | None = None) -> bool:
         """
         Validate that an audio file exists and is accessible.
 
@@ -98,20 +111,20 @@ class MatchingService:
         Returns:
             True if file is valid, False otherwise
         """
-        import os
 
         # Check file exists
-        if not os.path.exists(audio_file_path):
+        audio_path = Path(audio_file_path)
+        if not audio_path.exists():
             logger.error(f"Audio file not found: {audio_file_path}")
             return False
 
         # Check file is readable
-        if not os.access(audio_file_path, os.R_OK):
-            logger.error(f"Audio file not readable: {audio_file_path}")
+        if not audio_path.is_file():
+            logger.error(f"Audio file not readable or not a file: {audio_file_path}")
             return False
 
         # Check file size is reasonable (>1MB for audio)
-        file_size = os.path.getsize(audio_file_path)
+        file_size = audio_path.stat().st_size
         if file_size < 1_000_000:  # 1MB minimum
             logger.warning(f"Audio file suspiciously small: {file_size} bytes")
             return False
@@ -146,9 +159,8 @@ class MatchingService:
         score = matcher.ratio()
 
         # Check for substring matches (partial credit)
-        if score < 0.8:
-            if str1_normalized in str2_normalized or str2_normalized in str1_normalized:
-                score = max(score, 0.7)
+        if score < 0.8 and (str1_normalized in str2_normalized or str2_normalized in str1_normalized):
+            score = max(score, 0.7)
 
         return score
 
@@ -173,16 +185,13 @@ class MatchingService:
             s = s.replace(pattern, " ")
 
         # Remove special characters
-        import re
 
         s = re.sub(r"[^\w\s]", " ", s)
 
         # Remove extra whitespace
-        s = " ".join(s.split())
+        return " ".join(s.split())
 
-        return s
-
-    def _normalize_title(self, scraped_tracklist: ScrapedTracklist, audio_metadata: Dict[str, Any]) -> str:
+    def _normalize_title(self, scraped_tracklist: ScrapedTracklist, audio_metadata: dict[str, Any]) -> str:
         """
         Create a normalized title from scraped tracklist.
 
@@ -221,7 +230,7 @@ class MatchingService:
             Duration match score between 0 and 1
         """
         # Get tracklist duration
-        tracklist_duration: Optional[float] = None
+        tracklist_duration: float | None = None
 
         if scraped_tracklist.metadata and scraped_tracklist.metadata.duration_minutes:
             tracklist_duration = scraped_tracklist.metadata.duration_minutes * 60
@@ -240,16 +249,15 @@ class MatchingService:
         # Convert to score (0% diff = 1.0 score, 20% diff = 0.0 score)
         if diff_percent <= 0.02:  # Within 2%
             return 1.0
-        elif diff_percent <= 0.05:  # Within 5%
+        if diff_percent <= 0.05:  # Within 5%
             return 0.9
-        elif diff_percent <= 0.10:  # Within 10%
+        if diff_percent <= 0.10:  # Within 10%
             return 0.7
-        elif diff_percent <= 0.20:  # Within 20%
+        if diff_percent <= 0.20:  # Within 20%
             return 0.5
-        else:
-            return max(0.0, 1.0 - diff_percent)
+        return max(0.0, 1.0 - diff_percent)
 
-    def _match_date(self, tracklist_date: Optional[Any], audio_date: Optional[Any]) -> float:
+    def _match_date(self, tracklist_date: Any | None, audio_date: Any | None) -> float:
         """
         Match dates between tracklist and audio metadata.
 
@@ -264,7 +272,6 @@ class MatchingService:
             return 0.5  # No date info, neutral score
 
         # Convert to comparable format
-        from datetime import datetime
 
         if isinstance(tracklist_date, str):
             try:
@@ -289,16 +296,15 @@ class MatchingService:
         # Score based on proximity
         if day_diff == 0:
             return 1.0
-        elif day_diff <= 1:
+        if day_diff <= 1:
             return 0.9
-        elif day_diff <= 7:
+        if day_diff <= 7:
             return 0.7
-        elif day_diff <= 30:
+        if day_diff <= 30:
             return 0.5
-        elif day_diff <= 365:
+        if day_diff <= 365:
             return 0.3
-        else:
-            return 0.1
+        return 0.1
 
     def match_tracklist_with_audio_file(self, tracklist: "Tracklist", audio_file_id: UUID) -> MatchingResult:
         """
@@ -326,7 +332,7 @@ class MatchingService:
 
         return MatchingResult(confidence_score=confidence, metadata=audio_metadata)
 
-    def _get_audio_metadata(self, audio_file_id: UUID) -> Dict[str, Any]:
+    def _get_audio_metadata(self, audio_file_id: UUID) -> dict[str, Any]:
         """
         Get audio file metadata.
 
@@ -346,7 +352,6 @@ class MatchingService:
         """
         Convert a Tracklist to ScrapedTracklist format.
         """
-        from ..models.tracklist_models import TracklistMetadata, Track, CuePoint
 
         # Convert tracks
         tracks = []
@@ -401,7 +406,7 @@ class MatchingService:
             metadata=metadata,
         )
 
-    def _calculate_weighted_confidence(self, scores: List[Tuple[str, float]]) -> float:
+    def _calculate_weighted_confidence(self, scores: list[tuple[str, float]]) -> float:
         """
         Calculate weighted confidence score.
 

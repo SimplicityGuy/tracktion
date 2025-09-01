@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from watchdog.observers import Observer
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "services" / "file_watcher" / "src"))
 from main import FileWatcherService
@@ -35,7 +36,6 @@ class TestFileWatcherIntegration:
 
     def test_real_file_creation_detection(self, temp_watch_dir, mock_publisher):
         """Test that real file creation is detected by watchdog."""
-        from watchdog.observers import Observer
 
         # Create event handler and observer
         handler = TracktionEventHandler(mock_publisher)
@@ -63,7 +63,6 @@ class TestFileWatcherIntegration:
 
     def test_real_file_modification_detection(self, temp_watch_dir, mock_publisher):
         """Test that file modification is detected."""
-        from watchdog.observers import Observer
 
         # Create a test file first
         test_file = temp_watch_dir / "existing_song.flac"
@@ -100,7 +99,6 @@ class TestFileWatcherIntegration:
 
     def test_real_file_deletion_detection(self, temp_watch_dir, mock_publisher):
         """Test that file deletion is detected."""
-        from watchdog.observers import Observer
 
         # Create a test file first
         test_file = temp_watch_dir / "delete_me.wav"
@@ -137,7 +135,6 @@ class TestFileWatcherIntegration:
 
     def test_real_file_rename_detection(self, temp_watch_dir, mock_publisher):
         """Test that file rename is detected."""
-        from watchdog.observers import Observer
 
         # Create a test file first
         old_file = temp_watch_dir / "old_name.ogg"
@@ -182,7 +179,6 @@ class TestFileWatcherIntegration:
 
     def test_recursive_directory_monitoring(self, temp_watch_dir, mock_publisher):
         """Test that subdirectories are monitored recursively."""
-        from watchdog.observers import Observer
 
         # Create a subdirectory
         subdir = temp_watch_dir / "subdir"
@@ -216,7 +212,6 @@ class TestFileWatcherIntegration:
 
     def test_non_audio_files_ignored(self, temp_watch_dir, mock_publisher):
         """Test that non-audio files are ignored."""
-        from watchdog.observers import Observer
 
         # Create event handler and observer
         handler = TracktionEventHandler(mock_publisher)

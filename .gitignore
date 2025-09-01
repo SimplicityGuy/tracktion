@@ -244,3 +244,6 @@ uv.lock
 # Ignore JSON test configuration files created by tests
 test_config.json
 nonexistent.json
+
+backups/
+*.bak

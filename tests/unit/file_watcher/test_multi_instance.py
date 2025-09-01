@@ -1,5 +1,8 @@
 """Tests for multi-instance support."""
 
+import contextlib
+import importlib
+import json
 import os
 import uuid
 from unittest.mock import MagicMock, patch
@@ -10,6 +13,7 @@ from structlog.testing import LogCapture
 
 # Mock before import
 with patch.dict(os.environ, {"INSTANCE_ID": "test-instance"}):
+    import services.file_watcher.src.main as main_module
     from services.file_watcher.src.main import FileWatcherService
     from services.file_watcher.src.message_publisher import MessagePublisher
 
@@ -27,29 +31,24 @@ class TestInstanceIdentification:
         """Test that instance ID is read from environment variable."""
         with patch.dict(os.environ, {"INSTANCE_ID": "custom-watcher"}):
             # Re-import to get new INSTANCE_ID
-            import importlib
-
-            import services.file_watcher.src.main as main_module
 
             importlib.reload(main_module)
             assert main_module.INSTANCE_ID == "custom-watcher"
 
     def test_instance_id_auto_generated(self) -> None:
         """Test that instance ID is auto-generated when not in environment."""
-        with patch.dict(os.environ, {}, clear=True):
-            with patch("services.file_watcher.src.main.uuid.uuid4") as mock_uuid:
-                mock_uuid.return_value = uuid.UUID("12345678-1234-5678-1234-567812345678")
-                import importlib
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("services.file_watcher.src.main.uuid.uuid4") as mock_uuid,
+        ):
+            mock_uuid.return_value = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
-                import services.file_watcher.src.main as main_module
-
-                importlib.reload(main_module)
-                assert main_module.INSTANCE_ID == "12345678"
+            importlib.reload(main_module)
+            assert main_module.INSTANCE_ID == "12345678"
 
     def test_instance_id_in_service(self) -> None:
         """Test that FileWatcherService stores instance ID."""
         # Need to reload the module to get the current INSTANCE_ID
-        import services.file_watcher.src.main as main_module
 
         service = FileWatcherService()
         assert hasattr(service, "instance_id")
@@ -130,7 +129,6 @@ class TestMessagePublisherMultiInstance:
 
         # Get the published message
         call_args = mock_channel.basic_publish.call_args
-        import json
 
         message = json.loads(call_args[1]["body"])
 
@@ -171,14 +169,14 @@ class TestFileWatcherMultiInstance:
         mock_publisher_class.return_value = mock_publisher
 
         # Start service (will fail but that's ok for this test)
-        with patch.object(service, "scan_path", MagicMock(exists=MagicMock(return_value=True))):
-            with patch("os.access", return_value=True):
-                with patch("services.file_watcher.src.main.Observer"):
-                    try:
-                        # This will fail but we just need to check the publisher creation
-                        service.start()
-                    except Exception:
-                        pass
+        with (
+            patch.object(service, "scan_path", MagicMock(exists=MagicMock(return_value=True))),
+            patch("os.access", return_value=True),
+            patch("services.file_watcher.src.main.Observer"),
+            contextlib.suppress(Exception),
+        ):
+            # This will fail but we just need to check the publisher creation
+            service.start()
 
         # Verify MessagePublisher was created with instance metadata
         mock_publisher_class.assert_called_with(
@@ -243,6 +241,7 @@ class TestMultiInstanceScenarios:
 
     def test_instance_isolation(self) -> None:
         """Test that instances are properly isolated."""
+
         # Create multiple instances with different configs
         instances = []
         for i in range(3):

@@ -1,20 +1,22 @@
 """Quota management system for API usage tracking and enforcement."""
 
-import logging
 import json
-from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+import logging
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 import redis.asyncio as redis
 
-from ..auth.models import User, UserTier
+from src.auth.models import User, UserTier
+
 from .models import (
+    QuotaAlert,
     QuotaLimits,
-    QuotaUsage,
     QuotaResult,
     QuotaStatus,
     QuotaType,
-    QuotaAlert,
     QuotaUpgrade,
+    QuotaUsage,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,7 +25,7 @@ logger = logging.getLogger(__name__)
 class QuotaManager:
     """Manages API usage quotas with daily/monthly limits and alerting."""
 
-    def __init__(self, redis_client: redis.Redis[str]):
+    def __init__(self, redis_client: redis.Redis):
         """Initialize quota manager.
 
         Args:
@@ -100,7 +102,7 @@ class QuotaManager:
         monthly_remaining = max(0, limits.monthly_limit - monthly_after)
 
         # Calculate next reset time
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         next_daily_reset = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         next_monthly_reset = (now.replace(day=1) + timedelta(days=32)).replace(
             day=1, hour=0, minute=0, second=0, microsecond=0
@@ -158,7 +160,7 @@ class QuotaManager:
         logger.debug(f"Consumed {amount} quota for user {user.id}")
         return True
 
-    async def reset_quotas(self, quota_type: Optional[QuotaType] = None) -> int:
+    async def reset_quotas(self, quota_type: QuotaType | None = None) -> int:
         """Reset quotas for all users.
 
         Args:
@@ -167,15 +169,12 @@ class QuotaManager:
         Returns:
             Number of users whose quotas were reset
         """
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # Auto-detect quota type if not specified
         if quota_type is None:
             if now.hour == 0 and now.minute == 0:
-                if now.day == 1:
-                    quota_type = QuotaType.MONTHLY
-                else:
-                    quota_type = QuotaType.DAILY
+                quota_type = QuotaType.MONTHLY if now.day == 1 else QuotaType.DAILY
             else:
                 # Manual reset - determine based on current time
                 quota_type = QuotaType.DAILY
@@ -223,7 +222,7 @@ class QuotaManager:
             threshold=threshold,
             current_usage=0,  # Will be filled by caller
             limit=0,  # Will be filled by caller
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )
 
         # Store alert (for audit trail)
@@ -266,7 +265,7 @@ class QuotaManager:
             user_id=user.id,
             current_tier=user.tier.value,
             requested_tier=new_tier,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             approved=True,  # Auto-approve for now
             processed=False,
         )
@@ -294,7 +293,7 @@ class QuotaManager:
 
         return True
 
-    async def get_quota_stats(self, user: User) -> Dict[str, Any]:
+    async def get_quota_stats(self, user: User) -> dict[str, Any]:
         """Get current quota statistics for user.
 
         Args:
@@ -339,17 +338,18 @@ class QuotaManager:
             Current quota usage
         """
         key = f"quota:{user.id}"
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # Get stored usage data
         usage_data = await self.redis.hmget(
-            key, ["daily_used", "monthly_used", "last_daily_reset", "last_monthly_reset"]
+            key,
+            ["daily_used", "monthly_used", "last_daily_reset", "last_monthly_reset"],
         )
 
         daily_used = int(usage_data[0]) if usage_data[0] else 0
         monthly_used = int(usage_data[1]) if usage_data[1] else 0
-        last_daily_reset = datetime.fromtimestamp(int(usage_data[2])) if usage_data[2] else now
-        last_monthly_reset = datetime.fromtimestamp(int(usage_data[3])) if usage_data[3] else now
+        last_daily_reset = datetime.fromtimestamp(int(usage_data[2]), tz=UTC) if usage_data[2] else now
+        last_monthly_reset = datetime.fromtimestamp(int(usage_data[3]), tz=UTC) if usage_data[3] else now
 
         # Check if we need to reset daily usage
         if now.date() > last_daily_reset.date():
@@ -387,7 +387,7 @@ class QuotaManager:
             amount: Amount to increment by
         """
         key = f"quota:{user.id}"
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # Use pipeline for atomic operations
         pipe = self.redis.pipeline()
@@ -431,7 +431,7 @@ class QuotaManager:
             True if alert should be sent
         """
         # Check if we've already sent this alert today
-        alert_key = f"quota_alert_sent:{user.id}:{quota_type.value}:{threshold}:{datetime.utcnow().date()}"
+        alert_key = f"quota_alert_sent:{user.id}:{quota_type.value}:{threshold}:{datetime.now(UTC).date()}"
         exists = await self.redis.exists(alert_key)
         return not exists
 
@@ -443,7 +443,7 @@ class QuotaManager:
             quota_type: Type of quota
             threshold: Alert threshold
         """
-        alert_key = f"quota_alert_sent:{user.id}:{quota_type.value}:{threshold}:{datetime.utcnow().date()}"
+        alert_key = f"quota_alert_sent:{user.id}:{quota_type.value}:{threshold}:{datetime.now(UTC).date()}"
         await self.redis.setex(alert_key, 86400, "1")  # Expire at end of day
 
     def _calculate_status(self, daily_percentage: float, monthly_percentage: float) -> QuotaStatus:
@@ -460,14 +460,13 @@ class QuotaManager:
 
         if max_percentage > 100:
             return QuotaStatus.EXCEEDED
-        elif max_percentage >= 95:
+        if max_percentage >= 95:
             return QuotaStatus.CRITICAL
-        elif max_percentage >= 80:
+        if max_percentage >= 80:
             return QuotaStatus.WARNING
-        else:
-            return QuotaStatus.OK
+        return QuotaStatus.OK
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Check quota manager health.
 
         Returns:

@@ -4,7 +4,7 @@ Custom exceptions for the tracklist service.
 Provides specific exception types for different error scenarios.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class TracklistServiceError(Exception):
@@ -13,8 +13,8 @@ class TracklistServiceError(Exception):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize the exception.
 
@@ -35,9 +35,9 @@ class ScrapingError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        url: Optional[str] = None,
-        status_code: Optional[int] = None,
-        details: Optional[Dict[str, Any]] = None,
+        url: str | None = None,
+        status_code: int | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize scraping error.
 
@@ -64,8 +64,8 @@ class RateLimitError(ScrapingError):
     def __init__(
         self,
         message: str = "Rate limit exceeded",
-        retry_after: Optional[int] = None,
-        url: Optional[str] = None,
+        retry_after: int | None = None,
+        url: str | None = None,
     ) -> None:
         """Initialize rate limit error.
 
@@ -88,8 +88,8 @@ class ParsingError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        element: Optional[str] = None,
-        html_snippet: Optional[str] = None,
+        element: str | None = None,
+        html_snippet: str | None = None,
     ) -> None:
         """Initialize parsing error.
 
@@ -115,8 +115,8 @@ class CacheError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        operation: Optional[str] = None,
-        key: Optional[str] = None,
+        operation: str | None = None,
+        key: str | None = None,
     ) -> None:
         """Initialize cache error.
 
@@ -142,8 +142,8 @@ class MessageQueueError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        queue_name: Optional[str] = None,
-        correlation_id: Optional[str] = None,
+        queue_name: str | None = None,
+        correlation_id: str | None = None,
     ) -> None:
         """Initialize message queue error.
 
@@ -169,8 +169,8 @@ class ValidationError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        field: Optional[str] = None,
-        value: Optional[Any] = None,
+        field: str | None = None,
+        value: Any | None = None,
     ) -> None:
         """Initialize validation error.
 
@@ -196,8 +196,8 @@ class ConfigurationError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        config_key: Optional[str] = None,
-        config_value: Optional[Any] = None,
+        config_key: str | None = None,
+        config_value: Any | None = None,
     ) -> None:
         """Initialize configuration error.
 
@@ -223,8 +223,8 @@ class ServiceUnavailableError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        service_name: Optional[str] = None,
-        retry_after: Optional[int] = None,
+        service_name: str | None = None,
+        retry_after: int | None = None,
     ) -> None:
         """Initialize service unavailable error.
 
@@ -250,9 +250,9 @@ class ImportError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        url: Optional[str] = None,
-        tracklist_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        url: str | None = None,
+        tracklist_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize import error.
 
@@ -279,9 +279,9 @@ class MatchingError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        audio_file_id: Optional[str] = None,
-        confidence_score: Optional[float] = None,
-        details: Optional[Dict[str, Any]] = None,
+        audio_file_id: str | None = None,
+        confidence_score: float | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize matching error.
 
@@ -308,9 +308,9 @@ class TimingError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        track_position: Optional[int] = None,
-        timing_issue: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        track_position: int | None = None,
+        timing_issue: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize timing error.
 
@@ -337,9 +337,9 @@ class CueGenerationError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        cue_format: Optional[str] = None,
-        tracklist_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        cue_format: str | None = None,
+        tracklist_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize CUE generation error.
 
@@ -366,9 +366,9 @@ class DatabaseError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        operation: Optional[str] = None,
-        table: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        operation: str | None = None,
+        table: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize database error.
 
@@ -395,9 +395,9 @@ class AudioFileError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        audio_file_id: Optional[str] = None,
-        file_path: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        audio_file_id: str | None = None,
+        file_path: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize audio file error.
 
@@ -424,9 +424,9 @@ class TimeoutError(TracklistServiceError):
     def __init__(
         self,
         message: str,
-        operation: Optional[str] = None,
-        timeout_seconds: Optional[float] = None,
-        details: Optional[Dict[str, Any]] = None,
+        operation: str | None = None,
+        timeout_seconds: float | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize timeout error.
 
@@ -453,7 +453,7 @@ class DraftNotFoundError(TracklistServiceError):
     def __init__(
         self,
         draft_id: str,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize draft not found error.
 
@@ -477,7 +477,7 @@ class ConcurrentEditError(TracklistServiceError):
         tracklist_id: str,
         expected_version: int,
         actual_version: int,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize concurrent edit error.
 
@@ -487,7 +487,10 @@ class ConcurrentEditError(TracklistServiceError):
             actual_version: Actual current version
             details: Additional error details
         """
-        message = f"Concurrent edit detected for tracklist {tracklist_id}. Expected version {expected_version}, but current version is {actual_version}"
+        message = (
+            f"Concurrent edit detected for tracklist {tracklist_id}. "
+            f"Expected version {expected_version}, but current version is {actual_version}"
+        )
         error_details = details or {}
         error_details.update(
             {
@@ -509,7 +512,7 @@ class DuplicatePositionError(ValidationError):
     def __init__(
         self,
         positions: list[int],
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize duplicate position error.
 
@@ -533,8 +536,8 @@ class PublishValidationError(ValidationError):
         self,
         message: str,
         issues: list[str],
-        tracklist_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        tracklist_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize publish validation error.
 
@@ -562,7 +565,7 @@ class InvalidTrackPositionError(ValidationError):
         self,
         position: int,
         max_position: int,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Initialize invalid track position error.
 

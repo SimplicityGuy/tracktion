@@ -2,7 +2,6 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import Dict
 
 
 @dataclass
@@ -10,7 +9,7 @@ class FileRenameProposalConfig:
     """Configuration for the file rename proposal service."""
 
     # Default naming patterns by file type
-    default_patterns: Dict[str, str] = field(
+    default_patterns: dict[str, str] = field(
         default_factory=lambda: {
             "mp3": "{artist} - {title}",
             "flac": "{artist} - {album} - {track:02d} - {title}",
@@ -32,7 +31,7 @@ class FileRenameProposalConfig:
     replacement_char: str = "_"
 
     # Confidence scoring weights
-    confidence_weights: Dict[str, float] = field(
+    confidence_weights: dict[str, float] = field(
         default_factory=lambda: {
             "metadata_completeness": 0.4,
             "metadata_quality": 0.3,

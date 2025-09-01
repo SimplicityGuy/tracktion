@@ -5,18 +5,19 @@ Test suite covering message publishing, consuming, job processing,
 and message queue integration.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
+from services.tracklist_service.src.exceptions import ImportError
 from services.tracklist_service.src.messaging.import_handler import (
     ImportJobMessage,
     ImportMessageHandler,
     ImportResultMessage,
 )
-from services.tracklist_service.src.models.tracklist import ImportTracklistRequest
+from services.tracklist_service.src.models.tracklist import ImportTracklistRequest, TrackEntry, Tracklist
 from services.tracklist_service.src.workers.import_worker import ImportWorker
 
 
@@ -342,9 +343,6 @@ class TestImportWorker:
             patch("services.tracklist_service.src.workers.import_worker.import_message_handler") as mock_handler,
         ):
             # Setup mock returns
-            from datetime import timedelta
-
-            from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
 
             # Mock tracklist
             mock_tracklist = Tracklist(
@@ -401,7 +399,6 @@ class TestImportWorker:
     @pytest.mark.asyncio
     async def test_process_import_job_failure(self, import_worker):
         """Test import job processing with failure."""
-        from services.tracklist_service.src.exceptions import ImportError
 
         # Create test job message
         correlation_id = str(uuid4())

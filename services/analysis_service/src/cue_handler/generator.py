@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 class CueFormat(Enum):
@@ -25,12 +25,12 @@ class CueTrack:
     title: str
     performer: str
     start_time_ms: int
-    songwriter: Optional[str] = None
-    isrc: Optional[str] = None
+    songwriter: str | None = None
+    isrc: str | None = None
     flags: list[str] = field(default_factory=list)
     rem_fields: dict[str, str] = field(default_factory=dict)
-    pregap_ms: Optional[int] = None
-    postgap_ms: Optional[int] = None
+    pregap_ms: int | None = None
+    postgap_ms: int | None = None
     indices: dict[int, int] = field(default_factory=dict)  # index_num -> time_ms
 
     def __post_init__(self) -> None:
@@ -55,12 +55,12 @@ class CueTrack:
 class CueDisc:
     """Represents disc-level metadata for a CUE file."""
 
-    title: Optional[str] = None
-    performer: Optional[str] = None
-    catalog: Optional[str] = None
-    cdtextfile: Optional[str] = None
+    title: str | None = None
+    performer: str | None = None
+    catalog: str | None = None
+    cdtextfile: str | None = None
     rem_fields: dict[str, str] = field(default_factory=dict)
-    songwriter: Optional[str] = None
+    songwriter: str | None = None
 
     def __post_init__(self) -> None:
         """Validate disc data after initialization."""
@@ -96,7 +96,7 @@ class CueGenerator:
         self,
         disc: CueDisc,
         files: list[CueFile],
-        output_path: Optional[Path] = None,
+        output_path: Path | None = None,
     ) -> str:
         """Generate a CUE file from disc and track data.
 

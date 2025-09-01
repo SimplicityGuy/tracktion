@@ -63,7 +63,10 @@ class TestImportService:
         ]
 
         return ScrapedTracklist(
-            url="https://1001tracklists.com/tracklist/test", dj_name="Test DJ", event_name="Test Event", tracks=tracks
+            url="https://1001tracklists.com/tracklist/test",
+            dj_name="Test DJ",
+            event_name="Test Event",
+            tracks=tracks,
         )
 
     def test_transform_to_track_entries(self, import_service, sample_scraped_tracklist):

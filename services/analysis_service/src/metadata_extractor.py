@@ -2,17 +2,17 @@
 
 import json
 import logging
-import os
+import re
 from pathlib import Path
-from typing import Dict, Optional, Any, List, Union
+from typing import Any, ClassVar
 
 from mutagen import File
 from mutagen.easyid3 import EasyID3
-from mutagen.mp3 import MP3
 from mutagen.flac import FLAC
+from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4
-from mutagen.wave import WAVE
 from mutagen.oggvorbis import OggVorbis
+from mutagen.wave import WAVE
 
 logger = logging.getLogger(__name__)
 
@@ -20,20 +20,16 @@ logger = logging.getLogger(__name__)
 class InvalidAudioFileError(Exception):
     """Raised when an audio file cannot be processed."""
 
-    pass
-
 
 class MetadataExtractionError(Exception):
     """Raised when metadata extraction fails."""
-
-    pass
 
 
 class MetadataExtractor:
     """Extracts metadata from audio files."""
 
     # Supported audio formats
-    SUPPORTED_FORMATS = {
+    SUPPORTED_FORMATS: ClassVar[set[str]] = {
         ".mp3",
         ".flac",
         ".wav",
@@ -49,7 +45,7 @@ class MetadataExtractor:
     }
 
     # Standard and extended Vorbis comment fields mapping
-    VORBIS_STANDARD_FIELDS = {
+    VORBIS_STANDARD_FIELDS: ClassVar[dict[str, str]] = {
         # Standard fields
         "title": "title",
         "version": "version",
@@ -107,7 +103,7 @@ class MetadataExtractor:
             ".oga": self._extract_ogg,
         }
 
-    def extract(self, file_path: str) -> Dict[str, Optional[str]]:
+    def extract(self, file_path: str) -> dict[str, str | None]:
         """Extract metadata from an audio file.
 
         Args:
@@ -139,11 +135,7 @@ class MetadataExtractor:
         try:
             # Get format-specific handler
             handler = self._format_handlers.get(extension)
-            if handler:
-                metadata = handler(file_path)
-            else:
-                # Fallback to generic extraction
-                metadata = self._extract_generic(file_path)
+            metadata = handler(file_path) if handler else self._extract_generic(file_path)
 
             # Add file format to metadata
             metadata["format"] = extension.lstrip(".")
@@ -160,9 +152,9 @@ class MetadataExtractor:
 
         except Exception as e:
             logger.error(f"Failed to extract metadata from {file_path}: {e}")
-            raise MetadataExtractionError(f"Failed to extract metadata: {e}")
+            raise MetadataExtractionError(f"Failed to extract metadata: {e}") from e
 
-    def _extract_generic(self, file_path: str) -> Dict[str, Any]:
+    def _extract_generic(self, file_path: str) -> dict[str, Any]:
         """Generic metadata extraction using mutagen.
 
         Args:
@@ -176,7 +168,7 @@ class MetadataExtractor:
         if audio_file is None:
             raise InvalidAudioFileError(f"Cannot read file: {file_path}")
 
-        metadata = {}
+        metadata: dict[str, Any] = {}
 
         # Extract basic tags
         if audio_file.tags:
@@ -197,7 +189,7 @@ class MetadataExtractor:
 
         return metadata
 
-    def _extract_mp3(self, file_path: str) -> Dict[str, Any]:
+    def _extract_mp3(self, file_path: str) -> dict[str, Any]:
         """Extract metadata from MP3 file.
 
         Args:
@@ -207,7 +199,7 @@ class MetadataExtractor:
             Dictionary of metadata
         """
         audio = MP3(file_path)
-        metadata = {}
+        metadata: dict[str, Any] = {}
 
         # Try EasyID3 for common tags
         try:
@@ -240,7 +232,7 @@ class MetadataExtractor:
 
         return metadata
 
-    def _extract_flac(self, file_path: str) -> Dict[str, Any]:
+    def _extract_flac(self, file_path: str) -> dict[str, Any]:
         """Extract metadata from FLAC file.
 
         Args:
@@ -250,7 +242,7 @@ class MetadataExtractor:
             Dictionary of metadata
         """
         audio = FLAC(file_path)
-        metadata = {}
+        metadata: dict[str, Any] = {}
 
         # FLAC uses Vorbis comments
         if audio.tags:
@@ -273,7 +265,7 @@ class MetadataExtractor:
 
         return metadata
 
-    def _extract_wav(self, file_path: str) -> Dict[str, Any]:
+    def _extract_wav(self, file_path: str) -> dict[str, Any]:
         """Extract metadata from WAV file.
 
         Args:
@@ -283,7 +275,7 @@ class MetadataExtractor:
             Dictionary of metadata
         """
         audio = WAVE(file_path)
-        metadata = {}
+        metadata: dict[str, Any] = {}
 
         # WAV files may have ID3 tags
         if audio.tags:
@@ -304,7 +296,7 @@ class MetadataExtractor:
 
         return metadata
 
-    def _extract_mp4(self, file_path: str) -> Dict[str, Any]:
+    def _extract_mp4(self, file_path: str) -> dict[str, Any]:
         """Extract metadata from MP4/M4A file.
 
         Args:
@@ -314,7 +306,7 @@ class MetadataExtractor:
             Dictionary of metadata
         """
         audio = MP4(file_path)
-        metadata = {}
+        metadata: dict[str, Any] = {}
 
         # MP4 uses different tag names
         if audio.tags:
@@ -343,7 +335,7 @@ class MetadataExtractor:
 
         return metadata
 
-    def _sanitize_tag_value(self, value: Any, max_length: int = 5000) -> Optional[str]:
+    def _sanitize_tag_value(self, value: Any, max_length: int = 5000) -> str | None:
         """Sanitize a tag value for safe storage.
 
         Args:
@@ -369,7 +361,7 @@ class MetadataExtractor:
 
         return str_value if str_value else None
 
-    def _validate_date_format(self, date_str: Optional[str]) -> Optional[str]:
+    def _validate_date_format(self, date_str: str | None) -> str | None:
         """Validate and normalize date format.
 
         Args:
@@ -392,7 +384,6 @@ class MetadataExtractor:
         # This maintains flexibility while ensuring the value is safe
 
         # Basic validation - check if it starts with a 4-digit year
-        import re
 
         if re.match(r"^\d{4}", sanitized):
             return sanitized
@@ -401,7 +392,7 @@ class MetadataExtractor:
         logger.debug(f"Unusual date format in Vorbis comment: {sanitized}")
         return sanitized
 
-    def _handle_multiple_values(self, values: Union[List, Any]) -> Optional[str]:
+    def _handle_multiple_values(self, values: list | Any) -> str | None:
         """Handle fields with multiple values.
 
         Args:
@@ -416,19 +407,17 @@ class MetadataExtractor:
         if isinstance(values, list):
             if len(values) == 0:
                 return None
-            elif len(values) == 1:
+            if len(values) == 1:
                 return self._sanitize_tag_value(values[0])
-            else:
-                # Join multiple values with semicolon
-                non_null_values = [str(v) for v in values if v is not None]
-                if non_null_values:
-                    combined = "; ".join(non_null_values)
-                    return self._sanitize_tag_value(combined)
-                return None
-        else:
-            return self._sanitize_tag_value(values)
+            # Join multiple values with semicolon
+            non_null_values = [str(v) for v in values if v is not None]
+            if non_null_values:
+                combined = "; ".join(non_null_values)
+                return self._sanitize_tag_value(combined)
+            return None
+        return self._sanitize_tag_value(values)
 
-    def _extract_ogg(self, file_path: str) -> Dict[str, Any]:
+    def _extract_ogg(self, file_path: str) -> dict[str, Any]:
         """Extract metadata from OGG Vorbis file.
 
         Args:
@@ -441,10 +430,10 @@ class MetadataExtractor:
             audio = OggVorbis(file_path)
         except Exception as e:
             logger.warning(f"Failed to parse OGG file {file_path}: {e}")
-            raise MetadataExtractionError(f"Invalid OGG file: {e}")
+            raise MetadataExtractionError(f"Invalid OGG file: {e}") from e
 
-        metadata = {}
-        custom_tags = {}
+        metadata: dict[str, Any] = {}
+        custom_tags: dict[str, Any] = {}
 
         # Extract all tags from the file
         if audio.tags:
@@ -469,13 +458,12 @@ class MetadataExtractor:
                 # Check if it's a standard field
                 if key_lower in self.VORBIS_STANDARD_FIELDS:
                     metadata[self.VORBIS_STANDARD_FIELDS[key_lower]] = value
+                # Store as custom tag with original case (up to limit)
+                elif custom_tag_count < max_custom_tags:
+                    custom_tags[key] = value
+                    custom_tag_count += 1
                 else:
-                    # Store as custom tag with original case (up to limit)
-                    if custom_tag_count < max_custom_tags:
-                        custom_tags[key] = value
-                        custom_tag_count += 1
-                    else:
-                        logger.warning(f"Maximum custom tags ({max_custom_tags}) reached, skipping: {key}")
+                    logger.warning(f"Maximum custom tags ({max_custom_tags}) reached, skipping: {key}")
 
             # Add custom tags to metadata if any exist
             if custom_tags:
@@ -495,28 +483,31 @@ class MetadataExtractor:
             metadata["bitrate_upper"] = getattr(audio.info, "bitrate_upper", None)
 
             # Try to determine if VBR or CBR
-            if hasattr(audio.info, "bitrate_nominal") and audio.info.bitrate_nominal:
-                if (
+            if (
+                hasattr(audio.info, "bitrate_nominal")
+                and audio.info.bitrate_nominal
+                and (
                     hasattr(audio.info, "bitrate_lower")
                     and audio.info.bitrate_lower
                     and hasattr(audio.info, "bitrate_upper")
                     and audio.info.bitrate_upper
-                ):
-                    # If lower and upper bounds differ, it's VBR
-                    if audio.info.bitrate_lower != audio.info.bitrate_upper:
-                        metadata["bitrate_mode"] = "VBR"
-                    else:
-                        metadata["bitrate_mode"] = "CBR"
+                )
+            ):
+                # If lower and upper bounds differ, it's VBR
+                if audio.info.bitrate_lower != audio.info.bitrate_upper:
+                    metadata["bitrate_mode"] = "VBR"
+                else:
+                    metadata["bitrate_mode"] = "CBR"
 
             # Get file size
             try:
-                metadata["file_size"] = str(os.path.getsize(file_path))
+                metadata["file_size"] = str(Path(file_path).stat().st_size)
             except Exception as e:
                 logger.debug(f"Could not get file size for {file_path}: {e}")
 
         return metadata
 
-    def _get_tag_value(self, tags: Any, keys: list) -> Optional[str]:
+    def _get_tag_value(self, tags: Any, keys: list) -> str | None:
         """Get the first available tag value from a list of possible keys.
 
         Args:
@@ -532,13 +523,12 @@ class MetadataExtractor:
                 if hasattr(value, "text"):
                     # ID3 frame
                     return str(value.text[0]) if value.text else None
-                elif isinstance(value, list):
+                if isinstance(value, list):
                     return str(value[0]) if value else None
-                else:
-                    return str(value)
+                return str(value)
         return None
 
-    def _get_mp4_tag(self, tags: Any, key: str) -> Optional[str]:
+    def _get_mp4_tag(self, tags: Any, key: str) -> str | None:
         """Get MP4 tag value.
 
         Args:
@@ -555,7 +545,7 @@ class MetadataExtractor:
             return str(value)
         return None
 
-    def _format_duration(self, duration: Optional[float]) -> Optional[str]:
+    def _format_duration(self, duration: float | None) -> str | None:
         """Format duration in seconds to a readable string.
 
         Args:
@@ -570,7 +560,7 @@ class MetadataExtractor:
         # Store as seconds with 3 decimal places
         return str(round(duration, 3))
 
-    def _calculate_bitrate(self, info: Any) -> Optional[int]:
+    def _calculate_bitrate(self, info: Any) -> int | None:
         """Calculate bitrate for formats that don't provide it directly.
 
         Args:

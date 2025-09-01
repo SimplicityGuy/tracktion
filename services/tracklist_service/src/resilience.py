@@ -6,9 +6,11 @@ Provides circuit breaker, retry logic, and other resilience patterns.
 
 import asyncio
 import logging
+import random
 import time
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, TypeVar
 
 from .exceptions import ServiceUnavailableError
 
@@ -50,18 +52,21 @@ class CircuitBreaker:
 
         self._state = CircuitState.CLOSED
         self._failure_count = 0
-        self._last_failure_time: Optional[float] = None
+        self._last_failure_time: float | None = None
         self._success_count = 0
 
     @property
     def state(self) -> CircuitState:
         """Get current circuit state."""
-        if self._state == CircuitState.OPEN:
+        if (
+            self._state == CircuitState.OPEN
+            and self._last_failure_time
+            and (time.time() - self._last_failure_time > self.recovery_timeout)
+        ):
             # Check if recovery timeout has passed
-            if self._last_failure_time and (time.time() - self._last_failure_time > self.recovery_timeout):
-                logger.info(f"Circuit breaker '{self.name}' transitioning to HALF_OPEN")
-                self._state = CircuitState.HALF_OPEN
-                self._success_count = 0
+            logger.info(f"Circuit breaker '{self.name}' transitioning to HALF_OPEN")
+            self._state = CircuitState.HALF_OPEN
+            self._success_count = 0
 
         return self._state
 
@@ -197,8 +202,6 @@ class ExponentialBackoff:
         delay = min(self.base_delay * (self.multiplier**attempt), self.max_delay)
 
         if self.jitter:
-            import random
-
             # Add jitter of ±25%
             jitter_amount = delay * 0.25
             delay += random.uniform(-jitter_amount, jitter_amount)
@@ -210,7 +213,7 @@ async def retry_with_backoff(
     func: Callable[..., Any],
     *args: Any,
     max_attempts: int = 3,
-    backoff: Optional[ExponentialBackoff] = None,
+    backoff: ExponentialBackoff | None = None,
     exceptions: tuple = (Exception,),
     **kwargs: Any,
 ) -> Any:
@@ -233,7 +236,7 @@ async def retry_with_backoff(
     if backoff is None:
         backoff = ExponentialBackoff()
 
-    last_exception: Optional[Exception] = None
+    last_exception: Exception | None = None
 
     for attempt in range(max_attempts):
         try:
@@ -262,7 +265,7 @@ class RateLimiter:
         self,
         rate: float,
         capacity: int,
-        name: Optional[str] = None,
+        name: str | None = None,
     ) -> None:
         """Initialize rate limiter.
 

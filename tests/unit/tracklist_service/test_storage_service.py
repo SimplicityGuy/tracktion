@@ -393,7 +393,13 @@ class TestStorageResult:
 
     def test_successful_result(self):
         """Test successful storage result."""
-        result = StorageResult(success=True, file_path="/data/test.cue", checksum="abc123", file_size=1024, version=1)
+        result = StorageResult(
+            success=True,
+            file_path="/data/test.cue",
+            checksum="abc123",
+            file_size=1024,
+            version=1,
+        )
 
         assert result.success is True
         assert result.file_path == "/data/test.cue"

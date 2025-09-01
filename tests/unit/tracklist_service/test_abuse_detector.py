@@ -23,7 +23,12 @@ def mock_redis():
 @pytest.fixture
 def test_user():
     """Create test user."""
-    return User(id="test-user-123", email="test@example.com", tier=UserTier.PREMIUM, is_active=True)
+    return User(
+        id="test-user-123",
+        email="test@example.com",
+        tier=UserTier.PREMIUM,
+        is_active=True,
+    )
 
 
 @pytest.fixture
@@ -33,7 +38,10 @@ def mock_request():
     request.method = "GET"
     request.url.path = "/api/v1/test"
     request.url.query = ""
-    request.headers = {"user-agent": "test-client/1.0", "x-forwarded-for": "203.0.113.1"}
+    request.headers = {
+        "user-agent": "test-client/1.0",
+        "x-forwarded-for": "203.0.113.1",
+    }
     request.client.host = "192.168.1.100"
     return request
 
@@ -309,7 +317,12 @@ class TestAbuseDetector:
     @pytest.mark.asyncio
     async def test_estimate_quota_usage_free_tier(self, abuse_detector):
         """Test quota usage estimation for free tier user."""
-        free_user = User(id="free-user-123", email="free@example.com", tier=UserTier.FREE, is_active=True)
+        free_user = User(
+            id="free-user-123",
+            email="free@example.com",
+            tier=UserTier.FREE,
+            is_active=True,
+        )
 
         with patch.object(abuse_detector, "_count_requests_in_window") as mock_count:
             mock_count.return_value = 500  # 50% of free tier limit (1000)
@@ -329,7 +342,11 @@ class TestAbuseDetector:
     @pytest.mark.asyncio
     async def test_store_behavior_point(self, abuse_detector, test_user, mock_redis):
         """Test storing behavior data point."""
-        data = {"timestamp": datetime.now(UTC).isoformat(), "requests_per_minute": 10, "error_rate": 0.0}
+        data = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "requests_per_minute": 10,
+            "error_rate": 0.0,
+        }
 
         await abuse_detector._store_behavior_point(test_user, data)
 
@@ -495,7 +512,11 @@ class TestAbuseDetector:
 
     def test_should_block_user_multiple_abuse_types(self, abuse_detector):
         """Test user blocking decision with multiple abuse types."""
-        abuse_types = [AbuseType.HIGH_FREQUENCY, AbuseType.INVALID_REQUESTS, AbuseType.SUSPICIOUS_PATTERN]
+        abuse_types = [
+            AbuseType.HIGH_FREQUENCY,
+            AbuseType.INVALID_REQUESTS,
+            AbuseType.SUSPICIOUS_PATTERN,
+        ]
         should_block = abuse_detector._should_block_user(Decimal("0.5"), abuse_types, {})
         assert should_block is True
 

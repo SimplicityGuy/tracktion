@@ -2,20 +2,21 @@
 
 import asyncio
 import json
-from typing import Any, AsyncGenerator, Dict, Optional
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 
-from ...structured_logging import get_logger
+from services.analysis_service.src.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/v1/streaming", tags=["streaming"])
 
 
-async def generate_audio_chunks(file_path: str, chunk_size: int = 8192) -> AsyncGenerator[bytes, None]:
+async def generate_audio_chunks(file_path: str, chunk_size: int = 8192) -> AsyncGenerator[bytes]:
     """Generate audio file chunks for streaming.
 
     Args:
@@ -37,8 +38,8 @@ async def generate_audio_chunks(file_path: str, chunk_size: int = 8192) -> Async
 async def stream_audio(
     recording_id: str,
     chunk_size: int = Query(8192, description="Chunk size in bytes"),
-    start_byte: Optional[int] = Query(None, description="Start byte for range request"),
-    end_byte: Optional[int] = Query(None, description="End byte for range request"),
+    start_byte: int | None = Query(None, description="Start byte for range request"),
+    end_byte: int | None = Query(None, description="End byte for range request"),
 ) -> StreamingResponse:
     """Stream audio file in chunks.
 
@@ -55,7 +56,11 @@ async def stream_audio(
     file_path = f"/path/to/audio/{recording_id}.wav"
 
     # Create headers for audio streaming
-    headers = {"Content-Type": "audio/wav", "Cache-Control": "no-cache", "X-Recording-ID": recording_id}
+    headers = {
+        "Content-Type": "audio/wav",
+        "Cache-Control": "no-cache",
+        "X-Recording-ID": recording_id,
+    }
 
     # Add range headers if partial content requested
     if start_byte is not None or end_byte is not None:
@@ -69,11 +74,13 @@ async def stream_audio(
         generate_audio_chunks(file_path, chunk_size),
         media_type="audio/wav",
         headers=headers,
-        status_code=status.HTTP_206_PARTIAL_CONTENT if start_byte is not None else status.HTTP_200_OK,
+        status_code=(status.HTTP_206_PARTIAL_CONTENT if start_byte is not None else status.HTTP_200_OK),
     )
 
 
-async def generate_analysis_events(recording_id: str) -> AsyncGenerator[Dict[str, Any], None]:
+async def generate_analysis_events(
+    recording_id: str,
+) -> AsyncGenerator[dict[str, Any]]:
     """Generate Server-Sent Events for analysis progress.
 
     Args:
@@ -109,7 +116,12 @@ async def generate_analysis_events(recording_id: str) -> AsyncGenerator[Dict[str
     # Send completion event
     yield {
         "event": "complete",
-        "data": json.dumps({"recording_id": recording_id, "results": {"bpm": 128.5, "key": "Am", "mood": "energetic"}}),
+        "data": json.dumps(
+            {
+                "recording_id": recording_id,
+                "results": {"bpm": 128.5, "key": "Am", "mood": "energetic"},
+            }
+        ),
     }
 
 
@@ -128,7 +140,7 @@ async def stream_analysis_events(recording_id: str) -> EventSourceResponse:
     return EventSourceResponse(generate_analysis_events(recording_id))
 
 
-async def batch_process_generator(recording_ids: list[str], batch_size: int = 5) -> AsyncGenerator[str, None]:
+async def batch_process_generator(recording_ids: list[str], batch_size: int = 5) -> AsyncGenerator[str]:
     """Generate batch processing results as NDJSON stream.
 
     Args:
@@ -145,7 +157,11 @@ async def batch_process_generator(recording_ids: list[str], batch_size: int = 5)
         for recording_id in batch:
             await asyncio.sleep(0.5)  # Simulate processing
 
-            result = {"recording_id": recording_id, "status": "processed", "timestamp": asyncio.get_event_loop().time()}
+            result = {
+                "recording_id": recording_id,
+                "status": "processed",
+                "timestamp": asyncio.get_event_loop().time(),
+            }
 
             # Yield as NDJSON line
             yield json.dumps(result) + "\n"
@@ -153,7 +169,8 @@ async def batch_process_generator(recording_ids: list[str], batch_size: int = 5)
 
 @router.post("/batch-process")
 async def stream_batch_processing(
-    recording_ids: list[str], batch_size: int = Query(5, description="Batch size for processing")
+    recording_ids: list[str],
+    batch_size: int = Query(5, description="Batch size for processing"),
 ) -> StreamingResponse:
     """Stream batch processing results as NDJSON.
 
@@ -167,16 +184,22 @@ async def stream_batch_processing(
     if not recording_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No recording IDs provided")
 
-    logger.info("Starting batch processing stream", extra={"count": len(recording_ids), "batch_size": batch_size})
+    logger.info(
+        "Starting batch processing stream",
+        extra={"count": len(recording_ids), "batch_size": batch_size},
+    )
 
     return StreamingResponse(
         batch_process_generator(recording_ids, batch_size),
         media_type="application/x-ndjson",
-        headers={"X-Total-Count": str(len(recording_ids)), "X-Batch-Size": str(batch_size)},
+        headers={
+            "X-Total-Count": str(len(recording_ids)),
+            "X-Batch-Size": str(batch_size),
+        },
     )
 
 
-async def generate_log_stream(recording_id: str, follow: bool = False) -> AsyncGenerator[str, None]:
+async def generate_log_stream(recording_id: str, follow: bool = False) -> AsyncGenerator[str]:
     """Generate log stream for a recording's processing.
 
     Args:
@@ -204,9 +227,12 @@ async def generate_log_stream(recording_id: str, follow: bool = False) -> AsyncG
 
     if follow:
         # Continue streaming new logs
+        max_streaming_updates = 5  # Maximum number of streaming updates for demo
+        streaming_update_delay = 2  # Delay between streaming updates in seconds
+
         counter = 0
-        while counter < 5:  # Limit for demo
-            await asyncio.sleep(2)
+        while counter < max_streaming_updates:
+            await asyncio.sleep(streaming_update_delay)
             yield f"[DEBUG] Monitoring... (update {counter})\n"
             counter += 1
 

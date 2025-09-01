@@ -31,6 +31,11 @@ from services.analysis_service.src.async_resource_manager import (
     AsyncResourceManager,
     ResourceLimits,
 )
+from services.analysis_service.src.key_detector import KeyDetectionResult
+from services.analysis_service.src.mood_analyzer import MoodAnalysisResult
+
+# Create a random number generator
+rng = np.random.default_rng()
 
 
 class TestAsyncAudioProcessor:
@@ -196,7 +201,6 @@ class TestAsyncAudioAnalyzer:
     async def test_analyze_key_async(self, analyzer):
         """Test async key analysis."""
         # Mock key detection
-        from services.analysis_service.src.key_detector import KeyDetectionResult
 
         analyzer.key_detector.detect_key.return_value = KeyDetectionResult(key="C", scale="major", confidence=0.85)
 
@@ -211,7 +215,6 @@ class TestAsyncAudioAnalyzer:
     async def test_analyze_mood_async(self, analyzer):
         """Test async mood analysis."""
         # Mock mood analysis
-        from services.analysis_service.src.mood_analyzer import MoodAnalysisResult
 
         analyzer.mood_analyzer.analyze_mood.return_value = MoodAnalysisResult(
             primary_genre="Electronic",
@@ -233,11 +236,7 @@ class TestAsyncAudioAnalyzer:
         # Mock all analyzers
         analyzer.bpm_detector.detect_bpm.return_value = {"bpm": 120}
 
-        from services.analysis_service.src.key_detector import KeyDetectionResult
-
         analyzer.key_detector.detect_key.return_value = KeyDetectionResult(key="G", scale="minor", confidence=0.9)
-
-        from services.analysis_service.src.mood_analyzer import MoodAnalysisResult
 
         analyzer.mood_analyzer.analyze_mood.return_value = MoodAnalysisResult(primary_genre="Rock", danceability=0.6)
 
@@ -256,8 +255,6 @@ class TestAsyncAudioAnalyzer:
         """Test batch analysis."""
         # Mock analyzers
         analyzer.bpm_detector.detect_bpm.return_value = {"bpm": 125}
-
-        from services.analysis_service.src.key_detector import KeyDetectionResult
 
         analyzer.key_detector.detect_key.return_value = KeyDetectionResult(key="A", scale="major", confidence=0.8)
 
@@ -489,7 +486,7 @@ class TestAsyncFFTProcessor:
     async def test_compute_fft_async(self, fft_processor):
         """Test async FFT computation."""
         # Create test audio data
-        audio_data = np.random.randn(44100)  # 1 second at 44.1kHz
+        audio_data = rng.standard_normal(44100)  # 1 second at 44.1kHz
 
         # Mock the essentia import and its functions
         mock_es = MagicMock()
@@ -508,8 +505,9 @@ class TestAsyncFFTProcessor:
     @pytest.mark.asyncio
     async def test_compute_parallel_ffts(self, fft_processor):
         """Test parallel FFT computation."""
+
         # Create test segments
-        segments = [np.random.randn(4096) for _ in range(3)]
+        segments = [rng.standard_normal(4096) for _ in range(3)]
 
         # Mock the essentia import and its functions
         mock_es = MagicMock()

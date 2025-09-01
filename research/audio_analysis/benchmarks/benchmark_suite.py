@@ -4,24 +4,24 @@ Performance Benchmarking Suite
 Comprehensive performance testing for audio analysis libraries.
 """
 
+from __future__ import annotations
+
 import gc
-import os
 import platform
-import psutil
+
+# Import our detectors
+import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
-from typing import Dict, List
 
 import essentia.standard as es
 import librosa
 import matplotlib.pyplot as plt
 import pandas as pd
+import psutil
 import seaborn as sns
 from tqdm import tqdm
-
-# Import our detectors
-import sys
 
 sys.path.append(str(Path(__file__).parent.parent))
 from bpm_detection.compare_bpm import EssentiaBPMDetector, LibrosaBPMDetector
@@ -35,7 +35,7 @@ class PerformanceBenchmark:
         self.system_info = self._get_system_info()
         self.results = []
 
-    def _get_system_info(self) -> Dict:
+    def _get_system_info(self) -> dict:
         """Get system hardware and software information."""
         return {
             "platform": platform.platform(),
@@ -46,12 +46,12 @@ class PerformanceBenchmark:
             "python_version": platform.python_version(),
         }
 
-    def benchmark_file_loading(self, audio_files: List[str]) -> pd.DataFrame:
+    def benchmark_file_loading(self, audio_files: list[str]) -> pd.DataFrame:
         """Benchmark file loading performance."""
         results = []
 
         for audio_path in tqdm(audio_files, desc="Benchmarking file loading"):
-            file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
+            file_size_mb = Path(audio_path).stat().st_size / (1024 * 1024)
 
             # Benchmark Librosa loading
             gc.collect()
@@ -113,7 +113,7 @@ class PerformanceBenchmark:
 
         return pd.DataFrame(results)
 
-    def benchmark_feature_extraction(self, audio_files: List[str]) -> pd.DataFrame:
+    def benchmark_feature_extraction(self, audio_files: list[str]) -> pd.DataFrame:
         """Benchmark feature extraction performance."""
         results = []
 
@@ -172,7 +172,7 @@ class PerformanceBenchmark:
 
         return pd.DataFrame(results)
 
-    def benchmark_parallel_processing(self, audio_files: List[str], max_workers: int = 4) -> pd.DataFrame:
+    def benchmark_parallel_processing(self, audio_files: list[str], max_workers: int = 4) -> pd.DataFrame:
         """Benchmark parallel processing capabilities."""
         results = []
 
@@ -222,12 +222,12 @@ class PerformanceBenchmark:
 
         return pd.DataFrame(results)
 
-    def benchmark_memory_usage(self, audio_files: List[str]) -> pd.DataFrame:
+    def benchmark_memory_usage(self, audio_files: list[str]) -> pd.DataFrame:
         """Benchmark memory usage patterns."""
         results = []
 
         for audio_path in tqdm(audio_files[:5], desc="Benchmarking memory"):
-            file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
+            file_size_mb = Path(audio_path).stat().st_size / (1024 * 1024)
 
             # Measure peak memory for different operations
             operations = {
@@ -263,7 +263,7 @@ class PerformanceBenchmark:
                         "memory_before_mb": mem_before,
                         "memory_after_mb": mem_after,
                         "memory_increase_mb": mem_increase,
-                        "memory_ratio": mem_increase / file_size_mb if file_size_mb > 0 else 0,
+                        "memory_ratio": (mem_increase / file_size_mb if file_size_mb > 0 else 0),
                         "error": error,
                     }
                 )
@@ -283,10 +283,13 @@ class PerformanceBenchmark:
 
             if format_files:
                 test_file = str(format_files[0])
-                file_size_mb = os.path.getsize(test_file) / (1024 * 1024)
+                file_size_mb = Path(test_file).stat().st_size / (1024 * 1024)
 
                 # Test with each library
-                for lib_name, detector in [("librosa", LibrosaBPMDetector()), ("essentia", EssentiaBPMDetector())]:
+                for lib_name, detector in [
+                    ("librosa", LibrosaBPMDetector()),
+                    ("essentia", EssentiaBPMDetector()),
+                ]:
                     gc.collect()
                     start_time = time.perf_counter()
 
@@ -300,7 +303,7 @@ class PerformanceBenchmark:
                             "library": lib_name,
                             "file_size_mb": file_size_mb,
                             "processing_time": processing_time,
-                            "throughput_mb_per_sec": file_size_mb / processing_time if processing_time > 0 else 0,
+                            "throughput_mb_per_sec": (file_size_mb / processing_time if processing_time > 0 else 0),
                             "success": result["error"] is None,
                             "error": result.get("error"),
                         }
@@ -330,48 +333,48 @@ class PerformanceBenchmark:
 
         # File Loading Performance
         if benchmark_files["loading"].exists():
-            df = pd.read_csv(benchmark_files["loading"])
+            loading_data = pd.read_csv(benchmark_files["loading"])
             report.append("\n## File Loading Performance\n")
-            report.append(f"- **Librosa Avg Load Time**: {df['librosa_load_time'].mean():.3f}s")
-            report.append(f"- **Essentia Avg Load Time**: {df['essentia_load_time'].mean():.3f}s")
-            report.append(f"- **Librosa Avg Memory**: {df['librosa_memory_mb'].mean():.1f}MB")
-            report.append(f"- **Essentia Avg Memory**: {df['essentia_memory_mb'].mean():.1f}MB")
+            report.append(f"- **Librosa Avg Load Time**: {loading_data['librosa_load_time'].mean():.3f}s")
+            report.append(f"- **Essentia Avg Load Time**: {loading_data['essentia_load_time'].mean():.3f}s")
+            report.append(f"- **Librosa Avg Memory**: {loading_data['librosa_memory_mb'].mean():.1f}MB")
+            report.append(f"- **Essentia Avg Memory**: {loading_data['essentia_memory_mb'].mean():.1f}MB")
 
         # Feature Extraction Performance
         if benchmark_files["features"].exists():
-            df = pd.read_csv(benchmark_files["features"])
+            features_data = pd.read_csv(benchmark_files["features"])
             report.append("\n## Feature Extraction Performance\n")
 
-            feature_cols = [c for c in df.columns if c.startswith("librosa_") or c.startswith("essentia_")]
-            for col in feature_cols:
-                if col in df:
-                    report.append(f"- **{col}**: {df[col].mean():.4f}s")
+            feature_cols = [c for c in features_data.columns if c.startswith(("librosa_", "essentia_"))]
+            report.extend(
+                f"- **{col}**: {features_data[col].mean():.4f}s" for col in feature_cols if col in features_data
+            )
 
         # Parallel Processing
         if benchmark_files["parallel"].exists():
-            df = pd.read_csv(benchmark_files["parallel"])
+            parallel_data = pd.read_csv(benchmark_files["parallel"])
             report.append("\n## Parallel Processing Performance\n")
-            if not df.empty:
-                row = df.iloc[0]
+            if not parallel_data.empty:
+                row = parallel_data.iloc[0]
                 report.append(f"- **Single Thread**: {row['single_thread_time']:.2f}s")
                 report.append(f"- **Multi Thread Speedup**: {row['thread_speedup']:.2f}x")
                 report.append(f"- **Multi Process Speedup**: {row['process_speedup']:.2f}x")
 
         # Memory Usage
         if benchmark_files["memory"].exists():
-            df = pd.read_csv(benchmark_files["memory"])
+            memory_data = pd.read_csv(benchmark_files["memory"])
             report.append("\n## Memory Usage Analysis\n")
 
-            for op in df["operation"].unique():
-                op_df = df[df["operation"] == op]
-                report.append(f"- **{op}**: {op_df['memory_increase_mb'].mean():.1f}MB average")
+            for op in memory_data["operation"].unique():
+                op_data = memory_data[memory_data["operation"] == op]
+                report.append(f"- **{op}**: {op_data['memory_increase_mb'].mean():.1f}MB average")
 
         # Format Compatibility
         if benchmark_files["formats"].exists():
-            df = pd.read_csv(benchmark_files["formats"])
+            formats_data = pd.read_csv(benchmark_files["formats"])
             report.append("\n## Format Compatibility\n")
 
-            pivot = df.pivot_table(values="success", index="format", columns="library", aggfunc="mean")
+            pivot = formats_data.pivot_table(values="success", index="format", columns="library", aggfunc="mean")
 
             report.append("| Format | Librosa | Essentia |")
             report.append("|--------|---------|----------|")
@@ -411,7 +414,10 @@ class PerformanceBenchmark:
         if loading_df is not None and not loading_df.empty:
             ax = axes[0, 0]
             data = pd.DataFrame(
-                {"Librosa": loading_df["librosa_load_time"], "Essentia": loading_df["essentia_load_time"]}
+                {
+                    "Librosa": loading_df["librosa_load_time"],
+                    "Essentia": loading_df["essentia_load_time"],
+                }
             )
             data.boxplot(ax=ax)
             ax.set_title("File Loading Time Comparison")
@@ -430,8 +436,18 @@ class PerformanceBenchmark:
         # Processing Time vs File Size
         if loading_df is not None and not loading_df.empty:
             ax = axes[1, 0]
-            ax.scatter(loading_df["file_size_mb"], loading_df["librosa_load_time"], alpha=0.5, label="Librosa")
-            ax.scatter(loading_df["file_size_mb"], loading_df["essentia_load_time"], alpha=0.5, label="Essentia")
+            ax.scatter(
+                loading_df["file_size_mb"],
+                loading_df["librosa_load_time"],
+                alpha=0.5,
+                label="Librosa",
+            )
+            ax.scatter(
+                loading_df["file_size_mb"],
+                loading_df["essentia_load_time"],
+                alpha=0.5,
+                label="Essentia",
+            )
             ax.set_xlabel("File Size (MB)")
             ax.set_ylabel("Load Time (seconds)")
             ax.set_title("Load Time vs File Size")
@@ -444,7 +460,10 @@ class PerformanceBenchmark:
             loading_df["essentia_throughput"] = loading_df["file_size_mb"] / loading_df["essentia_load_time"]
 
             throughput_data = pd.DataFrame(
-                {"Librosa": loading_df["librosa_throughput"], "Essentia": loading_df["essentia_throughput"]}
+                {
+                    "Librosa": loading_df["librosa_throughput"],
+                    "Essentia": loading_df["essentia_throughput"],
+                }
             )
             throughput_data.boxplot(ax=ax)
             ax.set_title("Processing Throughput")
@@ -466,7 +485,7 @@ def main():
         return
 
     # Get test files
-    audio_files = []
+    audio_files: list[Path] = []
     for ext in ["*.mp3", "*.wav", "*.flac", "*.m4a"]:
         audio_files.extend(sample_dir.glob(ext))
 
@@ -474,7 +493,7 @@ def main():
         print("No audio files found in sample_data directory.")
         return
 
-    audio_files = [str(f) for f in audio_files]
+    audio_files_str = [str(f) for f in audio_files]
     print(f"Found {len(audio_files)} audio files for benchmarking")
 
     # Initialize benchmark
@@ -491,22 +510,22 @@ def main():
 
     # 1. File Loading Benchmark
     print("\n1. Benchmarking file loading...")
-    loading_df = benchmark.benchmark_file_loading(audio_files)
+    loading_df = benchmark.benchmark_file_loading(audio_files_str)
     loading_df.to_csv(output_dir / "benchmark_loading.csv", index=False)
 
     # 2. Feature Extraction Benchmark
     print("\n2. Benchmarking feature extraction...")
-    features_df = benchmark.benchmark_feature_extraction(audio_files)
+    features_df = benchmark.benchmark_feature_extraction(audio_files_str)
     features_df.to_csv(output_dir / "benchmark_features.csv", index=False)
 
     # 3. Parallel Processing Benchmark
     print("\n3. Benchmarking parallel processing...")
-    parallel_df = benchmark.benchmark_parallel_processing(audio_files)
+    parallel_df = benchmark.benchmark_parallel_processing(audio_files_str)
     parallel_df.to_csv(output_dir / "benchmark_parallel.csv", index=False)
 
     # 4. Memory Usage Benchmark
     print("\n4. Benchmarking memory usage...")
-    memory_df = benchmark.benchmark_memory_usage(audio_files)
+    memory_df = benchmark.benchmark_memory_usage(audio_files_str)
     memory_df.to_csv(output_dir / "benchmark_memory.csv", index=False)
 
     # 5. Format Compatibility Benchmark
@@ -518,7 +537,7 @@ def main():
     print("\n6. Generating performance report...")
     report = benchmark.generate_performance_report(output_dir)
 
-    with open(output_dir / "performance_report.md", "w") as f:
+    with Path(output_dir / "performance_report.md").open("w") as f:
         f.write(report)
 
     print(f"\nPerformance report saved to {output_dir / 'performance_report.md'}")

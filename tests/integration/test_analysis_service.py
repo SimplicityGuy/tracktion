@@ -9,9 +9,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "services" / "analysis_service" / "src"))
+sys.path.insert(
+    0,
+    str(Path(__file__).parent.parent.parent / "services" / "analysis_service" / "src"),
+)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
 
+from exceptions import InvalidAudioFileError, MetadataExtractionError, StorageError
 from main import AnalysisService
 from message_consumer import MessageConsumer
 from storage_handler import StorageHandler
@@ -20,14 +24,17 @@ from storage_handler import StorageHandler
 @pytest.fixture
 def analysis_service():
     """Create an analysis service instance."""
-    service = AnalysisService()
-    return service
+    return AnalysisService()
 
 
 @pytest.fixture
 def mock_rabbitmq_message():
     """Create a mock RabbitMQ message."""
-    return {"recording_id": str(uuid.uuid4()), "file_path": "/path/to/test.mp3", "timestamp": time.time()}
+    return {
+        "recording_id": str(uuid.uuid4()),
+        "file_path": "/path/to/test.mp3",
+        "timestamp": time.time(),
+    }
 
 
 class TestAnalysisServiceIntegration:
@@ -50,7 +57,11 @@ class TestAnalysisServiceIntegration:
     @patch("main.StorageHandler")
     @patch("main.MetadataExtractor")
     def test_process_message_success(
-        self, mock_extractor_class, mock_storage_class, analysis_service, mock_rabbitmq_message
+        self,
+        mock_extractor_class,
+        mock_storage_class,
+        analysis_service,
+        mock_rabbitmq_message,
     ):
         """Test successful message processing."""
         # Setup mocks
@@ -76,13 +87,20 @@ class TestAnalysisServiceIntegration:
         mock_extractor.extract.assert_called_once_with(mock_rabbitmq_message["file_path"])
         mock_storage.store_metadata.assert_called_once()
         mock_storage.update_recording_status.assert_called_with(
-            uuid.UUID(mock_rabbitmq_message["recording_id"]), "processed", None, "test-correlation-id"
+            uuid.UUID(mock_rabbitmq_message["recording_id"]),
+            "processed",
+            None,
+            "test-correlation-id",
         )
 
     @patch("main.StorageHandler")
     @patch("main.MetadataExtractor")
     def test_process_message_invalid_file(
-        self, mock_extractor_class, mock_storage_class, analysis_service, mock_rabbitmq_message
+        self,
+        mock_extractor_class,
+        mock_storage_class,
+        analysis_service,
+        mock_rabbitmq_message,
     ):
         """Test processing with invalid audio file."""
         # Setup mocks
@@ -90,8 +108,6 @@ class TestAnalysisServiceIntegration:
         mock_storage = MagicMock()
         mock_extractor_class.return_value = mock_extractor
         mock_storage_class.return_value = mock_storage
-
-        from exceptions import InvalidAudioFileError
 
         mock_extractor.extract.side_effect = InvalidAudioFileError("Unsupported format")
         mock_storage.update_recording_status.return_value = True
@@ -102,13 +118,20 @@ class TestAnalysisServiceIntegration:
 
         # Verify error handling
         mock_storage.update_recording_status.assert_called_with(
-            uuid.UUID(mock_rabbitmq_message["recording_id"]), "invalid", "Unsupported format", "test-correlation-id"
+            uuid.UUID(mock_rabbitmq_message["recording_id"]),
+            "invalid",
+            "Unsupported format",
+            "test-correlation-id",
         )
 
     @patch("main.StorageHandler")
     @patch("main.MetadataExtractor")
     def test_process_message_extraction_error(
-        self, mock_extractor_class, mock_storage_class, analysis_service, mock_rabbitmq_message
+        self,
+        mock_extractor_class,
+        mock_storage_class,
+        analysis_service,
+        mock_rabbitmq_message,
     ):
         """Test processing with extraction error."""
         # Setup mocks
@@ -116,8 +139,6 @@ class TestAnalysisServiceIntegration:
         mock_storage = MagicMock()
         mock_extractor_class.return_value = mock_extractor
         mock_storage_class.return_value = mock_storage
-
-        from exceptions import MetadataExtractionError
 
         mock_extractor.extract.side_effect = [
             MetadataExtractionError("Extraction failed"),
@@ -136,13 +157,20 @@ class TestAnalysisServiceIntegration:
 
         # Verify failure status update
         mock_storage.update_recording_status.assert_called_with(
-            uuid.UUID(mock_rabbitmq_message["recording_id"]), "failed", "Extraction failed", "test-correlation-id"
+            uuid.UUID(mock_rabbitmq_message["recording_id"]),
+            "failed",
+            "Extraction failed",
+            "test-correlation-id",
         )
 
     @patch("main.StorageHandler")
     @patch("main.MetadataExtractor")
     def test_process_message_storage_error(
-        self, mock_extractor_class, mock_storage_class, analysis_service, mock_rabbitmq_message
+        self,
+        mock_extractor_class,
+        mock_storage_class,
+        analysis_service,
+        mock_rabbitmq_message,
     ):
         """Test processing with storage error."""
         # Setup mocks
@@ -151,9 +179,10 @@ class TestAnalysisServiceIntegration:
         mock_extractor_class.return_value = mock_extractor
         mock_storage_class.return_value = mock_storage
 
-        mock_extractor.extract.return_value = {"title": "Test Song", "artist": "Test Artist"}
-
-        from exceptions import StorageError
+        mock_extractor.extract.return_value = {
+            "title": "Test Song",
+            "artist": "Test Artist",
+        }
 
         mock_storage.store_metadata.side_effect = StorageError("Database error")
         mock_storage.update_recording_status.return_value = True
@@ -183,7 +212,13 @@ class TestAnalysisServiceIntegration:
     @patch("main.StorageHandler")
     @patch("main.MetadataExtractor")
     @patch("main.MessageConsumer")
-    def test_service_shutdown(self, mock_consumer_class, mock_extractor_class, mock_storage_class, analysis_service):
+    def test_service_shutdown(
+        self,
+        mock_consumer_class,
+        mock_extractor_class,
+        mock_storage_class,
+        analysis_service,
+    ):
         """Test service shutdown."""
         # Setup mocks
         mock_consumer = MagicMock()
@@ -204,7 +239,13 @@ class TestAnalysisServiceIntegration:
     @patch("main.StorageHandler")
     @patch("main.MetadataExtractor")
     @patch("main.MessageConsumer")
-    def test_health_check(self, mock_consumer_class, mock_extractor_class, mock_storage_class, analysis_service):
+    def test_health_check(
+        self,
+        mock_consumer_class,
+        mock_extractor_class,
+        mock_storage_class,
+        analysis_service,
+    ):
         """Test health check functionality."""
         # Setup mocks
         mock_consumer = MagicMock()
@@ -264,7 +305,12 @@ class TestStorageHandlerIntegration:
 
         # Set environment variables
         with patch.dict(
-            os.environ, {"NEO4J_URI": "bolt://localhost:7687", "NEO4J_USER": "neo4j", "NEO4J_PASSWORD": "password"}
+            os.environ,
+            {
+                "NEO4J_URI": "bolt://localhost:7687",
+                "NEO4J_USER": "neo4j",
+                "NEO4J_PASSWORD": "password",
+            },
         ):
             storage = StorageHandler()
 
@@ -279,7 +325,11 @@ class TestStorageHandlerIntegration:
     @patch("storage_handler.RecordingRepository")
     @patch("storage_handler.get_db_session")
     def test_store_metadata(
-        self, mock_get_session, mock_recording_repo_class, mock_metadata_repo_class, mock_neo4j_repo_class
+        self,
+        mock_get_session,
+        mock_recording_repo_class,
+        mock_metadata_repo_class,
+        mock_neo4j_repo_class,
     ):
         """Test metadata storage."""
         # Setup mocks
@@ -303,12 +353,21 @@ class TestStorageHandlerIntegration:
 
         # Set environment variables
         with patch.dict(
-            os.environ, {"NEO4J_URI": "bolt://localhost:7687", "NEO4J_USER": "neo4j", "NEO4J_PASSWORD": "password"}
+            os.environ,
+            {
+                "NEO4J_URI": "bolt://localhost:7687",
+                "NEO4J_USER": "neo4j",
+                "NEO4J_PASSWORD": "password",
+            },
         ):
             storage = StorageHandler()
 
             recording_id = uuid.uuid4()
-            metadata = {"title": "Test Song", "artist": "Test Artist", "duration": "180.0"}
+            metadata = {
+                "title": "Test Song",
+                "artist": "Test Artist",
+                "duration": "180.0",
+            }
 
             result = storage.store_metadata(recording_id, metadata, "test-correlation")
 

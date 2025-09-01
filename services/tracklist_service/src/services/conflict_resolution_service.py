@@ -1,16 +1,16 @@
 """Conflict resolution service for handling synchronization conflicts."""
 
 import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
-from uuid import UUID, uuid4
+from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.tracklist_service.src.models.tracklist import TracklistDB
-from services.tracklist_service.src.services.version_service import VersionService
 from services.tracklist_service.src.services.audit_service import AuditService
+from services.tracklist_service.src.services.version_service import VersionService
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,8 @@ class ConflictResolutionService:
     def __init__(
         self,
         session: AsyncSession,
-        version_service: Optional[VersionService] = None,
-        audit_service: Optional[AuditService] = None,
+        version_service: VersionService | None = None,
+        audit_service: AuditService | None = None,
     ):
         """Initialize conflict resolution service.
 
@@ -59,9 +59,9 @@ class ConflictResolutionService:
     async def detect_conflicts(
         self,
         tracklist_id: UUID,
-        current_state: Dict[str, Any],
-        proposed_changes: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
+        current_state: dict[str, Any],
+        proposed_changes: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         """Detect conflicts between current state and proposed changes.
 
         Args:
@@ -109,23 +109,23 @@ class ConflictResolutionService:
                 )
 
         # Check removed tracks that might be important
-        for track_removed in proposed_changes.get("tracks_removed", []):
-            if self._is_critical_track(track_removed):
-                conflicts.append(
-                    {
-                        "id": str(uuid4()),
-                        "type": ConflictType.TRACK_REMOVED.value,
-                        "severity": "medium",
-                        "description": f"Important track {track_removed['position']} would be removed",
-                        "details": track_removed,
-                        "auto_resolvable": False,
-                        "recommended_strategy": ResolutionStrategy.KEEP_CURRENT.value,
-                    }
-                )
+        conflicts.extend(
+            {
+                "id": str(uuid4()),
+                "type": ConflictType.TRACK_REMOVED.value,
+                "severity": "medium",
+                "description": f"Important track {track_removed['position']} would be removed",
+                "details": track_removed,
+                "auto_resolvable": False,
+                "recommended_strategy": ResolutionStrategy.KEEP_CURRENT.value,
+            }
+            for track_removed in proposed_changes.get("tracks_removed", [])
+            if self._is_critical_track(track_removed)
+        )
 
         return conflicts
 
-    def _is_major_restructure(self, changes: Dict[str, Any]) -> bool:
+    def _is_major_restructure(self, changes: dict[str, Any]) -> bool:
         """Determine if changes constitute a major restructure.
 
         Args:
@@ -142,7 +142,7 @@ class ConflictResolutionService:
         total_changes = added + removed + modified
         return total_changes > 10 or removed > 5 or (added > 5 and removed > 2)
 
-    def _analyze_track_modification(self, track_mod: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _analyze_track_modification(self, track_mod: dict[str, Any]) -> dict[str, Any] | None:
         """Analyze a track modification for conflicts.
 
         Args:
@@ -155,17 +155,16 @@ class ConflictResolutionService:
         new = track_mod.get("new", {})
 
         # Calculate field-level changes
-        changed_fields = []
-        for field in ["artist", "title", "remix", "label"]:
-            if old.get(field) != new.get(field):
-                changed_fields.append(
-                    {
-                        "field": field,
-                        "old_value": old.get(field),
-                        "new_value": new.get(field),
-                        "confidence": self._calculate_field_confidence(field, old.get(field), new.get(field)),
-                    }
-                )
+        changed_fields = [
+            {
+                "field": field,
+                "old_value": old.get(field),
+                "new_value": new.get(field),
+                "confidence": self._calculate_field_confidence(field, old.get(field), new.get(field)),
+            }
+            for field in ["artist", "title", "remix", "label"]
+            if old.get(field) != new.get(field)
+        ]
 
         if not changed_fields:
             return None
@@ -202,25 +201,28 @@ class ConflictResolutionService:
             # Adding missing data is usually good
             return 0.9
 
-        if field in ["artist", "title"]:
-            # Major fields need more caution
-            if old_value and new_value:
-                # Check if it's likely a correction or major change
-                if isinstance(old_value, str) and isinstance(new_value, str):
-                    old_lower = old_value.lower()
-                    new_lower = new_value.lower()
+        if (
+            field in ["artist", "title"]
+            and old_value
+            and new_value
+            and isinstance(old_value, str)
+            and isinstance(new_value, str)
+        ):
+            # Major fields need more caution - check if it's likely a correction or major change
+            old_lower = old_value.lower()
+            new_lower = new_value.lower()
 
-                    # Small changes like adding (Extended) are likely correct
-                    if old_lower in new_lower or new_lower in old_lower:
-                        return 0.85
+            # Small changes like adding (Extended) are likely correct
+            if old_lower in new_lower or new_lower in old_lower:
+                return 0.85
 
-                    # Complete changes need manual review
-                    return 0.3
+            # Complete changes need manual review
+            return 0.3
 
         # Minor fields can be more confidently updated
         return 0.7
 
-    def _is_critical_track(self, track: Dict[str, Any]) -> bool:
+    def _is_critical_track(self, track: dict[str, Any]) -> bool:
         """Determine if a track is critical and shouldn't be removed automatically.
 
         Args:
@@ -238,12 +240,9 @@ class ConflictResolutionService:
             return True
 
         # Intro/outro tracks are important
-        if any(marker in title for marker in ["intro", "outro", "opening", "closing"]):
-            return True
+        return bool(any(marker in title for marker in ["intro", "outro", "opening", "closing"]))
 
-        return False
-
-    def _recommend_strategy(self, conflict_detail: Dict[str, Any]) -> str:
+    def _recommend_strategy(self, conflict_detail: dict[str, Any]) -> str:
         """Recommend a resolution strategy based on conflict details.
 
         Args:
@@ -255,22 +254,19 @@ class ConflictResolutionService:
         confidence = conflict_detail.get("confidence", 0)
         severity = conflict_detail.get("severity", "low")
 
-        if confidence > 0.85:
+        if confidence > 0.85 or (confidence > 0.7 and severity == "low"):
             return ResolutionStrategy.USE_PROPOSED.value
-        elif confidence > 0.7 and severity == "low":
-            return ResolutionStrategy.USE_PROPOSED.value
-        elif confidence < 0.4:
+        if confidence < 0.4:
             return ResolutionStrategy.KEEP_CURRENT.value
-        else:
-            return ResolutionStrategy.MANUAL_EDIT.value
+        return ResolutionStrategy.MANUAL_EDIT.value
 
     async def prepare_conflict_ui_data(
         self,
         tracklist_id: UUID,
-        conflicts: List[Dict[str, Any]],
-        current_state: Dict[str, Any],
-        proposed_changes: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        conflicts: list[dict[str, Any]],
+        current_state: dict[str, Any],
+        proposed_changes: dict[str, Any],
+    ) -> dict[str, Any]:
         """Prepare conflict data for UI presentation.
 
         Args:
@@ -282,7 +278,7 @@ class ConflictResolutionService:
         Returns:
             UI-ready conflict data
         """
-        ui_data: Dict[str, Any] = {
+        ui_data: dict[str, Any] = {
             "tracklist_id": str(tracklist_id),
             "total_conflicts": len(conflicts),
             "auto_resolvable_count": sum(1 for c in conflicts if c.get("auto_resolvable", False)),
@@ -312,10 +308,10 @@ class ConflictResolutionService:
 
     def _format_conflict_details(
         self,
-        conflict: Dict[str, Any],
-        current_state: Dict[str, Any],
-        proposed_changes: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        conflict: dict[str, Any],
+        current_state: dict[str, Any],
+        proposed_changes: dict[str, Any],
+    ) -> dict[str, Any]:
         """Format conflict details for UI display.
 
         Args:
@@ -343,21 +339,20 @@ class ConflictResolutionService:
                     for field in details.get("changed_fields", [])
                 ],
             }
-        elif conflict["type"] == ConflictType.MAJOR_RESTRUCTURE.value:
+        if conflict["type"] == ConflictType.MAJOR_RESTRUCTURE.value:
             # Format major restructure
             return {
                 "impact": details,
                 "recommendation": "Manual review recommended due to major structural changes",
             }
-        else:
-            return details  # type: ignore[no-any-return]
+        return details  # type: ignore[no-any-return]
 
     async def resolve_conflicts(
         self,
         tracklist_id: UUID,
-        resolutions: List[Dict[str, Any]],
+        resolutions: list[dict[str, Any]],
         actor: str = "user",
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Apply conflict resolutions.
 
         Args:
@@ -393,7 +388,7 @@ class ConflictResolutionService:
                 actor=actor,
                 metadata={
                     "resolution_count": len(resolutions),
-                    "strategies_used": list(set(r.get("strategy") for r in resolutions)),
+                    "strategies_used": list({r.get("strategy") for r in resolutions}),
                 },
             )
 
@@ -408,7 +403,7 @@ class ConflictResolutionService:
     async def _apply_single_resolution(
         self,
         tracklist: TracklistDB,
-        resolution: Dict[str, Any],
+        resolution: dict[str, Any],
     ) -> None:
         """Apply a single conflict resolution.
 
@@ -438,7 +433,7 @@ class ConflictResolutionService:
     async def _apply_proposed_changes(
         self,
         tracklist: TracklistDB,
-        proposed_data: Dict[str, Any],
+        proposed_data: dict[str, Any],
     ) -> None:
         """Apply proposed changes to tracklist.
 
@@ -451,12 +446,12 @@ class ConflictResolutionService:
         if "tracks" in proposed_data:
             tracklist.tracks = proposed_data["tracks"]
 
-        tracklist.updated_at = datetime.utcnow()
+        tracklist.updated_at = datetime.now(UTC)
 
     async def _apply_manual_edits(
         self,
         tracklist: TracklistDB,
-        manual_data: Dict[str, Any],
+        manual_data: dict[str, Any],
     ) -> None:
         """Apply manual edits to tracklist.
 
@@ -468,12 +463,12 @@ class ConflictResolutionService:
         if "tracks" in manual_data:
             tracklist.tracks = manual_data["tracks"]
 
-        tracklist.updated_at = datetime.utcnow()
+        tracklist.updated_at = datetime.now(UTC)
 
     async def _apply_merge(
         self,
         tracklist: TracklistDB,
-        merge_data: Dict[str, Any],
+        merge_data: dict[str, Any],
     ) -> None:
         """Apply merged changes to tracklist.
 
@@ -485,14 +480,14 @@ class ConflictResolutionService:
         if "tracks" in merge_data:
             tracklist.tracks = merge_data["tracks"]
 
-        tracklist.updated_at = datetime.utcnow()
+        tracklist.updated_at = datetime.now(UTC)
 
     async def auto_resolve_conflicts(
         self,
         tracklist_id: UUID,
-        conflicts: List[Dict[str, Any]],
-        proposed_changes: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
+        conflicts: list[dict[str, Any]],
+        proposed_changes: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         """Automatically resolve conflicts where possible.
 
         Args:
@@ -524,9 +519,9 @@ class ConflictResolutionService:
 
     def _extract_proposed_data(
         self,
-        conflict: Dict[str, Any],
-        proposed_changes: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        conflict: dict[str, Any],
+        proposed_changes: dict[str, Any],
+    ) -> dict[str, Any]:
         """Extract relevant proposed data for a conflict.
 
         Args:

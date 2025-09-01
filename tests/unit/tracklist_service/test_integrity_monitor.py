@@ -1,11 +1,15 @@
 """Unit tests for integrity monitoring functionality."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
 
 import pytest
 
-from services.tracklist_service.src.services.integrity_monitor import IntegrityMonitor, get_integrity_monitor
+from services.tracklist_service.src.services import integrity_monitor as monitor_module
+from services.tracklist_service.src.services.integrity_monitor import (
+    IntegrityMonitor,
+    get_integrity_monitor,
+)
 
 
 @pytest.fixture
@@ -72,9 +76,15 @@ class TestIntegrityMonitor:
         """Test performing check with no orphaned records."""
         session = mock_session_factory.return_value
 
-        with patch("services.tracklist_service.src.services.integrity_monitor.IntegrityValidator") as MockValidator:
-            validator = MockValidator.return_value
-            validator.check_orphaned_records.return_value = {"metadata": 0, "tracklists": 0, "rename_proposals": 0}
+        with patch(
+            "services.tracklist_service.src.services.integrity_monitor.IntegrityValidator"
+        ) as mock_validator_class:
+            validator = mock_validator_class.return_value
+            validator.check_orphaned_records.return_value = {
+                "metadata": 0,
+                "tracklists": 0,
+                "rename_proposals": 0,
+            }
             validator.validate_foreign_keys.return_value = []
             validator.validate_indexes.return_value = []
 
@@ -89,9 +99,15 @@ class TestIntegrityMonitor:
         _ = mock_session_factory.return_value
         monitor.auto_clean = False
 
-        with patch("services.tracklist_service.src.services.integrity_monitor.IntegrityValidator") as MockValidator:
-            validator = MockValidator.return_value
-            validator.check_orphaned_records.return_value = {"metadata": 5, "tracklists": 2, "rename_proposals": 0}
+        with patch(
+            "services.tracklist_service.src.services.integrity_monitor.IntegrityValidator"
+        ) as mock_validator_class:
+            validator = mock_validator_class.return_value
+            validator.check_orphaned_records.return_value = {
+                "metadata": 5,
+                "tracklists": 2,
+                "rename_proposals": 0,
+            }
             validator.validate_foreign_keys.return_value = []
             validator.validate_indexes.return_value = []
 
@@ -108,10 +124,20 @@ class TestIntegrityMonitor:
         _ = mock_session_factory.return_value
         monitor.auto_clean = True
 
-        with patch("services.tracklist_service.src.services.integrity_monitor.IntegrityValidator") as MockValidator:
-            validator = MockValidator.return_value
-            validator.check_orphaned_records.return_value = {"metadata": 5, "tracklists": 2, "rename_proposals": 0}
-            validator.clean_orphaned_records.return_value = {"metadata": 5, "tracklists": 2, "rename_proposals": 0}
+        with patch(
+            "services.tracklist_service.src.services.integrity_monitor.IntegrityValidator"
+        ) as mock_validator_class:
+            validator = mock_validator_class.return_value
+            validator.check_orphaned_records.return_value = {
+                "metadata": 5,
+                "tracklists": 2,
+                "rename_proposals": 0,
+            }
+            validator.clean_orphaned_records.return_value = {
+                "metadata": 5,
+                "tracklists": 2,
+                "rename_proposals": 0,
+            }
             validator.validate_foreign_keys.return_value = []
             validator.validate_indexes.return_value = []
 
@@ -124,9 +150,15 @@ class TestIntegrityMonitor:
         """Test performing check with foreign key issues."""
         _ = mock_session_factory.return_value
 
-        with patch("services.tracklist_service.src.services.integrity_monitor.IntegrityValidator") as MockValidator:
-            validator = MockValidator.return_value
-            validator.check_orphaned_records.return_value = {"metadata": 0, "tracklists": 0, "rename_proposals": 0}
+        with patch(
+            "services.tracklist_service.src.services.integrity_monitor.IntegrityValidator"
+        ) as mock_validator_class:
+            validator = mock_validator_class.return_value
+            validator.check_orphaned_records.return_value = {
+                "metadata": 0,
+                "tracklists": 0,
+                "rename_proposals": 0,
+            }
             validator.validate_foreign_keys.return_value = [
                 ("metadata_recording_id_fkey", "metadata", False),  # No CASCADE
                 ("tracklists_recording_id_fkey", "tracklists", True),
@@ -143,9 +175,15 @@ class TestIntegrityMonitor:
         """Test performing check with missing indexes."""
         _ = mock_session_factory.return_value
 
-        with patch("services.tracklist_service.src.services.integrity_monitor.IntegrityValidator") as MockValidator:
-            validator = MockValidator.return_value
-            validator.check_orphaned_records.return_value = {"metadata": 0, "tracklists": 0, "rename_proposals": 0}
+        with patch(
+            "services.tracklist_service.src.services.integrity_monitor.IntegrityValidator"
+        ) as mock_validator_class:
+            validator = mock_validator_class.return_value
+            validator.check_orphaned_records.return_value = {
+                "metadata": 0,
+                "tracklists": 0,
+                "rename_proposals": 0,
+            }
             validator.validate_foreign_keys.return_value = []
             validator.validate_indexes.return_value = [
                 ("idx_metadata_recording_id", "metadata", False),  # Missing
@@ -161,8 +199,10 @@ class TestIntegrityMonitor:
         """Test error handling during integrity check."""
         session = mock_session_factory.return_value
 
-        with patch("services.tracklist_service.src.services.integrity_monitor.IntegrityValidator") as MockValidator:
-            validator = MockValidator.return_value
+        with patch(
+            "services.tracklist_service.src.services.integrity_monitor.IntegrityValidator"
+        ) as mock_validator_class:
+            validator = mock_validator_class.return_value
             validator.check_orphaned_records.side_effect = Exception("Database error")
 
             with patch("services.tracklist_service.src.services.integrity_monitor.logger") as mock_logger:
@@ -177,8 +217,10 @@ class TestIntegrityMonitor:
         """Test performing immediate check."""
         session = mock_session_factory.return_value
 
-        with patch("services.tracklist_service.src.services.integrity_monitor.IntegrityValidator") as MockValidator:
-            validator = MockValidator.return_value
+        with patch(
+            "services.tracklist_service.src.services.integrity_monitor.IntegrityValidator"
+        ) as mock_validator_class:
+            validator = mock_validator_class.return_value
             validator.run_full_validation.return_value = {
                 "orphaned_records": {"metadata": 0},
                 "foreign_keys": [],
@@ -206,7 +248,7 @@ class TestIntegrityMonitor:
     def test_get_status_running(self, monitor):
         """Test getting status when monitor is running."""
         monitor.is_running = True
-        monitor.last_check = datetime.utcnow()
+        monitor.last_check = datetime.now(UTC)
 
         status = monitor.get_status()
 
@@ -223,7 +265,6 @@ class TestIntegrityMonitorSingleton:
     def test_get_integrity_monitor_creates_instance(self):
         """Test that get_integrity_monitor creates new instance."""
         # Reset singleton
-        import services.tracklist_service.src.services.integrity_monitor as monitor_module
 
         monitor_module._monitor_instance = None
 
@@ -237,7 +278,6 @@ class TestIntegrityMonitorSingleton:
     def test_get_integrity_monitor_returns_existing(self):
         """Test that get_integrity_monitor returns existing instance."""
         # Reset singleton
-        import services.tracklist_service.src.services.integrity_monitor as monitor_module
 
         monitor_module._monitor_instance = None
 
@@ -250,7 +290,6 @@ class TestIntegrityMonitorSingleton:
     def test_get_integrity_monitor_requires_factory_for_new(self):
         """Test that session_factory is required for new instance."""
         # Reset singleton
-        import services.tracklist_service.src.services.integrity_monitor as monitor_module
 
         monitor_module._monitor_instance = None
 

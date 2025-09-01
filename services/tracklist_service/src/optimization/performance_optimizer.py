@@ -1,20 +1,22 @@
 """Performance optimization for batch processing operations."""
 
 import asyncio
+import contextlib
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, UTC, timedelta
-from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Callable
-from collections import defaultdict, deque
-from asyncio import Task
 import statistics
+from asyncio import Task
+from collections import defaultdict, deque
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from enum import Enum
+from typing import Any
 
-from redis import Redis
 import psutil
+from redis import Redis
 
-from services.tracklist_service.src.queue.batch_queue import BatchJobQueue
 from services.tracklist_service.src.progress.tracker import ProgressTracker
+from services.tracklist_service.src.queue.batch_queue import BatchJobQueue
 from services.tracklist_service.src.retry.retry_manager import RetryManager
 
 logger = logging.getLogger(__name__)
@@ -62,8 +64,8 @@ class OptimizationConfig:
     """Configuration for performance optimization."""
 
     strategy: OptimizationStrategy = OptimizationStrategy.BALANCED
-    target_throughput: Optional[float] = None  # Jobs per second
-    max_latency_p95: Optional[float] = None  # Maximum acceptable P95 latency
+    target_throughput: float | None = None  # Jobs per second
+    max_latency_p95: float | None = None  # Maximum acceptable P95 latency
     max_error_rate: float = 0.05  # 5% error rate threshold
     min_workers: int = 2
     max_workers: int = 50
@@ -71,7 +73,7 @@ class OptimizationConfig:
     scale_down_threshold: float = 0.3  # 30% resource usage
     monitoring_interval: int = 10  # Seconds
     optimization_interval: int = 60  # Seconds
-    custom_rules: List[Callable[..., Any]] = field(default_factory=list)
+    custom_rules: list[Callable[..., Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -125,12 +127,12 @@ class PerformanceOptimizer:
         self.optimization_enabled = True
 
         # Performance baselines
-        self.baseline_metrics: Optional[PerformanceMetrics] = None
-        self.target_metrics: Optional[PerformanceMetrics] = None
+        self.baseline_metrics: PerformanceMetrics | None = None
+        self.target_metrics: PerformanceMetrics | None = None
 
         # Monitoring tasks
-        self.monitoring_task: Optional[Task[None]] = None
-        self.optimization_task: Optional[Task[None]] = None
+        self.monitoring_task: Task[None] | None = None
+        self.optimization_task: Task[None] | None = None
 
     async def start_monitoring(self) -> None:
         """Start performance monitoring and optimization."""
@@ -146,17 +148,13 @@ class PerformanceOptimizer:
         """Stop performance monitoring and optimization."""
         if self.monitoring_task:
             self.monitoring_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.monitoring_task
-            except asyncio.CancelledError:
-                pass
 
         if self.optimization_task:
             self.optimization_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.optimization_task
-            except asyncio.CancelledError:
-                pass
 
         logger.info("Performance monitoring and optimization stopped")
 
@@ -253,7 +251,7 @@ class PerformanceOptimizer:
 
         return completed_count / 60.0  # Jobs per second
 
-    def _calculate_latencies(self) -> Tuple[float, float, float]:
+    def _calculate_latencies(self) -> tuple[float, float, float]:
         """Calculate latency percentiles.
 
         Returns:
@@ -384,11 +382,10 @@ class PerformanceOptimizer:
                 new_workers = min(self.current_workers + 2, self.config.max_workers)
                 await self._adjust_workers(new_workers)
 
-        elif metrics.cpu_usage < self.config.scale_down_threshold * 100:
-            # CPU is low, might have too many workers
-            if metrics.queue_depth < 10:
-                new_workers = max(self.current_workers - 1, self.config.min_workers)
-                await self._adjust_workers(new_workers)
+        elif metrics.cpu_usage < self.config.scale_down_threshold * 100 and metrics.queue_depth < 10:
+            # CPU is low and queue is small, might have too many workers
+            new_workers = max(self.current_workers - 1, self.config.min_workers)
+            await self._adjust_workers(new_workers)
 
         # Adjust based on error rate
         if metrics.error_rate > self.config.max_error_rate:
@@ -458,10 +455,9 @@ class PerformanceOptimizer:
 
         if cv < 0.3:
             return "steady"
-        elif cv < 0.7:
+        if cv < 0.7:
             return "periodic"
-        else:
-            return "bursty"
+        return "bursty"
 
     async def _predict_load(self) -> float:
         """Predict future load using simple moving average.
@@ -490,7 +486,7 @@ class PerformanceOptimizer:
 
         # Update worker count in batch queue (mock for now, should be implemented)
         # await self.batch_queue.set_worker_count(target_workers)
-        pass  # Placeholder
+        # Placeholder
 
         self.current_workers = target_workers
 
@@ -506,17 +502,14 @@ class PerformanceOptimizer:
         """
         # Implement rate limit adjustment logic
         # This would interact with the rate limiter component
-        pass
 
     async def _increase_rate_limits(self) -> None:
         """Increase rate limits for higher throughput."""
         # Implement rate limit increase
-        pass
 
     async def _reduce_rate_limits(self) -> None:
         """Reduce rate limits for stability."""
         # Implement rate limit reduction
-        pass
 
     async def _tune_retry_policies(self, metrics: PerformanceMetrics) -> None:
         """Tune retry policies based on metrics.
@@ -586,7 +579,7 @@ class PerformanceOptimizer:
         """
         self.latency_samples.append(latency_ms)
 
-    def set_baseline_metrics(self, metrics: Optional[PerformanceMetrics] = None) -> None:
+    def set_baseline_metrics(self, metrics: PerformanceMetrics | None = None) -> None:
         """Set baseline metrics for comparison.
 
         Args:
@@ -605,7 +598,7 @@ class PerformanceOptimizer:
         """
         self.target_metrics = metrics
 
-    def get_optimization_recommendations(self) -> List[str]:
+    def get_optimization_recommendations(self) -> list[str]:
         """Get optimization recommendations based on current state.
 
         Returns:
@@ -642,7 +635,7 @@ class PerformanceOptimizer:
 
         return recommendations or ["System performing within normal parameters"]
 
-    def get_performance_report(self) -> Dict[str, Any]:
+    def get_performance_report(self) -> dict[str, Any]:
         """Generate performance report.
 
         Returns:

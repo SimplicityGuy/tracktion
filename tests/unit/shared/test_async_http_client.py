@@ -267,8 +267,16 @@ class TestAsyncHTTPClient:
             mock_request.side_effect = [mock_response1, mock_response2]
 
             requests = [
-                {"service_name": "service1", "method": "GET", "url": "https://example1.com"},
-                {"service_name": "service2", "method": "POST", "url": "https://example2.com"},
+                {
+                    "service_name": "service1",
+                    "method": "GET",
+                    "url": "https://example1.com",
+                },
+                {
+                    "service_name": "service2",
+                    "method": "POST",
+                    "url": "https://example2.com",
+                },
             ]
 
             responses = await client.batch_requests(requests, max_concurrent=2)

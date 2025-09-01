@@ -13,11 +13,11 @@ from dotenv import load_dotenv
 from watchdog.observers import Observer
 
 try:
-    from .message_publisher import MessagePublisher
+    from .message_publisher import MessagePublisher, RabbitMQConfig
     from .watchdog_handler import TracktionEventHandler
 except ImportError:
     # For direct execution
-    from message_publisher import MessagePublisher  # type: ignore[no-redef]
+    from message_publisher import MessagePublisher, RabbitMQConfig  # type: ignore[no-redef]
     from watchdog_handler import TracktionEventHandler  # type: ignore[no-redef]
 
 load_dotenv()
@@ -27,7 +27,7 @@ INSTANCE_ID = os.environ.get("INSTANCE_ID") or str(uuid.uuid4())[:8]
 
 
 # Configure structured logging with instance ID
-def add_instance_id(logger: Any, method_name: str, event_dict: dict) -> dict:
+def add_instance_id(logger: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Add instance ID to all log messages."""
     event_dict["instance_id"] = INSTANCE_ID
     return event_dict
@@ -43,7 +43,7 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        add_instance_id,  # type: ignore[list-item]
+        add_instance_id,
         structlog.dev.ConsoleRenderer(),
     ],
     context_class=dict,
@@ -64,7 +64,7 @@ class FileWatcherService:
         self.scan_path = Path(data_dir)
         self.instance_id = INSTANCE_ID
         self.running = False
-        self.observer: Observer | None = None  # type: ignore[valid-type]
+        self.observer: Observer | None = None
         self.publisher: MessagePublisher | None = None
         self.shutdown_timeout = 10  # seconds to wait for graceful shutdown
 
@@ -104,11 +104,14 @@ class FileWatcherService:
 
         # Initialize message publisher with instance ID and watched directory
         try:
-            self.publisher = MessagePublisher(
+            config = RabbitMQConfig(
                 host=self.rabbitmq_host,
                 port=self.rabbitmq_port,
                 username=self.rabbitmq_user,
                 password=self.rabbitmq_pass,
+            )
+            self.publisher = MessagePublisher(
+                config=config,
                 instance_id=self.instance_id,
                 watched_directory=str(self.scan_path),
             )
@@ -169,7 +172,10 @@ class FileWatcherService:
             self.observer.stop()
             self.observer.join(timeout=self.shutdown_timeout)
             if self.observer.is_alive():
-                logger.warning("Observer did not stop within timeout", timeout=self.shutdown_timeout)
+                logger.warning(
+                    "Observer did not stop within timeout",
+                    timeout=self.shutdown_timeout,
+                )
             else:
                 logger.info("Watchdog observer stopped successfully")
 

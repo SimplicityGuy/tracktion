@@ -1,19 +1,27 @@
 """Async database connection and session management for Tracktion."""
 
-import os
 import asyncio
 import logging
+import os
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from functools import wraps
-from typing import Any, AsyncGenerator, Callable, Optional
+from typing import Any
 
-import asyncpg  # type: ignore[import-untyped]
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy import text
-from neo4j import AsyncGraphDatabase  # type: ignore[import-not-found]
-from neo4j import AsyncDriver
-from redis import asyncio as aioredis
+import asyncpg
 from dotenv import load_dotenv
+from neo4j import (
+    AsyncDriver,
+    AsyncGraphDatabase,
+)
+from redis import asyncio as aioredis
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 # Load environment variables
 load_dotenv()
@@ -67,11 +75,11 @@ class AsyncDatabaseManager:
 
     def __init__(self) -> None:
         """Initialize async database connections."""
-        self.pg_engine: Optional[AsyncEngine] = None
-        self.pg_pool: Optional[asyncpg.Pool] = None
-        self.neo4j_driver: Optional[AsyncDriver] = None
-        self.redis_client: Optional[aioredis.Redis] = None
-        self.AsyncSessionLocal: Optional[async_sessionmaker[AsyncSession]] = None
+        self.pg_engine: AsyncEngine | None = None
+        self.pg_pool: asyncpg.Pool | None = None
+        self.neo4j_driver: AsyncDriver | None = None
+        self.redis_client: aioredis.Redis | None = None
+        self.AsyncSessionLocal: async_sessionmaker[AsyncSession] | None = None
         self._initialized = False
 
     async def initialize(self) -> None:
@@ -156,7 +164,7 @@ class AsyncDatabaseManager:
         redis_port = int(os.getenv("REDIS_PORT", "6379"))
         redis_db = int(os.getenv("REDIS_DB", "0"))
 
-        self.redis_client = await aioredis.from_url(  # type: ignore[no-untyped-call]
+        self.redis_client = await aioredis.from_url(
             f"redis://{redis_host}:{redis_port}/{redis_db}",
             encoding="utf-8",
             decode_responses=True,
@@ -168,7 +176,7 @@ class AsyncDatabaseManager:
         logger.info("Async Redis connection established")
 
     @asynccontextmanager
-    async def get_db_session(self) -> AsyncGenerator[AsyncSession, None]:
+    async def get_db_session(self) -> AsyncGenerator[AsyncSession]:
         """Async context manager for database sessions.
 
         Yields:
@@ -188,7 +196,7 @@ class AsyncDatabaseManager:
                 raise
 
     @asynccontextmanager
-    async def get_pg_connection(self) -> AsyncGenerator[asyncpg.Connection, None]:
+    async def get_pg_connection(self) -> AsyncGenerator[asyncpg.Connection]:
         """Get raw asyncpg connection from pool.
 
         Yields:

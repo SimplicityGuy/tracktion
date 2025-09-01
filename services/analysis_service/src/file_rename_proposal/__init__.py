@@ -11,7 +11,7 @@ from .validator import FilesystemValidator
 
 __all__ = [
     "FileRenameProposalConfig",
+    "FilesystemValidator",
     "PatternManager",
     "ProposalGenerator",
-    "FilesystemValidator",
 ]

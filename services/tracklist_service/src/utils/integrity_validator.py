@@ -1,11 +1,25 @@
 """Database integrity validation utilities."""
 
 import logging
-from typing import Any, Dict, List, Tuple
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+import sys
+from pathlib import Path
+from typing import Any
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session, sessionmaker
 
 logger = logging.getLogger(__name__)
+
+
+def get_session() -> Session:
+    """Get database session.
+
+    Placeholder implementation - should be replaced with actual database setup.
+    """
+    # This is a placeholder - actual implementation should use proper config
+    engine = create_engine("postgresql://localhost/tracktion")
+    session_local = sessionmaker(bind=engine)
+    return session_local()
 
 
 class IntegrityValidator:
@@ -19,7 +33,7 @@ class IntegrityValidator:
         """
         self.session = session
 
-    def check_orphaned_records(self) -> Dict[str, int]:
+    def check_orphaned_records(self) -> dict[str, int]:
         """Check for orphaned records using the database function.
 
         Returns:
@@ -38,7 +52,7 @@ class IntegrityValidator:
             logger.error(f"Error checking orphaned records: {e}")
             raise
 
-    def clean_orphaned_records(self, dry_run: bool = True) -> Dict[str, int]:
+    def clean_orphaned_records(self, dry_run: bool = True) -> dict[str, int]:
         """Clean orphaned records from the database.
 
         Args:
@@ -66,13 +80,14 @@ class IntegrityValidator:
             self.session.rollback()
             raise
 
-    def validate_foreign_keys(self) -> List[Tuple[str, str, bool]]:
+    def validate_foreign_keys(self) -> list[tuple[str, str, bool]]:
         """Validate all foreign key constraints are properly set.
 
         Returns:
             List of tuples (constraint_name, table_name, is_valid)
         """
-        query = text("""
+        query = text(
+            """
             SELECT
                 conname as constraint_name,
                 conrelid::regclass as table_name,
@@ -80,7 +95,8 @@ class IntegrityValidator:
             FROM pg_constraint
             WHERE contype = 'f'
             AND connamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
-        """)
+        """
+        )
 
         results = []
         try:
@@ -98,20 +114,22 @@ class IntegrityValidator:
             logger.error(f"Error validating foreign keys: {e}")
             raise
 
-    def validate_check_constraints(self) -> List[Tuple[str, str, bool]]:
+    def validate_check_constraints(self) -> list[tuple[str, str, bool]]:
         """Validate all check constraints are working.
 
         Returns:
             List of tuples (constraint_name, table_name, is_valid)
         """
-        query = text("""
+        query = text(
+            """
             SELECT
                 conname as constraint_name,
                 conrelid::regclass as table_name
             FROM pg_constraint
             WHERE contype = 'c'
             AND connamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
-        """)
+        """
+        )
 
         results = []
         try:
@@ -125,7 +143,7 @@ class IntegrityValidator:
             logger.error(f"Error validating check constraints: {e}")
             raise
 
-    def validate_indexes(self) -> List[Tuple[str, str, bool]]:
+    def validate_indexes(self) -> list[tuple[str, str, bool]]:
         """Validate that all expected indexes exist.
 
         Returns:
@@ -137,13 +155,15 @@ class IntegrityValidator:
             ("idx_rename_proposals_recording_id", "rename_proposals"),
         ]
 
-        query = text("""
+        query = text(
+            """
             SELECT
                 indexname,
                 tablename
             FROM pg_indexes
             WHERE schemaname = 'public'
-        """)
+        """
+        )
 
         results = []
         try:
@@ -161,7 +181,7 @@ class IntegrityValidator:
             logger.error(f"Error validating indexes: {e}")
             raise
 
-    def run_full_validation(self) -> Dict[str, Any]:
+    def run_full_validation(self) -> dict[str, Any]:
         """Run complete integrity validation.
 
         Returns:
@@ -174,7 +194,7 @@ class IntegrityValidator:
         check_constraints = self.validate_check_constraints()
         indexes = self.validate_indexes()
 
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "orphaned_records": orphaned_records,
             "foreign_keys": foreign_keys,
             "check_constraints": check_constraints,
@@ -205,12 +225,7 @@ class IntegrityValidator:
 
 def main() -> int:
     """Run integrity validation as a standalone script."""
-    import sys
-    import os
-
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-    from database import get_session
+    sys.path.append(str(Path(__file__).resolve().parent.parent))
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
@@ -257,4 +272,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

@@ -11,7 +11,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from alembic import op
+from alembic import op  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
 
 # revision identifiers, used by Alembic
 revision: str = "004"
@@ -41,9 +41,24 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_tracklist_versions_tracklist_id"), "tracklist_versions", ["tracklist_id"], unique=False)
-    op.create_index(op.f("ix_tracklist_versions_created_at"), "tracklist_versions", ["created_at"], unique=False)
-    op.create_index(op.f("ix_tracklist_versions_is_current"), "tracklist_versions", ["is_current"], unique=False)
+    op.create_index(
+        op.f("ix_tracklist_versions_tracklist_id"),
+        "tracklist_versions",
+        ["tracklist_id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tracklist_versions_created_at"),
+        "tracklist_versions",
+        ["created_at"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_tracklist_versions_is_current"),
+        "tracklist_versions",
+        ["is_current"],
+        unique=False,
+    )
 
     # Create sync_configurations table
     op.create_table(
@@ -54,7 +69,12 @@ def upgrade() -> None:
         sa.Column("sync_sources", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("sync_frequency", sa.String(length=20), nullable=True),
         sa.Column("auto_accept_threshold", sa.Float(), nullable=False, default=0.9),
-        sa.Column("conflict_resolution", sa.String(length=20), nullable=False, default="manual"),
+        sa.Column(
+            "conflict_resolution",
+            sa.String(length=20),
+            nullable=False,
+            default="manual",
+        ),
         sa.Column("last_sync_at", sa.DateTime(), nullable=True),
         sa.Column("next_sync_at", sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(
@@ -84,7 +104,12 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_sync_events_tracklist_id"), "sync_events", ["tracklist_id"], unique=False)
+    op.create_index(
+        op.f("ix_sync_events_tracklist_id"),
+        "sync_events",
+        ["tracklist_id"],
+        unique=False,
+    )
     op.create_index(op.f("ix_sync_events_created_at"), "sync_events", ["created_at"], unique=False)
     op.create_index(op.f("ix_sync_events_status"), "sync_events", ["status"], unique=False)
 

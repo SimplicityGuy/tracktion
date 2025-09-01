@@ -1,30 +1,36 @@
 """Main entry point for the analysis service."""
 
 import os
-import sys
 import signal
+import sys
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 from uuid import UUID
-from dotenv import load_dotenv
+
 import structlog
+from dotenv import load_dotenv
 
 # Add shared modules to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
 
+from bpm_detector import BPMDetector
+from config import BPMConfig
+from exceptions import (
+    InvalidAudioFileError,
+    MetadataExtractionError,
+    RetryableError,
+    StorageError,
+)
+from file_rename_proposal.config import FileRenameProposalConfig
+from file_rename_proposal.integration import FileRenameProposalIntegration
+from key_detector import KeyDetector
 from message_consumer import MessageConsumer
 from metadata_extractor import MetadataExtractor
-from storage_handler import StorageHandler
-from exceptions import InvalidAudioFileError, MetadataExtractionError, StorageError, RetryableError
-from file_rename_proposal.integration import FileRenameProposalIntegration
-from file_rename_proposal.config import FileRenameProposalConfig
-from bpm_detector import BPMDetector
-from key_detector import KeyDetector
-from config import BPMConfig
+from shared.core_types.src.database import DatabaseManager
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
 from shared.core_types.src.repositories import RecordingRepository
-from shared.core_types.src.database import DatabaseManager
+from storage_handler import StorageHandler
 
 # Load environment variables
 load_dotenv()
@@ -58,12 +64,12 @@ class AnalysisService:
     def __init__(self) -> None:
         """Initialize the analysis service."""
         self.running = False
-        self.consumer: Optional[MessageConsumer] = None
-        self.extractor: Optional[MetadataExtractor] = None
-        self.storage: Optional[StorageHandler] = None
-        self.rename_integration: Optional[FileRenameProposalIntegration] = None
-        self.bpm_detector: Optional[BPMDetector] = None
-        self.key_detector: Optional[KeyDetector] = None
+        self.consumer: MessageConsumer | None = None
+        self.extractor: MetadataExtractor | None = None
+        self.storage: StorageHandler | None = None
+        self.rename_integration: FileRenameProposalIntegration | None = None
+        self.bpm_detector: BPMDetector | None = None
+        self.key_detector: KeyDetector | None = None
         self._shutdown_requested = False
 
         # Configuration
@@ -141,14 +147,18 @@ class AnalysisService:
             logger.error(f"Failed to initialize service: {e}")
             raise
 
-    def process_message(self, message: Dict[str, Any], correlation_id: str) -> None:
+    def process_message(self, message: dict[str, Any], correlation_id: str) -> None:
         """Process a single analysis message.
 
         Args:
             message: Message from RabbitMQ
             correlation_id: Correlation ID for tracing
         """
-        logger.info("Processing analysis message", correlation_id=correlation_id, message_keys=list(message.keys()))
+        logger.info(
+            "Processing analysis message",
+            correlation_id=correlation_id,
+            message_keys=list(message.keys()),
+        )
 
         # Extract required fields
         recording_id = message.get("recording_id")
@@ -171,14 +181,26 @@ class AnalysisService:
             self._process_file(recording_uuid, file_path, correlation_id)
 
             # Send success notification (if configured)
-            self._send_notification(recording_id=recording_uuid, status="completed", correlation_id=correlation_id)
+            self._send_notification(
+                recording_id=recording_uuid,
+                status="completed",
+                correlation_id=correlation_id,
+            )
 
         except (ValueError, TypeError) as e:
-            logger.error(f"Invalid recording ID format: {e}", correlation_id=correlation_id, recording_id=recording_id)
+            logger.error(
+                f"Invalid recording ID format: {e}",
+                correlation_id=correlation_id,
+                recording_id=recording_id,
+            )
 
         except RetryableError as e:
             # These errors should trigger a retry
-            logger.warning(f"Retryable error occurred: {e}", correlation_id=correlation_id, recording_id=recording_id)
+            logger.warning(
+                f"Retryable error occurred: {e}",
+                correlation_id=correlation_id,
+                recording_id=recording_id,
+            )
             raise  # Let the consumer handle retry
 
         except Exception as e:
@@ -195,7 +217,10 @@ class AnalysisService:
                     if self.storage:
                         self.storage.update_recording_status(UUID(recording_id), "failed", str(e), correlation_id)
                 except Exception as update_error:
-                    logger.error(f"Failed to update recording status: {update_error}", correlation_id=correlation_id)
+                    logger.error(
+                        f"Failed to update recording status: {update_error}",
+                        correlation_id=correlation_id,
+                    )
 
     def _process_file(self, recording_id: UUID, file_path: str, correlation_id: str) -> None:
         """Process a single audio file.
@@ -208,7 +233,11 @@ class AnalysisService:
         Raises:
             Various exceptions based on processing errors
         """
-        logger.info(f"Processing file: {file_path}", correlation_id=correlation_id, recording_id=str(recording_id))
+        logger.info(
+            f"Processing file: {file_path}",
+            correlation_id=correlation_id,
+            recording_id=str(recording_id),
+        )
 
         retry_count = 0
 
@@ -333,7 +362,11 @@ class AnalysisService:
         return ext in bpm_config.supported_formats
 
     def _perform_audio_analysis(
-        self, file_path: str, metadata: Dict[str, Any], correlation_id: str, recording_id: UUID
+        self,
+        file_path: str,
+        metadata: dict[str, Any],
+        correlation_id: str,
+        recording_id: UUID,
     ) -> None:
         """Perform BPM and key detection on the audio file.
 
@@ -409,7 +442,11 @@ class AnalysisService:
         metadata["audio_analysis_version"] = "1.0"
 
     def _send_notification(
-        self, recording_id: UUID, status: str, correlation_id: str, metadata: Optional[Dict[str, Any]] = None
+        self,
+        recording_id: UUID,
+        status: str,
+        correlation_id: str,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Send notification about processing completion.
 
@@ -424,7 +461,8 @@ class AnalysisService:
         """
         # TODO: Implement notification sending via RabbitMQ
         logger.debug(
-            f"Notification would be sent: recording {recording_id} status={status}", correlation_id=correlation_id
+            f"Notification would be sent: recording {recording_id} status={status}",
+            correlation_id=correlation_id,
         )
 
     def run(self) -> None:
@@ -485,13 +523,13 @@ class AnalysisService:
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
 
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self) -> dict[str, Any]:
         """Perform health check.
 
         Returns:
             Health status dictionary
         """
-        health: Dict[str, Any] = {
+        health: dict[str, Any] = {
             "service": "analysis_service",
             "status": "healthy" if self.running else "not_running",
             "timestamp": time.time(),
@@ -501,7 +539,7 @@ class AnalysisService:
         # Check RabbitMQ connection
         if self.consumer and self.consumer.connection:
             health["components"]["rabbitmq"] = {
-                "status": "connected" if not self.consumer.connection.is_closed else "disconnected"
+                "status": ("connected" if not self.consumer.connection.is_closed else "disconnected")
             }
         else:
             health["components"]["rabbitmq"] = {"status": "not_initialized"}

@@ -2,15 +2,16 @@
 
 import json
 import logging
-from dataclasses import dataclass, asdict
-from datetime import datetime, UTC, timedelta
-from enum import Enum
-from typing import Dict, List, Optional, Set, Any, Callable
-from collections import defaultdict
 import statistics
+from collections import defaultdict
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime, timedelta
+from enum import Enum
+from typing import Any
 
-from redis import Redis  # type: ignore[import-untyped]
 from fastapi import WebSocket
+from redis import Redis
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +35,14 @@ class JobProgress:
     batch_id: str
     url: str
     status: JobStatus
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    processing_time: Optional[float] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    processing_time: float | None = None
     retry_count: int = 0
-    error: Optional[str] = None
-    result: Optional[Dict[str, Any]] = None
+    error: str | None = None
+    result: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
         data["status"] = self.status.value
@@ -64,9 +65,9 @@ class BatchProgress:
     failed: int = 0
     retrying: int = 0
     cancelled: int = 0
-    start_time: Optional[datetime] = None
-    last_update: Optional[datetime] = None
-    estimated_completion: Optional[datetime] = None
+    start_time: datetime | None = None
+    last_update: datetime | None = None
+    estimated_completion: datetime | None = None
 
     @property
     def progress_percentage(self) -> float:
@@ -84,7 +85,7 @@ class BatchProgress:
             return 0.0
         return (self.completed / finished) * 100
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
         data["progress_percentage"] = self.progress_percentage
@@ -114,32 +115,32 @@ class ProgressTracker:
             redis_port: Redis port number
             persistence_ttl: TTL for progress data in seconds
         """
-        self.redis = Redis(host=redis_host, port=redis_port, decode_responses=True)  # type: ignore[call-arg]
+        self.redis = Redis(host=redis_host, port=redis_port, decode_responses=True)
         self.persistence_ttl = persistence_ttl
 
         # In-memory tracking for performance
-        self.job_progress: Dict[str, JobProgress] = {}
-        self.batch_progress: Dict[str, BatchProgress] = {}
-        self.batch_jobs: Dict[str, Set[str]] = defaultdict(set)
+        self.job_progress: dict[str, JobProgress] = {}
+        self.batch_progress: dict[str, BatchProgress] = {}
+        self.batch_jobs: dict[str, set[str]] = defaultdict(set)
 
         # WebSocket connections for real-time updates
-        self.websocket_connections: Dict[str, List[WebSocket]] = defaultdict(list)
+        self.websocket_connections: dict[str, list[WebSocket]] = defaultdict(list)
 
         # Processing time statistics for ETA calculation
-        self.processing_times: List[float] = []
+        self.processing_times: list[float] = []
         self.max_processing_samples = 100
 
         # Notification callbacks
-        self.completion_callbacks: Dict[str, List[Callable[..., Any]]] = defaultdict(list)
+        self.completion_callbacks: dict[str, list[Callable[..., Any]]] = defaultdict(list)
 
     async def update_progress(
         self,
         batch_id: str,
         job_id: str,
         status: str,
-        url: Optional[str] = None,
-        error: Optional[str] = None,
-        result: Optional[Dict[str, Any]] = None,
+        url: str | None = None,
+        error: str | None = None,
+        result: dict[str, Any] | None = None,
     ) -> None:
         """Update job progress.
 
@@ -211,7 +212,10 @@ class ProgressTracker:
         if batch_id not in self.batch_progress:
             total_jobs = len(self.batch_jobs.get(batch_id, []))
             self.batch_progress[batch_id] = BatchProgress(
-                batch_id=batch_id, total_jobs=total_jobs, pending=total_jobs, start_time=datetime.now(UTC)
+                batch_id=batch_id,
+                total_jobs=total_jobs,
+                pending=total_jobs,
+                start_time=datetime.now(UTC),
             )
 
         batch = self.batch_progress[batch_id]
@@ -246,7 +250,7 @@ class ProgressTracker:
         # Persist to Redis
         await self._persist_batch_progress(batch)
 
-    async def calculate_eta(self, batch_id: str) -> Optional[datetime]:
+    async def calculate_eta(self, batch_id: str) -> datetime | None:
         """Calculate estimated time of completion.
 
         Args:
@@ -274,7 +278,7 @@ class ProgressTracker:
 
         return datetime.now(UTC) + timedelta(seconds=estimated_seconds)
 
-    async def broadcast_update(self, batch_id: str, update: Dict[str, Any]) -> None:
+    async def broadcast_update(self, batch_id: str, update: dict[str, Any]) -> None:
         """Broadcast progress update to WebSocket connections.
 
         Args:
@@ -318,10 +322,9 @@ class ProgressTracker:
             batch_id: Batch identifier
             websocket: WebSocket connection
         """
-        if batch_id in self.websocket_connections:
-            if websocket in self.websocket_connections[batch_id]:
-                self.websocket_connections[batch_id].remove(websocket)
-                logger.info(f"WebSocket disconnected for batch {batch_id}")
+        if batch_id in self.websocket_connections and websocket in self.websocket_connections[batch_id]:
+            self.websocket_connections[batch_id].remove(websocket)
+            logger.info(f"WebSocket disconnected for batch {batch_id}")
 
     def register_completion_callback(self, batch_id: str, callback: Callable[[str, BatchProgress], None]) -> None:
         """Register callback for batch completion.
@@ -363,7 +366,12 @@ class ProgressTracker:
 
             # Send completion notification
             await self.broadcast_update(
-                batch_id, {"type": "batch_complete", "batch_id": batch_id, "batch_progress": batch.to_dict()}
+                batch_id,
+                {
+                    "type": "batch_complete",
+                    "batch_id": batch_id,
+                    "batch_progress": batch.to_dict(),
+                },
             )
 
     def _record_processing_time(self, processing_time: float) -> None:
@@ -398,7 +406,7 @@ class ProgressTracker:
         self.redis.hset(key, mapping=batch.to_dict())
         self.redis.expire(key, self.persistence_ttl)
 
-    def get_job_progress(self, job_id: str) -> Optional[JobProgress]:
+    def get_job_progress(self, job_id: str) -> JobProgress | None:
         """Get job progress.
 
         Args:
@@ -413,7 +421,7 @@ class ProgressTracker:
 
         # Check Redis
         key = f"job_progress:{job_id}"
-        data: Dict[str, Any] = self.redis.hgetall(key)  # type: ignore[assignment]
+        data: dict[str, Any] = self.redis.hgetall(key)
         if data:
             # Convert back to JobProgress
             job = JobProgress(
@@ -440,7 +448,7 @@ class ProgressTracker:
 
         return None
 
-    def get_batch_progress(self, batch_id: str) -> Optional[BatchProgress]:
+    def get_batch_progress(self, batch_id: str) -> BatchProgress | None:
         """Get batch progress.
 
         Args:
@@ -455,7 +463,7 @@ class ProgressTracker:
 
         # Check Redis
         key = f"batch_progress:{batch_id}"
-        data: Dict[str, Any] = self.redis.hgetall(key)  # type: ignore[assignment]
+        data: dict[str, Any] = self.redis.hgetall(key)
         if data:
             # Convert back to BatchProgress
             batch = BatchProgress(
@@ -481,7 +489,7 @@ class ProgressTracker:
 
         return None
 
-    def get_batch_jobs(self, batch_id: str) -> List[JobProgress]:
+    def get_batch_jobs(self, batch_id: str) -> list[JobProgress]:
         """Get all jobs in a batch.
 
         Args:
@@ -500,8 +508,8 @@ class ProgressTracker:
             pattern = "job_progress:*"
             for key in self.redis.scan_iter(match=pattern):
                 data = self.redis.hgetall(key)
-                if data and data.get("batch_id") == batch_id:  # type: ignore[union-attr]
-                    job_id = data["job_id"]  # type: ignore[index]
+                if data and data.get("batch_id") == batch_id:
+                    job_id = data["job_id"]
                     job_ids.add(job_id)
                     self.batch_jobs[batch_id].add(job_id)
 

@@ -43,7 +43,12 @@ def mock_redis():
 @pytest.fixture
 def test_user():
     """Create test user."""
-    return User(id="test-user-123", email="test@example.com", tier=UserTier.PREMIUM, is_active=True)
+    return User(
+        id="test-user-123",
+        email="test@example.com",
+        tier=UserTier.PREMIUM,
+        is_active=True,
+    )
 
 
 @pytest.fixture
@@ -150,7 +155,11 @@ class TestSecurityManager:
     async def test_check_ip_access_blacklisted(self, security_manager, mock_redis):
         """Test IP access check with blacklisted IP."""
         # Setup blacklist rule in Redis
-        rule = IPAccessRule(ip_address="192.168.1.100", rule_type=AccessRuleType.BLACKLIST, reason="Test blacklist")
+        rule = IPAccessRule(
+            ip_address="192.168.1.100",
+            rule_type=AccessRuleType.BLACKLIST,
+            reason="Test blacklist",
+        )
         mock_redis.hgetall.return_value = rule.to_dict()
 
         result = await security_manager.check_ip_access("192.168.1.100")
@@ -164,7 +173,11 @@ class TestSecurityManager:
         security_manager.config.default_ip_access = False
 
         # Setup whitelist rule in Redis
-        rule = IPAccessRule(ip_address="192.168.1.100", rule_type=AccessRuleType.WHITELIST, reason="Test whitelist")
+        rule = IPAccessRule(
+            ip_address="192.168.1.100",
+            rule_type=AccessRuleType.WHITELIST,
+            reason="Test whitelist",
+        )
         mock_redis.hgetall.return_value = rule.to_dict()
 
         result = await security_manager.check_ip_access("192.168.1.100")
@@ -175,7 +188,11 @@ class TestSecurityManager:
         """Test IP access check with expired rule."""
         # Create expired rule
         expired_time = datetime.now(UTC) - timedelta(hours=1)
-        rule = IPAccessRule(ip_address="192.168.1.100", rule_type=AccessRuleType.BLACKLIST, expires_at=expired_time)
+        rule = IPAccessRule(
+            ip_address="192.168.1.100",
+            rule_type=AccessRuleType.BLACKLIST,
+            expires_at=expired_time,
+        )
         mock_redis.hgetall.return_value = rule.to_dict()
 
         result = await security_manager.check_ip_access("192.168.1.100")
@@ -238,7 +255,11 @@ class TestSecurityManager:
             recommendation="Monitor user activity",
         )
 
-        with patch.object(security_manager.abuse_detector, "analyze_user_behavior", return_value=expected_score):
+        with patch.object(
+            security_manager.abuse_detector,
+            "analyze_user_behavior",
+            return_value=expected_score,
+        ):
             result = await security_manager.detect_abuse(test_user, mock_request)
             assert result == expected_score
 
@@ -272,7 +293,11 @@ class TestSecurityManager:
     async def test_is_user_blocked_true(self, security_manager, mock_redis, test_user):
         """Test checking blocked user status - blocked."""
         future_time = datetime.now(UTC) + timedelta(hours=1)
-        block_data = {"user_id": test_user.id, "reason": "Security violation", "blocked_until": future_time.isoformat()}
+        block_data = {
+            "user_id": test_user.id,
+            "reason": "Security violation",
+            "blocked_until": future_time.isoformat(),
+        }
         mock_redis.hgetall.return_value = block_data
 
         is_blocked, reason = await security_manager.is_user_blocked(test_user)
@@ -292,7 +317,11 @@ class TestSecurityManager:
     async def test_is_user_blocked_expired(self, security_manager, mock_redis, test_user):
         """Test checking blocked user status - block expired."""
         past_time = datetime.now(UTC) - timedelta(hours=1)
-        block_data = {"user_id": test_user.id, "reason": "Security violation", "blocked_until": past_time.isoformat()}
+        block_data = {
+            "user_id": test_user.id,
+            "reason": "Security violation",
+            "blocked_until": past_time.isoformat(),
+        }
         mock_redis.hgetall.return_value = block_data
 
         is_blocked, reason = await security_manager.is_user_blocked(test_user)
@@ -436,7 +465,11 @@ class TestSecurityModels:
 
     def test_ip_access_rule_creation(self):
         """Test IPAccessRule creation."""
-        rule = IPAccessRule(ip_address="192.168.1.100", rule_type=AccessRuleType.BLACKLIST, reason="Test rule")
+        rule = IPAccessRule(
+            ip_address="192.168.1.100",
+            rule_type=AccessRuleType.BLACKLIST,
+            reason="Test rule",
+        )
 
         assert rule.ip_address == "192.168.1.100"
         assert rule.rule_type == AccessRuleType.BLACKLIST
@@ -447,14 +480,22 @@ class TestSecurityModels:
     def test_ip_access_rule_expired(self):
         """Test IPAccessRule expiration check."""
         past_time = datetime.now(UTC) - timedelta(hours=1)
-        rule = IPAccessRule(ip_address="192.168.1.100", rule_type=AccessRuleType.BLACKLIST, expires_at=past_time)
+        rule = IPAccessRule(
+            ip_address="192.168.1.100",
+            rule_type=AccessRuleType.BLACKLIST,
+            expires_at=past_time,
+        )
 
         assert rule.is_expired() is True
 
     def test_ip_access_rule_not_expired(self):
         """Test IPAccessRule not expired."""
         future_time = datetime.now(UTC) + timedelta(hours=1)
-        rule = IPAccessRule(ip_address="192.168.1.100", rule_type=AccessRuleType.BLACKLIST, expires_at=future_time)
+        rule = IPAccessRule(
+            ip_address="192.168.1.100",
+            rule_type=AccessRuleType.BLACKLIST,
+            expires_at=future_time,
+        )
 
         assert rule.is_expired() is False
 
@@ -466,7 +507,11 @@ class TestSecurityModels:
 
     def test_ip_access_rule_serialization(self):
         """Test IPAccessRule to_dict and from_dict."""
-        rule = IPAccessRule(ip_address="192.168.1.100", rule_type=AccessRuleType.BLACKLIST, reason="Test rule")
+        rule = IPAccessRule(
+            ip_address="192.168.1.100",
+            rule_type=AccessRuleType.BLACKLIST,
+            reason="Test rule",
+        )
 
         rule_dict = rule.to_dict()
         restored_rule = IPAccessRule.from_dict(rule_dict)
@@ -478,15 +523,30 @@ class TestSecurityModels:
     def test_abuse_score_risk_levels(self):
         """Test AbuseScore risk level methods."""
         high_risk = AbuseScore(
-            user_id="user1", score=0.9, abuse_types=[], details={}, should_block=True, recommendation="Block"
+            user_id="user1",
+            score=0.9,
+            abuse_types=[],
+            details={},
+            should_block=True,
+            recommendation="Block",
         )
 
         medium_risk = AbuseScore(
-            user_id="user2", score=0.6, abuse_types=[], details={}, should_block=False, recommendation="Monitor"
+            user_id="user2",
+            score=0.6,
+            abuse_types=[],
+            details={},
+            should_block=False,
+            recommendation="Monitor",
         )
 
         low_risk = AbuseScore(
-            user_id="user3", score=0.2, abuse_types=[], details={}, should_block=False, recommendation="Normal"
+            user_id="user3",
+            score=0.2,
+            abuse_types=[],
+            details={},
+            should_block=False,
+            recommendation="Normal",
         )
 
         assert high_risk.is_high_risk() is True

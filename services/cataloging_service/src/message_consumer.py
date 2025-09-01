@@ -3,10 +3,15 @@
 import asyncio
 import json
 import logging
+from typing import TYPE_CHECKING
 
 import aio_pika
-from aio_pika import ExchangeType, IncomingMessage
+from aio_pika import ExchangeType
+
 from shared.core_types.src.async_database import AsyncDatabaseManager
+
+if TYPE_CHECKING:
+    from aio_pika.abc import AbstractChannel, AbstractIncomingMessage, AbstractQueue, AbstractRobustConnection
 
 from .async_catalog_service import AsyncCatalogService
 from .config import get_config
@@ -20,9 +25,9 @@ class CatalogingMessageConsumer:
     def __init__(self) -> None:
         """Initialize the message consumer."""
         self.config = get_config()
-        self.connection: aio_pika.Connection | None = None
-        self.channel: aio_pika.Channel | None = None
-        self.queue: aio_pika.Queue | None = None
+        self.connection: AbstractRobustConnection | None = None
+        self.channel: AbstractChannel | None = None
+        self.queue: AbstractQueue | None = None
 
         # Database setup
         self.db_manager = AsyncDatabaseManager()
@@ -94,7 +99,8 @@ class CatalogingMessageConsumer:
 
         try:
             # Start consuming messages
-            assert self.queue is not None  # For mypy
+            if self.queue is None:  # Type guard to satisfy mypy
+                raise RuntimeError("Queue is not initialized")
             async with self.queue.iterator() as queue_iter:
                 logger.info("Started consuming file events for cataloging")
 
@@ -109,7 +115,7 @@ class CatalogingMessageConsumer:
             logger.error(f"Error in cataloging consumer: {e}")
             raise
 
-    async def process_message(self, message: IncomingMessage) -> None:
+    async def process_message(self, message: "AbstractIncomingMessage") -> None:
         """Process a file event message.
 
         Args:
@@ -131,7 +137,8 @@ class CatalogingMessageConsumer:
             correlation_id = body.get("correlation_id", "unknown")
 
             logger.info(
-                f"Cataloging: Processing {event_type} event for {file_path}", extra={"correlation_id": correlation_id}
+                f"Cataloging: Processing {event_type} event for {file_path}",
+                extra={"correlation_id": correlation_id},
             )
 
             # Handle event based on type using async catalog service
@@ -212,7 +219,10 @@ class CatalogingMessageConsumer:
 async def main() -> None:
     """Main entry point for cataloging message consumer."""
     # Setup logging
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
 
     consumer = CatalogingMessageConsumer()
 

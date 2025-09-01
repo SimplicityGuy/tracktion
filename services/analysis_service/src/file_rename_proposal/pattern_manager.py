@@ -1,8 +1,8 @@
 """Manages naming patterns for file rename proposals."""
 
+import contextlib
 import logging
 import re
-from typing import Dict, Optional
 
 from .config import FileRenameProposalConfig
 
@@ -20,9 +20,9 @@ class PatternManager:
         """
         self.config = config
         self.patterns = config.default_patterns.copy()
-        self.custom_patterns: Dict[str, str] = {}
+        self.custom_patterns: dict[str, str] = {}
 
-    def apply_pattern(self, metadata: Dict[str, str], file_type: str, pattern: Optional[str] = None) -> str:
+    def apply_pattern(self, metadata: dict[str, str], file_type: str, pattern: str | None = None) -> str:
         """Apply a naming pattern to metadata to generate a filename.
 
         Args:
@@ -47,9 +47,7 @@ class PatternManager:
         result = self._process_template(template, metadata)
 
         # Clean up multiple spaces and trim
-        result = re.sub(r"\s+", " ", result).strip()
-
-        return result
+        return re.sub(r"\s+", " ", result).strip()
 
     def set_custom_pattern(self, file_type: str, pattern: str) -> None:
         """Set a custom pattern for a file type.
@@ -64,7 +62,7 @@ class PatternManager:
         else:
             raise ValueError(f"Invalid pattern: {pattern}")
 
-    def _process_template(self, template: str, metadata: Dict[str, str]) -> str:
+    def _process_template(self, template: str, metadata: dict[str, str]) -> str:
         """Process a template string with metadata values.
 
         Args:
@@ -99,10 +97,8 @@ class PatternManager:
             if format_spec and value:
                 try:
                     if "d" in format_spec:  # Integer formatting
-                        try:
+                        with contextlib.suppress(ValueError, TypeError):
                             value = format(int(value), format_spec)
-                        except (ValueError, TypeError):
-                            pass  # Keep original value if conversion fails
                     else:
                         value = format(value, format_spec)
                 except (ValueError, TypeError):
@@ -159,10 +155,7 @@ class PatternManager:
             return False
 
         # Check for nested braces
-        if "{{" in pattern or "}}" in pattern:
-            return False
-
-        return True
+        return not ("{{" in pattern or "}}" in pattern)
 
     def get_available_fields(self) -> list:
         """Get a list of available metadata fields for patterns.

@@ -9,21 +9,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.tracklist_service.src.models.synchronization import SyncConfiguration
 from services.tracklist_service.src.models.tracklist import TrackEntry, TracklistDB
-from services.tracklist_service.src.services.tracklists_sync_service import TracklistsSyncService
+from services.tracklist_service.src.services.tracklists_sync_service import (
+    TracklistsSyncService,
+)
 
 
 @pytest.fixture
 def mock_session():
     """Create a mock database session."""
-    session = AsyncMock(spec=AsyncSession)
-    return session
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
 def mock_import_service():
     """Create a mock import service."""
-    service = MagicMock()
-    return service
+    return MagicMock()
 
 
 @pytest.fixture
@@ -91,7 +91,12 @@ class TestTracklistsSyncService:
 
     @pytest.mark.asyncio
     async def test_check_for_updates_no_changes(
-        self, sync_service, mock_session, mock_import_service, sample_tracklist, sample_tracks
+        self,
+        sync_service,
+        mock_session,
+        mock_import_service,
+        sample_tracklist,
+        sample_tracks,
     ):
         """Test checking for updates when there are no changes."""
         tracklist_id = sample_tracklist.id

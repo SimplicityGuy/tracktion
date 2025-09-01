@@ -11,7 +11,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from alembic import op  # type: ignore[attr-defined,import-untyped]
+from alembic import op  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
 
 # revision identifiers, used by Alembic.
 revision: str = "001"
@@ -28,13 +28,21 @@ def upgrade() -> None:
     # Create recordings table
     op.create_table(
         "recordings",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text("uuid_generate_v4()")),
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            nullable=False,
+            server_default=sa.text("uuid_generate_v4()"),
+        ),
         sa.Column("file_path", sa.Text(), nullable=False),
         sa.Column("file_name", sa.Text(), nullable=False),
         sa.Column("sha256_hash", sa.String(64), nullable=True),
         sa.Column("xxh128_hash", sa.String(32), nullable=True),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("sha256_hash"),
@@ -44,7 +52,12 @@ def upgrade() -> None:
     # Create metadata table
     op.create_table(
         "metadata",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text("uuid_generate_v4()")),
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            nullable=False,
+            server_default=sa.text("uuid_generate_v4()"),
+        ),
         sa.Column("recording_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("key", sa.String(255), nullable=False),
         sa.Column("value", sa.Text(), nullable=False),
@@ -62,7 +75,12 @@ def upgrade() -> None:
     # Create tracklists table
     op.create_table(
         "tracklists",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text("uuid_generate_v4()")),
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            nullable=False,
+            server_default=sa.text("uuid_generate_v4()"),
+        ),
         sa.Column("recording_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("source", sa.String(255), nullable=False),
         sa.Column("tracks", postgresql.JSONB(astext_type=sa.Text()), nullable=True),

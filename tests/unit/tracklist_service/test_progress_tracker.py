@@ -57,7 +57,10 @@ class TestJobProgress:
     def test_initialization(self):
         """Test JobProgress initialization."""
         progress = JobProgress(
-            job_id="job-123", batch_id="batch-456", url="http://example.com", status=JobStatus.PROCESSING
+            job_id="job-123",
+            batch_id="batch-456",
+            url="http://example.com",
+            status=JobStatus.PROCESSING,
         )
 
         assert progress.job_id == "job-123"
@@ -135,7 +138,12 @@ class TestBatchProgress:
 
     def test_to_dict(self):
         """Test converting BatchProgress to dictionary."""
-        progress = BatchProgress(batch_id="batch-456", total_jobs=10, completed=5, start_time=datetime.now(UTC))
+        progress = BatchProgress(
+            batch_id="batch-456",
+            total_jobs=10,
+            completed=5,
+            start_time=datetime.now(UTC),
+        )
 
         data = progress.to_dict()
         assert data["batch_id"] == "batch-456"
@@ -151,7 +159,10 @@ class TestProgressTracker:
 
     def test_initialization(self, mock_redis):
         """Test tracker initialization."""
-        with patch("services.tracklist_service.src.progress.tracker.Redis", return_value=mock_redis):
+        with patch(
+            "services.tracklist_service.src.progress.tracker.Redis",
+            return_value=mock_redis,
+        ):
             tracker = ProgressTracker()
 
         assert tracker.redis == mock_redis
@@ -164,7 +175,10 @@ class TestProgressTracker:
     async def test_update_progress_new_job(self, tracker, mock_redis):
         """Test updating progress for new job."""
         await tracker.update_progress(
-            batch_id="batch-123", job_id="job-1", status="processing", url="http://example.com"
+            batch_id="batch-123",
+            job_id="job-1",
+            status="processing",
+            url="http://example.com",
         )
 
         # Check job progress updated

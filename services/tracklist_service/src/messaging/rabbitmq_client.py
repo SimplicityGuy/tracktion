@@ -4,19 +4,32 @@ RabbitMQ client for CUE generation message handling.
 
 import json
 import logging
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 import aio_pika
-from aio_pika import Connection, Exchange, Message, Queue, connect_robust
-from aio_pika.abc import AbstractIncomingMessage
+from aio_pika import Message, connect_robust
+from aio_pika.abc import (
+    AbstractChannel,
+    AbstractExchange,
+    AbstractIncomingMessage,
+    AbstractQueue,
+    AbstractRobustConnection,
+)
 from pydantic import BaseModel
 
 from services.tracklist_service.src.messaging.message_schemas import (
-    BaseMessage,
     MESSAGE_ROUTING,
+    BaseMessage,
+    BatchCueGenerationCompleteMessage,
+    BatchCueGenerationMessage,
+    CueConversionMessage,
+    CueGenerationCompleteMessage,
+    CueGenerationMessage,
+    CueValidationMessage,
     MessageType,
 )
 
@@ -49,10 +62,10 @@ class RabbitMQClient:
             config: RabbitMQ connection configuration
         """
         self.config = config
-        self.connection: Optional[Connection] = None
-        self.channel: Optional[Any] = None
-        self.exchanges: Dict[str, Exchange] = {}
-        self.queues: Dict[str, Queue] = {}
+        self.connection: AbstractRobustConnection | None = None
+        self.channel: AbstractChannel | None = None
+        self.exchanges: dict[str, AbstractExchange] = {}
+        self.queues: dict[str, AbstractQueue] = {}
         self._closed = False
 
     async def connect(self) -> None:
@@ -63,13 +76,13 @@ class RabbitMQClient:
                 f"{self.config.host}:{self.config.port}{self.config.virtual_host}"
             )
 
-            self.connection = await connect_robust(  # type: ignore[assignment]
+            self.connection = await connect_robust(
                 connection_url,
                 timeout=self.config.connection_timeout,
                 heartbeat=self.config.heartbeat,
             )
 
-            self.channel = await self.connection.channel()  # type: ignore[union-attr]
+            self.channel = await self.connection.channel()
             await self.channel.set_qos(prefetch_count=self.config.prefetch_count)
 
             # Declare exchanges and queues
@@ -118,7 +131,7 @@ class RabbitMQClient:
             logger.debug(f"Declared exchange: {exchange_name}")
 
         # Declare queues and bindings
-        for message_type, routing_config in MESSAGE_ROUTING.items():
+        for routing_config in MESSAGE_ROUTING.values():
             exchange = self.exchanges[routing_config["exchange"]]
 
             queue = await self.channel.declare_queue(routing_config["queue"], durable=routing_config["durable"])
@@ -131,7 +144,7 @@ class RabbitMQClient:
                 f"{routing_config['exchange']} with key {routing_config['routing_key']}"
             )
 
-    async def publish_message(self, message: BaseMessage, delay_seconds: Optional[int] = None) -> bool:
+    async def publish_message(self, message: BaseMessage, delay_seconds: int | None = None) -> bool:
         """
         Publish a message to the appropriate queue.
 
@@ -152,22 +165,22 @@ class RabbitMQClient:
 
             exchange = self.exchanges[routing_config["exchange"]]
 
-            # Create message with headers
-            headers = {
+            # Create message with headers (ensure all values are properly typed)
+            headers: dict[str, Any] = {
                 "message_type": message.message_type.value,
-                "correlation_id": str(message.correlation_id) if message.correlation_id else None,
-                "retry_count": message.retry_count,
-                "priority": message.priority,
-                "published_at": datetime.now(timezone.utc).isoformat(),
+                "correlation_id": str(message.correlation_id) if message.correlation_id else "",
+                "retry_count": str(message.retry_count),
+                "priority": str(message.priority),
+                "published_at": datetime.now(UTC).isoformat(),
             }
 
             # Add delay if specified
             if delay_seconds:
-                headers["x-delay"] = delay_seconds * 1000  # Convert to milliseconds
+                headers["x-delay"] = str(int(delay_seconds * 1000))  # Convert to milliseconds as string
 
             rabbitmq_message = Message(
                 message.to_json().encode("utf-8"),
-                headers=headers,  # type: ignore[arg-type]
+                headers=headers,
                 priority=message.priority,
                 message_id=str(message.message_id),
                 correlation_id=str(message.correlation_id) if message.correlation_id else None,
@@ -183,7 +196,7 @@ class RabbitMQClient:
             logger.error(f"Failed to publish message {message.message_id}: {e}", exc_info=True)
             return False
 
-    async def publish_batch(self, messages: List[BaseMessage]) -> Dict[str, Any]:
+    async def publish_batch(self, messages: list[BaseMessage]) -> dict[str, Any]:
         """
         Publish multiple messages as a batch.
 
@@ -194,7 +207,7 @@ class RabbitMQClient:
             Batch publication results
         """
         batch_id = uuid4()
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "batch_id": str(batch_id),
             "total_messages": len(messages),
             "successful": 0,
@@ -215,7 +228,7 @@ class RabbitMQClient:
 
         except Exception as e:
             logger.error(f"Batch publication failed: {e}", exc_info=True)
-            results["errors"].append(f"Batch publication error: {str(e)}")
+            results["errors"].append(f"Batch publication error: {e!s}")
 
         return results
 
@@ -270,10 +283,17 @@ class RabbitMQClient:
                     logger.error(f"Message handler error: {e}", exc_info=True)
 
                     # Check retry count
+                    retry_count = 0
                     if rabbitmq_message.headers and "retry_count" in rabbitmq_message.headers:
-                        try:
-                            retry_count = int(rabbitmq_message.headers["retry_count"])  # type: ignore[arg-type]
-                        except (ValueError, TypeError):
+                        retry_count_value = rabbitmq_message.headers["retry_count"]
+                        if isinstance(retry_count_value, int):
+                            retry_count = retry_count_value
+                        elif isinstance(retry_count_value, str):
+                            try:
+                                retry_count = int(retry_count_value)
+                            except ValueError:
+                                retry_count = 0
+                        else:
                             retry_count = 0
                     else:
                         retry_count = 0
@@ -293,16 +313,8 @@ class RabbitMQClient:
             logger.error(f"Failed to start message consumption: {e}", exc_info=True)
             raise
 
-    def _get_message_class(self, message_type: MessageType) -> Optional[Any]:
+    def _get_message_class(self, message_type: MessageType) -> Any | None:
         """Get the appropriate message class for a message type."""
-        from services.tracklist_service.src.messaging.message_schemas import (
-            CueGenerationMessage,
-            CueGenerationCompleteMessage,
-            BatchCueGenerationMessage,
-            BatchCueGenerationCompleteMessage,
-            CueValidationMessage,
-            CueConversionMessage,
-        )
 
         message_classes = {
             MessageType.CUE_GENERATION: CueGenerationMessage,
@@ -316,7 +328,7 @@ class RabbitMQClient:
         return message_classes.get(message_type)
 
     @asynccontextmanager
-    async def connection_context(self) -> AsyncGenerator["RabbitMQClient", None]:
+    async def connection_context(self) -> AsyncGenerator["RabbitMQClient"]:
         """Context manager for RabbitMQ connection lifecycle."""
         try:
             await self.connect()
@@ -324,7 +336,7 @@ class RabbitMQClient:
         finally:
             await self.disconnect()
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """
         Perform health check on RabbitMQ connection.
 
@@ -337,7 +349,7 @@ class RabbitMQClient:
             "channel": "unknown",
             "exchanges": 0,
             "queues": 0,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         try:
@@ -364,7 +376,7 @@ class RabbitMQClient:
 
 
 # Global client instance (to be configured by application)
-rabbitmq_client: Optional[RabbitMQClient] = None
+rabbitmq_client: RabbitMQClient | None = None
 
 
 def get_rabbitmq_client() -> RabbitMQClient:
@@ -376,6 +388,6 @@ def get_rabbitmq_client() -> RabbitMQClient:
 
 def initialize_rabbitmq_client(config: RabbitMQConfig) -> RabbitMQClient:
     """Initialize the global RabbitMQ client."""
-    global rabbitmq_client
+    global rabbitmq_client  # noqa: PLW0603 - Global singleton pattern necessary for RabbitMQ client lifecycle
     rabbitmq_client = RabbitMQClient(config)
     return rabbitmq_client

@@ -2,9 +2,9 @@
 Message schemas for RabbitMQ CUE generation operations.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, validator
@@ -26,20 +26,20 @@ class BaseMessage(BaseModel):
 
     message_id: UUID = Field(description="Unique message identifier")
     message_type: MessageType = Field(description="Type of message")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    correlation_id: Optional[UUID] = Field(None, description="Correlation ID for request tracking")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    correlation_id: UUID | None = Field(None, description="Correlation ID for request tracking")
     retry_count: int = Field(0, description="Number of retry attempts", ge=0, le=5)
     priority: int = Field(5, description="Message priority (1-10)", ge=1, le=10)
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
     def to_json(self) -> str:
         """Convert message to JSON string."""
-        return self.model_dump_json()
+        return self.model_dump_json()  # type: ignore[no-any-return]  # Pydantic returns str but typed as Any
 
     @classmethod
     def from_json(cls, json_str: str) -> "BaseMessage":
         """Create message from JSON string."""
-        return cls.model_validate_json(json_str)
+        return cls.model_validate_json(json_str)  # type: ignore[no-any-return]  # Pydantic returns model but typed as Any
 
 
 class CueGenerationMessage(BaseMessage):
@@ -50,16 +50,16 @@ class CueGenerationMessage(BaseMessage):
     # Request data
     tracklist_id: UUID = Field(description="Source tracklist ID")
     format: str = Field(description="Target CUE format")
-    options: Dict[str, Any] = Field(default_factory=dict, description="Generation options")
+    options: dict[str, Any] = Field(default_factory=dict, description="Generation options")
     validate_audio: bool = Field(True, description="Whether to validate against audio file")
-    audio_file_path: Optional[str] = Field(None, description="Path to audio file for validation")
+    audio_file_path: str | None = Field(None, description="Path to audio file for validation")
 
     # Job tracking
     job_id: UUID = Field(description="Generation job ID")
-    requested_by: Optional[str] = Field(None, description="User or service that requested generation")
+    requested_by: str | None = Field(None, description="User or service that requested generation")
 
     @validator("format")
-    def validate_format(cls, v: str) -> str:
+    def validate_format(self, v: str) -> str:
         """Validate CUE format."""
         valid_formats = ["standard", "cdj", "traktor", "serato", "rekordbox", "kodi"]
         if v not in valid_formats:
@@ -79,21 +79,21 @@ class CueGenerationCompleteMessage(BaseMessage):
 
     # Result data
     success: bool = Field(description="Whether generation was successful")
-    cue_file_id: Optional[UUID] = Field(None, description="Generated CUE file ID")
-    file_path: Optional[str] = Field(None, description="Path to generated CUE file")
-    file_size: Optional[int] = Field(None, description="Size of generated file in bytes")
-    checksum: Optional[str] = Field(None, description="SHA256 checksum of generated file")
+    cue_file_id: UUID | None = Field(None, description="Generated CUE file ID")
+    file_path: str | None = Field(None, description="Path to generated CUE file")
+    file_size: int | None = Field(None, description="Size of generated file in bytes")
+    checksum: str | None = Field(None, description="SHA256 checksum of generated file")
 
     # Validation results
-    validation_report: Optional[Dict[str, Any]] = Field(None, description="Validation results")
+    validation_report: dict[str, Any] | None = Field(None, description="Validation results")
 
     # Error information
-    error: Optional[str] = Field(None, description="Error message if generation failed")
-    error_code: Optional[str] = Field(None, description="Error code for programmatic handling")
+    error: str | None = Field(None, description="Error message if generation failed")
+    error_code: str | None = Field(None, description="Error code for programmatic handling")
 
     # Performance metrics
-    processing_time_ms: Optional[float] = Field(None, description="Processing time in milliseconds")
-    queue_time_ms: Optional[float] = Field(None, description="Time spent in queue in milliseconds")
+    processing_time_ms: float | None = Field(None, description="Processing time in milliseconds")
+    queue_time_ms: float | None = Field(None, description="Time spent in queue in milliseconds")
 
 
 class BatchCueGenerationMessage(BaseMessage):
@@ -103,17 +103,17 @@ class BatchCueGenerationMessage(BaseMessage):
 
     # Request data
     tracklist_id: UUID = Field(description="Source tracklist ID")
-    formats: List[str] = Field(description="List of target CUE formats")
-    options: Dict[str, Any] = Field(default_factory=dict, description="Generation options")
+    formats: list[str] = Field(description="List of target CUE formats")
+    options: dict[str, Any] = Field(default_factory=dict, description="Generation options")
     validate_audio: bool = Field(False, description="Whether to validate against audio file")
-    audio_file_path: Optional[str] = Field(None, description="Path to audio file for validation")
+    audio_file_path: str | None = Field(None, description="Path to audio file for validation")
 
     # Job tracking
     batch_job_id: UUID = Field(description="Batch generation job ID")
-    requested_by: Optional[str] = Field(None, description="User or service that requested generation")
+    requested_by: str | None = Field(None, description="User or service that requested generation")
 
     @validator("formats")
-    def validate_formats(cls, v: List[str]) -> List[str]:
+    def validate_formats(self, v: list[str]) -> list[str]:
         """Validate CUE formats."""
         if not v:
             raise ValueError("At least one format must be specified")
@@ -144,15 +144,15 @@ class BatchCueGenerationCompleteMessage(BaseMessage):
     failed_files: int = Field(description="Number of failed file generations")
 
     # Detailed results
-    results: List[Dict[str, Any]] = Field(description="Individual generation results")
+    results: list[dict[str, Any]] = Field(description="Individual generation results")
 
     # Overall status
     success: bool = Field(description="Whether batch generation was overall successful")
-    error: Optional[str] = Field(None, description="Overall error message if batch failed")
+    error: str | None = Field(None, description="Overall error message if batch failed")
 
     # Performance metrics
-    total_processing_time_ms: Optional[float] = Field(None, description="Total processing time")
-    average_processing_time_ms: Optional[float] = Field(None, description="Average per-file processing time")
+    total_processing_time_ms: float | None = Field(None, description="Total processing time")
+    average_processing_time_ms: float | None = Field(None, description="Average per-file processing time")
 
 
 class CueValidationMessage(BaseMessage):
@@ -162,12 +162,12 @@ class CueValidationMessage(BaseMessage):
 
     # Request data
     cue_file_id: UUID = Field(description="CUE file ID to validate")
-    audio_file_path: Optional[str] = Field(None, description="Path to audio file for validation")
-    validation_options: Dict[str, Any] = Field(default_factory=dict, description="Validation options")
+    audio_file_path: str | None = Field(None, description="Path to audio file for validation")
+    validation_options: dict[str, Any] = Field(default_factory=dict, description="Validation options")
 
     # Job tracking
     validation_job_id: UUID = Field(description="Validation job ID")
-    requested_by: Optional[str] = Field(None, description="User or service that requested validation")
+    requested_by: str | None = Field(None, description="User or service that requested validation")
 
 
 class CueConversionMessage(BaseMessage):
@@ -179,14 +179,14 @@ class CueConversionMessage(BaseMessage):
     source_cue_file_id: UUID = Field(description="Source CUE file ID")
     target_format: str = Field(description="Target CUE format")
     preserve_metadata: bool = Field(True, description="Whether to preserve metadata during conversion")
-    conversion_options: Dict[str, Any] = Field(default_factory=dict, description="Conversion options")
+    conversion_options: dict[str, Any] = Field(default_factory=dict, description="Conversion options")
 
     # Job tracking
     conversion_job_id: UUID = Field(description="Conversion job ID")
-    requested_by: Optional[str] = Field(None, description="User or service that requested conversion")
+    requested_by: str | None = Field(None, description="User or service that requested conversion")
 
     @validator("target_format")
-    def validate_target_format(cls, v: str) -> str:
+    def validate_target_format(self, v: str) -> str:
         """Validate target CUE format."""
         valid_formats = ["standard", "cdj", "traktor", "serato", "rekordbox", "kodi"]
         if v not in valid_formats:
@@ -198,12 +198,12 @@ class MessageBatch(BaseModel):
     """Container for multiple messages to be sent as a batch."""
 
     batch_id: UUID = Field(description="Unique batch identifier")
-    messages: List[BaseMessage] = Field(description="List of messages in the batch")
+    messages: list[BaseMessage] = Field(description="List of messages in the batch")
     batch_size: int = Field(description="Number of messages in the batch")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @validator("batch_size")
-    def validate_batch_size(cls, v: int, values: Dict[str, Any]) -> int:
+    def validate_batch_size(self, v: int, values: dict[str, Any]) -> int:
         """Validate batch size matches message count."""
         messages = values.get("messages", [])
         if v != len(messages):
@@ -212,16 +212,16 @@ class MessageBatch(BaseModel):
 
     def to_json(self) -> str:
         """Convert batch to JSON string."""
-        return self.model_dump_json()
+        return self.model_dump_json()  # type: ignore[no-any-return]  # Pydantic returns str but typed as Any
 
     @classmethod
     def from_json(cls, json_str: str) -> "MessageBatch":
         """Create batch from JSON string."""
-        return cls.model_validate_json(json_str)
+        return cls.model_validate_json(json_str)  # type: ignore[no-any-return]  # Pydantic returns model but typed as Any
 
 
 # Message routing configuration
-MESSAGE_ROUTING: Dict[MessageType, Dict[str, Any]] = {
+MESSAGE_ROUTING: dict[MessageType, dict[str, Any]] = {
     MessageType.CUE_GENERATION: {
         "queue": "cue.generation",
         "routing_key": "cue.generation.single",

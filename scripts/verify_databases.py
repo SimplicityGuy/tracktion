@@ -16,7 +16,7 @@ from sqlalchemy import create_engine, text
 load_dotenv()
 
 
-def verify_postgresql():
+def verify_postgresql() -> bool:
     """Verify PostgreSQL connectivity and schema."""
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
@@ -34,16 +34,23 @@ def verify_postgresql():
 
             # Check if tables exist
             result = conn.execute(
-                text("""
+                text(
+                    """
                 SELECT table_name
                 FROM information_schema.tables
                 WHERE table_schema = 'public'
                 ORDER BY table_name
-            """)
+            """
+                )
             )
             tables = [row[0] for row in result]
 
-            expected_tables = ["alembic_version", "metadata", "recordings", "tracklists"]
+            expected_tables = [
+                "alembic_version",
+                "metadata",
+                "recordings",
+                "tracklists",
+            ]
 
             print("  ✅ Connected successfully")
             print(f"  📊 Tables found: {', '.join(tables)}")
@@ -61,7 +68,7 @@ def verify_postgresql():
         return False
 
 
-def verify_neo4j():
+def verify_neo4j() -> bool:
     """Verify Neo4j connectivity."""
     uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
     user = os.getenv("NEO4J_USER", "neo4j")
@@ -92,7 +99,7 @@ def verify_neo4j():
         return False
 
 
-def main():
+def main() -> int:
     """Main verification function."""
     print("=" * 50)
     print("DATABASE CONNECTIVITY VERIFICATION")
@@ -108,12 +115,11 @@ def main():
     if pg_ok and neo4j_ok:
         print("✅ All databases are accessible and configured correctly!")
         return 0
-    else:
-        if not pg_ok:
-            print("❌ PostgreSQL has issues")
-        if not neo4j_ok:
-            print("❌ Neo4j has issues")
-        return 1
+    if not pg_ok:
+        print("❌ PostgreSQL has issues")
+    if not neo4j_ok:
+        print("❌ Neo4j has issues")
+    return 1
 
 
 if __name__ == "__main__":

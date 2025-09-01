@@ -242,7 +242,12 @@ class TestParallelProcessor:
         # Check for either the process or processed metrics
         has_metrics = any(
             key in metrics
-            for key in ["processed_file1.mp3", "processed_file2.mp3", "process_file1.mp3", "process_file2.mp3"]
+            for key in [
+                "processed_file1.mp3",
+                "processed_file2.mp3",
+                "process_file1.mp3",
+                "process_file2.mp3",
+            ]
         )
         assert has_metrics
 
@@ -300,10 +305,9 @@ class TestMemoryManager:
         config = PerformanceConfig(memory_limit_mb=1)  # Very low limit
         manager = MemoryManager(config)
 
-        with pytest.raises(MemoryError, match="Memory limit exceeded"):
-            with manager.memory_guard("test_operation"):
-                # Current process already uses more than 1MB
-                pass
+        with pytest.raises(MemoryError, match="Memory limit exceeded"), manager.memory_guard("test_operation"):
+            # Current process already uses more than 1MB
+            pass
 
 
 class TestPerformanceOptimizer:

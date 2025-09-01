@@ -60,13 +60,23 @@ def sample_tracklist():
 @pytest.fixture
 def generation_request():
     """Create a sample generation request."""
-    return {"format": "standard", "options": {}, "validate_audio": True, "audio_file_path": "test_mix.wav"}
+    return {
+        "format": "standard",
+        "options": {},
+        "validate_audio": True,
+        "audio_file_path": "test_mix.wav",
+    }
 
 
 @pytest.fixture
 def batch_request():
     """Create a sample batch request."""
-    return {"formats": ["standard", "cdj"], "options": {}, "validate_audio": True, "audio_file_path": "test_mix.wav"}
+    return {
+        "formats": ["standard", "cdj"],
+        "options": {},
+        "validate_audio": True,
+        "audio_file_path": "test_mix.wav",
+    }
 
 
 class TestCueGenerationAPI:
@@ -90,7 +100,10 @@ class TestCueGenerationAPI:
         # Make request
         response = client.post(
             "/api/v1/cue/generate",
-            json={"request": generation_request, "tracklist_data": sample_tracklist.model_dump(mode="json")},
+            json={
+                "request": generation_request,
+                "tracklist_data": sample_tracklist.model_dump(mode="json"),
+            },
         )
 
         assert response.status_code == 200
@@ -110,7 +123,10 @@ class TestCueGenerationAPI:
         # Make request
         response = client.post(
             "/api/v1/cue/generate",
-            json={"request": generation_request, "tracklist_data": sample_tracklist.model_dump(mode="json")},
+            json={
+                "request": generation_request,
+                "tracklist_data": sample_tracklist.model_dump(mode="json"),
+            },
         )
 
         assert response.status_code == 200
@@ -127,7 +143,10 @@ class TestCueGenerationAPI:
         # Make async request
         response = client.post(
             "/api/v1/cue/generate",
-            json={"request": generation_request, "tracklist_data": sample_tracklist.model_dump(mode="json")},
+            json={
+                "request": generation_request,
+                "tracklist_data": sample_tracklist.model_dump(mode="json"),
+            },
             params={"async_processing": True},
         )
 
@@ -157,7 +176,10 @@ class TestCueGenerationAPI:
         # Make request
         response = client.post(
             "/api/v1/cue/generate/batch",
-            json={"request": batch_request, "tracklist_data": sample_tracklist.model_dump(mode="json")},
+            json={
+                "request": batch_request,
+                "tracklist_data": sample_tracklist.model_dump(mode="json"),
+            },
         )
 
         assert response.status_code == 200
@@ -173,7 +195,10 @@ class TestCueGenerationAPI:
         # Make async request
         response = client.post(
             "/api/v1/cue/generate/batch",
-            json={"request": batch_request, "tracklist_data": sample_tracklist.model_dump(mode="json")},
+            json={
+                "request": batch_request,
+                "tracklist_data": sample_tracklist.model_dump(mode="json"),
+            },
             params={"async_processing": True},
         )
 
@@ -186,7 +211,11 @@ class TestCueGenerationAPI:
     def test_get_supported_formats(self, client):
         """Test getting supported formats."""
         with patch("services.tracklist_service.src.api.cue_generation_api.cue_generation_service") as mock_service:
-            mock_service.get_supported_formats.return_value = [CueFormat.STANDARD, CueFormat.CDJ, CueFormat.TRAKTOR]
+            mock_service.get_supported_formats.return_value = [
+                CueFormat.STANDARD,
+                CueFormat.CDJ,
+                CueFormat.TRAKTOR,
+            ]
 
             response = client.get("/api/v1/cue/formats")
 
@@ -229,7 +258,8 @@ class TestCueGenerationAPI:
             ]
 
             response = client.get(
-                "/api/v1/cue/formats/conversion-preview", params={"source_format": "standard", "target_format": "cdj"}
+                "/api/v1/cue/formats/conversion-preview",
+                params={"source_format": "standard", "target_format": "cdj"},
             )
 
             assert response.status_code == 200
@@ -240,7 +270,8 @@ class TestCueGenerationAPI:
     def test_get_conversion_preview_invalid_format(self, client):
         """Test conversion preview with invalid format."""
         response = client.get(
-            "/api/v1/cue/formats/conversion-preview", params={"source_format": "invalid", "target_format": "standard"}
+            "/api/v1/cue/formats/conversion-preview",
+            params={"source_format": "invalid", "target_format": "standard"},
         )
 
         assert response.status_code == 400
@@ -279,7 +310,10 @@ class TestCueGenerationAPI:
             patch("services.tracklist_service.src.api.cue_generation_api.storage_service") as mock_storage,
             patch("services.tracklist_service.src.api.cue_generation_api.AudioValidationService"),
         ):
-            mock_service.get_supported_formats.return_value = [CueFormat.STANDARD, CueFormat.CDJ]
+            mock_service.get_supported_formats.return_value = [
+                CueFormat.STANDARD,
+                CueFormat.CDJ,
+            ]
             mock_storage.backend._ensure_directory_exists.return_value = True
 
             response = client.get("/api/v1/cue/health")

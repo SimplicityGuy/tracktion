@@ -1,14 +1,31 @@
 """Async message publisher for RabbitMQ operations."""
 
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aio_pika
 import structlog
-from aio_pika import Channel, Connection, ExchangeType
+from aio_pika import ExchangeType
+
+if TYPE_CHECKING:
+    from aio_pika.abc import AbstractChannel, AbstractRobustConnection
 
 logger = structlog.get_logger()
+
+
+@dataclass
+class FileEvent:
+    """Data class for file event parameters."""
+
+    event_type: str
+    file_path: str
+    instance_id: str
+    sha256_hash: str | None = None
+    xxh128_hash: str | None = None
+    old_path: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class AsyncMessagePublisher:
@@ -20,11 +37,12 @@ class AsyncMessagePublisher:
         Args:
             rabbitmq_url: RabbitMQ connection URL
             instance_id: Unique identifier for this instance
+
         """
         self.rabbitmq_url = rabbitmq_url
         self.instance_id = instance_id
-        self.connection: Connection | None = None
-        self.channel: Channel | None = None
+        self.connection: AbstractRobustConnection | None = None
+        self.channel: AbstractChannel | None = None
         self.exchange_name = "file_events"
         self.routing_key = "file.discovered"
 
@@ -72,36 +90,22 @@ class AsyncMessagePublisher:
             await self.connection.close()
         logger.info("Disconnected from RabbitMQ", instance_id=self.instance_id)
 
-    async def publish_file_event(
-        self,
-        event_type: str,
-        file_path: str,
-        instance_id: str,
-        sha256_hash: str | None = None,
-        xxh128_hash: str | None = None,
-        old_path: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> bool:
+    async def publish_file_event(self, event: FileEvent) -> bool:
         """Publish a file event message asynchronously.
 
         Args:
-            event_type: Type of event (created, modified, deleted, moved, renamed)
-            file_path: Current path to the file
-            instance_id: ID of the watcher instance that detected the event
-            sha256_hash: SHA256 hash of the file (None for deleted files)
-            xxh128_hash: XXH128 hash of the file (None for deleted files)
-            old_path: Previous path (for moved/renamed events)
-            metadata: Optional metadata dictionary
+            event: File event containing all necessary information
 
         Returns:
             True if message was published successfully
+
         """
         if not self.channel or self.channel.is_closed:
             logger.warning("Channel not available, attempting to reconnect...")
             try:
                 await self.connect()
             except Exception as e:
-                logger.error(f"Failed to reconnect: {e}")
+                logger.error("Failed to reconnect: %s", e)
                 return False
 
         if not self.channel:
@@ -111,29 +115,29 @@ class AsyncMessagePublisher:
         try:
             # Build message payload
             message: dict[str, Any] = {
-                "event_type": event_type,
-                "file_path": file_path,
+                "event_type": event.event_type,
+                "file_path": event.file_path,
                 "timestamp": datetime.now(UTC).isoformat(),
-                "instance_id": instance_id,
+                "instance_id": event.instance_id,
             }
 
             # Add hashes for non-deleted files
-            if event_type != "deleted":
-                if sha256_hash:
-                    message["sha256_hash"] = sha256_hash
-                if xxh128_hash:
-                    message["xxh128_hash"] = xxh128_hash
+            if event.event_type != "deleted":
+                if event.sha256_hash:
+                    message["sha256_hash"] = event.sha256_hash
+                if event.xxh128_hash:
+                    message["xxh128_hash"] = event.xxh128_hash
 
             # Add old path for move/rename events
-            if old_path and event_type in ["moved", "renamed"]:
-                message["old_path"] = old_path
+            if event.old_path and event.event_type in ["moved", "renamed"]:
+                message["old_path"] = event.old_path
 
             # Add metadata if available
-            if metadata:
-                message["metadata"] = metadata
+            if event.metadata:
+                message["metadata"] = event.metadata
 
             # Determine routing key based on event type
-            routing_key = f"file.{event_type}"
+            routing_key = f"file.{event.event_type}"
 
             # Create message
             aio_message = aio_pika.Message(
@@ -152,21 +156,22 @@ class AsyncMessagePublisher:
             )
 
             logger.info(
-                f"Published {event_type} event",
-                file_path=file_path,
+                "Published %s event",
+                event.event_type,
+                file_path=event.file_path,
                 routing_key=routing_key,
-                sha256_hash=sha256_hash,
-                instance_id=instance_id,
+                sha256_hash=event.sha256_hash,
+                instance_id=event.instance_id,
             )
 
             return True
 
         except Exception as e:
-            logger.error(
-                f"Failed to publish {event_type} event",
-                file_path=file_path,
+            logger.exception(
+                "Failed to publish %s event",
+                event.event_type,
+                file_path=event.file_path,
                 error=str(e),
-                exc_info=True,
             )
             return False
 
@@ -178,6 +183,7 @@ class AsyncMessagePublisher:
 
         Returns:
             Number of successfully published events
+
         """
         if not self.channel:
             logger.error("Cannot publish batch - not connected to RabbitMQ")
@@ -226,10 +232,9 @@ class AsyncMessagePublisher:
             )
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to publish batch",
                 error=str(e),
-                exc_info=True,
             )
 
         return published

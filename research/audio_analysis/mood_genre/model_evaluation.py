@@ -4,9 +4,10 @@ Model Evaluation Script
 Comprehensive evaluation of mood and genre classification models.
 """
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -22,7 +23,7 @@ class ModelEvaluationMetrics:
     """Calculate and report model evaluation metrics."""
 
     @staticmethod
-    def calculate_metrics(y_true: List, y_pred: List, labels: Optional[List] = None) -> Dict:
+    def calculate_metrics(y_true: list, y_pred: list, labels: list | None = None) -> dict:
         """
         Calculate classification metrics.
 
@@ -76,7 +77,7 @@ class ModelEvaluationMetrics:
         return metrics
 
     @staticmethod
-    def print_classification_report(y_true: List, y_pred: List, labels: Optional[List] = None):
+    def print_classification_report(y_true: list, y_pred: list, labels: list | None = None):
         """Print detailed classification report."""
         if len(y_true) == 0 or len(y_pred) == 0:
             print("No predictions to evaluate")
@@ -112,9 +113,18 @@ class MoodGenreEvaluator:
             "blues",
         ]
 
-        self.mood_labels = ["happy", "sad", "energetic", "relaxed", "aggressive", "melancholic", "peaceful", "dark"]
+        self.mood_labels = [
+            "happy",
+            "sad",
+            "energetic",
+            "relaxed",
+            "aggressive",
+            "melancholic",
+            "peaceful",
+            "dark",
+        ]
 
-    def evaluate_genre_model(self, predictions_df: pd.DataFrame) -> Dict:
+    def evaluate_genre_model(self, predictions_df: pd.DataFrame) -> dict:
         """
         Evaluate genre classification model.
 
@@ -134,7 +144,7 @@ class MoodGenreEvaluator:
         y_pred = valid_df["predicted_genre"].tolist()
 
         # Get unique labels from data
-        unique_labels = sorted(list(set(y_true + y_pred)))
+        unique_labels = sorted(set(y_true + y_pred))
 
         # Calculate metrics
         metrics = ModelEvaluationMetrics.calculate_metrics(y_true, y_pred, unique_labels)
@@ -151,7 +161,7 @@ class MoodGenreEvaluator:
 
         return metrics
 
-    def evaluate_mood_model(self, predictions_df: pd.DataFrame) -> Dict:
+    def evaluate_mood_model(self, predictions_df: pd.DataFrame) -> dict:
         """
         Evaluate mood classification model.
 
@@ -171,7 +181,7 @@ class MoodGenreEvaluator:
         y_pred = valid_df["predicted_mood"].tolist()
 
         # Get unique labels
-        unique_labels = sorted(list(set(y_true + y_pred)))
+        unique_labels = sorted(set(y_true + y_pred))
 
         # Calculate metrics
         metrics = ModelEvaluationMetrics.calculate_metrics(y_true, y_pred, unique_labels)
@@ -273,7 +283,7 @@ def generate_evaluation_report(results_dir: Path) -> str:
 
     # Genre Classification Results
     if genre_results.exists():
-        with open(genre_results) as f:
+        with genre_results.open() as f:
             genre_metrics = json.load(f)
 
         report.append("\n## Genre Classification Results\n")
@@ -299,7 +309,7 @@ def generate_evaluation_report(results_dir: Path) -> str:
 
     # Mood Classification Results
     if mood_results.exists():
-        with open(mood_results) as f:
+        with mood_results.open() as f:
             mood_metrics = json.load(f)
 
         report.append("\n## Mood Classification Results\n")
@@ -348,20 +358,36 @@ def main():
     # Create sample predictions for demonstration
     sample_predictions = pd.DataFrame(
         [
-            {"actual_genre": "rock", "predicted_genre": "rock", "genre_scores": {"rock": 0.8, "metal": 0.2}},
+            {
+                "actual_genre": "rock",
+                "predicted_genre": "rock",
+                "genre_scores": {"rock": 0.8, "metal": 0.2},
+            },
             {
                 "actual_genre": "electronic",
                 "predicted_genre": "electronic",
                 "genre_scores": {"electronic": 0.9, "techno": 0.1},
             },
-            {"actual_genre": "jazz", "predicted_genre": "blues", "genre_scores": {"blues": 0.6, "jazz": 0.4}},
+            {
+                "actual_genre": "jazz",
+                "predicted_genre": "blues",
+                "genre_scores": {"blues": 0.6, "jazz": 0.4},
+            },
             {
                 "actual_genre": "classical",
                 "predicted_genre": "classical",
                 "genre_scores": {"classical": 0.95, "orchestral": 0.05},
             },
-            {"actual_mood": "happy", "predicted_mood": "happy", "mood_scores": {"happy": 0.7, "energetic": 0.3}},
-            {"actual_mood": "sad", "predicted_mood": "melancholic", "mood_scores": {"melancholic": 0.6, "sad": 0.4}},
+            {
+                "actual_mood": "happy",
+                "predicted_mood": "happy",
+                "mood_scores": {"happy": 0.7, "energetic": 0.3},
+            },
+            {
+                "actual_mood": "sad",
+                "predicted_mood": "melancholic",
+                "mood_scores": {"melancholic": 0.6, "sad": 0.4},
+            },
         ]
     )
 
@@ -384,16 +410,16 @@ def main():
     # Save results
     output_dir = Path(__file__).parent
 
-    with open(output_dir / "genre_evaluation.json", "w") as f:
+    with Path(output_dir / "genre_evaluation.json").open("w") as f:
         json.dump(genre_metrics, f, indent=2)
 
-    with open(output_dir / "mood_evaluation.json", "w") as f:
+    with Path(output_dir / "mood_evaluation.json").open("w") as f:
         json.dump(mood_metrics, f, indent=2)
 
     # Generate report
     report = generate_evaluation_report(output_dir)
 
-    with open(output_dir / "evaluation_report.md", "w") as f:
+    with Path(output_dir / "evaluation_report.md").open("w") as f:
         f.write(report)
 
     print(f"\nEvaluation report saved to {output_dir / 'evaluation_report.md'}")

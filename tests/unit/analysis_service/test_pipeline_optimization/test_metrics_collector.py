@@ -256,7 +256,10 @@ class TestMetricsTimer(unittest.TestCase):
         # Should have operation time but accuracy metrics should still be at 0 (not incremented)
         self.assertIn("tracktion_analysis_service_processing_time_seconds", metrics_output)
         # Check that accuracy metrics exist but weren't incremented (count = 0)
-        self.assertIn("tracktion_analysis_service_bpm_detection_accuracy_count 0.0", metrics_output)
+        self.assertIn(
+            "tracktion_analysis_service_bpm_detection_accuracy_count 0.0",
+            metrics_output,
+        )
 
 
 class TestMetricsEndpoint(unittest.TestCase):

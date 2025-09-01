@@ -1,15 +1,17 @@
 """Async storage handler for analysis service metadata."""
 
+import json
 import logging
-from typing import Dict, List, Optional, Any, cast
+from typing import Any, cast
 from uuid import UUID
 
 from neo4j import AsyncGraphDatabase
 from redis import asyncio as aioredis
+
 from shared.core_types.src.async_database import AsyncDatabaseManager
 from shared.core_types.src.async_repositories import (
-    AsyncRecordingRepository,
     AsyncMetadataRepository,
+    AsyncRecordingRepository,
     AsyncTracklistRepository,
 )
 
@@ -34,7 +36,7 @@ class AsyncNeo4jRepository:
         """Close the Neo4j driver connection."""
         await self.driver.close()
 
-    async def create_recording_node(self, recording_id: UUID, file_path: str, file_name: str) -> Dict[str, Any]:
+    async def create_recording_node(self, recording_id: UUID, file_path: str, file_name: str) -> dict[str, Any]:
         """Create a Recording node in Neo4j.
 
         Args:
@@ -57,7 +59,7 @@ class AsyncNeo4jRepository:
             record = await result.single()
             return dict(record["r"]) if record else {}
 
-    async def create_metadata_relationships(self, recording_id: UUID, metadata: List[Dict[str, str]]) -> int:
+    async def create_metadata_relationships(self, recording_id: UUID, metadata: list[dict[str, str]]) -> int:
         """Create metadata nodes and relationships in Neo4j.
 
         Args:
@@ -80,7 +82,7 @@ class AsyncNeo4jRepository:
             return record["count"] if record else 0
 
     async def create_tracklist_relationship(
-        self, recording_id: UUID, source: str, tracks: List[Dict[str, Any]]
+        self, recording_id: UUID, source: str, tracks: list[dict[str, Any]]
     ) -> bool:
         """Create tracklist node and relationship in Neo4j.
 
@@ -106,12 +108,16 @@ class AsyncNeo4jRepository:
             RETURN count(*) as count
             """
             result = await session.run(
-                query, uuid=str(recording_id), source=source, track_count=len(tracks), tracks=tracks
+                query,
+                uuid=str(recording_id),
+                source=source,
+                track_count=len(tracks),
+                tracks=tracks,
             )
             record = await result.single()
             return bool(record and record["count"] > 0)
 
-    async def find_similar_recordings(self, recording_id: UUID, limit: int = 10) -> List[Dict[str, Any]]:
+    async def find_similar_recordings(self, recording_id: UUID, limit: int = 10) -> list[dict[str, Any]]:
         """Find recordings with similar metadata.
 
         Args:
@@ -135,7 +141,7 @@ class AsyncNeo4jRepository:
             result = await session.run(query, uuid=str(recording_id), limit=limit)
             return [dict(record) async for record in result]
 
-    async def get_recording_graph(self, recording_id: UUID, depth: int = 2) -> Dict[str, Any]:
+    async def get_recording_graph(self, recording_id: UUID, depth: int = 2) -> dict[str, Any]:
         """Get the graph structure around a recording.
 
         Args:
@@ -169,7 +175,11 @@ class AsyncNeo4jRepository:
                         graph["relationships"].append(rel_dict)
 
                 for node in record["nodes"]:
-                    node_dict = {"id": node.id, "labels": list(node.labels), "properties": dict(node)}
+                    node_dict = {
+                        "id": node.id,
+                        "labels": list(node.labels),
+                        "properties": dict(node),
+                    }
                     if node_dict not in graph["nodes"]:
                         graph["nodes"].append(node_dict)
 
@@ -191,7 +201,7 @@ class AsyncRedisCache:
         """Close Redis connection."""
         await self.redis.close()
 
-    async def set_analysis_result(self, key: str, result: Dict[str, Any], ttl: int = 3600) -> bool:
+    async def set_analysis_result(self, key: str, result: dict[str, Any], ttl: int = 3600) -> bool:
         """Cache analysis result.
 
         Args:
@@ -203,14 +213,12 @@ class AsyncRedisCache:
             True if cached successfully
         """
         try:
-            import json
-
-            return cast(bool, await self.redis.setex(f"analysis:{key}", ttl, json.dumps(result)))
+            return cast("bool", await self.redis.setex(f"analysis:{key}", ttl, json.dumps(result)))
         except Exception as e:
             logger.error(f"Error caching analysis result: {e}")
             return False
 
-    async def get_analysis_result(self, key: str) -> Optional[Dict[str, Any]]:
+    async def get_analysis_result(self, key: str) -> dict[str, Any] | None:
         """Get cached analysis result.
 
         Args:
@@ -220,8 +228,6 @@ class AsyncRedisCache:
             Cached result or None
         """
         try:
-            import json
-
             result = await self.redis.get(f"analysis:{key}")
             return json.loads(result) if result else None
         except Exception as e:
@@ -238,12 +244,10 @@ class AsyncRedisCache:
             Number of keys deleted
         """
         pattern = f"analysis:*{recording_id}*"
-        keys = []
-        async for key in self.redis.scan_iter(match=pattern):
-            keys.append(key)
+        keys = [key async for key in self.redis.scan_iter(match=pattern)]
 
         if keys:
-            return cast(int, await self.redis.delete(*keys))
+            return cast("int", await self.redis.delete(*keys))
         return 0
 
 
@@ -276,7 +280,7 @@ class AsyncStorageHandler:
         await self.neo4j_repo.close()
         await self.redis_cache.close()
 
-    async def store_analysis_results(self, recording_id: UUID, analysis_type: str, results: Dict[str, Any]) -> bool:
+    async def store_analysis_results(self, recording_id: UUID, analysis_type: str, results: dict[str, Any]) -> bool:
         """Store analysis results across databases.
 
         Args:
@@ -298,12 +302,16 @@ class AsyncStorageHandler:
             if "metadata" in results:
                 for key, value in results["metadata"].items():
                     await self.metadata_repo.create(
-                        recording_id=recording_id, key=f"{analysis_type}_{key}", value=str(value)
+                        recording_id=recording_id,
+                        key=f"{analysis_type}_{key}",
+                        value=str(value),
                     )
 
             # Create graph relationships in Neo4j
             await self.neo4j_repo.create_recording_node(
-                recording_id=recording_id, file_path=recording.file_path, file_name=recording.file_name
+                recording_id=recording_id,
+                file_path=recording.file_path,
+                file_name=recording.file_name,
             )
 
             if "metadata" in results:
@@ -321,7 +329,7 @@ class AsyncStorageHandler:
             logger.error(f"Error storing analysis results: {e}")
             return False
 
-    async def get_cached_analysis(self, recording_id: UUID, analysis_type: str) -> Optional[Dict[str, Any]]:
+    async def get_cached_analysis(self, recording_id: UUID, analysis_type: str) -> dict[str, Any] | None:
         """Get cached analysis results.
 
         Args:
@@ -334,7 +342,7 @@ class AsyncStorageHandler:
         cache_key = f"{recording_id}:{analysis_type}"
         return await self.redis_cache.get_analysis_result(cache_key)
 
-    async def find_similar_recordings(self, recording_id: UUID, limit: int = 10) -> List[Dict[str, Any]]:
+    async def find_similar_recordings(self, recording_id: UUID, limit: int = 10) -> list[dict[str, Any]]:
         """Find recordings with similar characteristics.
 
         Args:
@@ -348,7 +356,7 @@ class AsyncStorageHandler:
         cache_key = f"{recording_id}:similar"
         cached = await self.redis_cache.get_analysis_result(cache_key)
         if cached:
-            return cast(List[Dict[str, Any]], cached.get("recordings", []))
+            return cast("list[dict[str, Any]]", cached.get("recordings", []))
 
         # Query Neo4j for similar recordings
         similar = await self.neo4j_repo.find_similar_recordings(recording_id=recording_id, limit=limit)
@@ -362,7 +370,7 @@ class AsyncStorageHandler:
 
         return similar
 
-    async def store_tracklist(self, recording_id: UUID, source: str, tracks: List[Dict[str, Any]]) -> bool:
+    async def store_tracklist(self, recording_id: UUID, source: str, tracks: list[dict[str, Any]]) -> bool:
         """Store tracklist information.
 
         Args:
@@ -390,7 +398,7 @@ class AsyncStorageHandler:
             logger.error(f"Error storing tracklist: {e}")
             return False
 
-    async def get_recording_graph(self, recording_id: UUID, depth: int = 2) -> Dict[str, Any]:
+    async def get_recording_graph(self, recording_id: UUID, depth: int = 2) -> dict[str, Any]:
         """Get the graph structure around a recording.
 
         Args:

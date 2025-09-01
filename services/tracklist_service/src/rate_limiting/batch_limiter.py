@@ -2,14 +2,15 @@
 
 import asyncio
 import logging
-import time
-from collections import deque, defaultdict
-from dataclasses import dataclass, field
-from datetime import datetime, UTC, timedelta
-from enum import Enum
-from typing import Dict, List, Optional, Deque, Any
-from threading import Lock
 import statistics
+import time
+from collections import defaultdict, deque
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from enum import Enum
+from threading import Lock
+from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +31,12 @@ class DomainMetrics:
     domain: str
     successful_requests: int = 0
     failed_requests: int = 0
-    response_times: Deque[float] = field(default_factory=lambda: deque(maxlen=100))
-    error_times: Deque[datetime] = field(default_factory=lambda: deque(maxlen=50))
-    last_request_time: Optional[float] = None
+    response_times: deque[float] = field(default_factory=lambda: deque(maxlen=100))
+    error_times: deque[datetime] = field(default_factory=lambda: deque(maxlen=50))
+    last_request_time: float | None = None
     current_rate: float = 5.0  # Requests per second
     optimal_rate: float = 5.0
-    backoff_until: Optional[datetime] = None
+    backoff_until: datetime | None = None
 
     def add_response(self, response_time: float, success: bool = True) -> None:
         """Record a response."""
@@ -110,8 +111,8 @@ class BatchRateLimiter:
         self.max_rate = max_rate
         self.strategy = strategy
 
-        self.domain_metrics: Dict[str, DomainMetrics] = {}
-        self.request_queue: Dict[str, Deque[Request]] = defaultdict(deque)
+        self.domain_metrics: dict[str, DomainMetrics] = {}
+        self.request_queue: dict[str, deque[Request]] = defaultdict(deque)
         self._lock = Lock()
 
         # Response time thresholds for adaptation
@@ -203,7 +204,7 @@ class BatchRateLimiter:
                     metrics.current_rate = max(metrics.current_rate * 0.5, self.min_rate)
             logger.warning(f"Backpressure applied: queue depth {queue_depth}")
 
-    def schedule_requests(self, requests: List[Request]) -> List[ScheduledRequest]:
+    def schedule_requests(self, requests: list[Request]) -> list[ScheduledRequest]:
         """Schedule requests with optimal timing.
 
         Args:
@@ -213,7 +214,7 @@ class BatchRateLimiter:
             List of scheduled requests
         """
         scheduled = []
-        requests_by_domain: Dict[str, List[Request]] = defaultdict(list)
+        requests_by_domain: dict[str, list[Request]] = defaultdict(list)
 
         # Group by domain
         for request in requests:
@@ -312,7 +313,7 @@ class BatchRateLimiter:
             f"Domain {domain}: rate={metrics.current_rate:.2f}, response_time={response_time:.2f}s, success={success}"
         )
 
-    def get_domain_stats(self, domain: str) -> Dict[str, Any]:
+    def get_domain_stats(self, domain: str) -> dict[str, Any]:
         """Get statistics for a domain.
 
         Args:
@@ -345,13 +346,13 @@ class BatchRateLimiter:
             "is_backed_off": metrics.is_backed_off(),
         }
 
-    def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
+    def get_all_stats(self) -> dict[str, dict[str, Any]]:
         """Get statistics for all domains.
 
         Returns:
             Statistics by domain
         """
-        return {domain: self.get_domain_stats(domain) for domain in self.domain_metrics.keys()}
+        return {domain: self.get_domain_stats(domain) for domain in self.domain_metrics}
 
     def reset_domain(self, domain: str) -> None:
         """Reset metrics for a domain.
@@ -371,7 +372,6 @@ class BatchRateLimiter:
         Returns:
             Domain name
         """
-        from urllib.parse import urlparse
 
         parsed = urlparse(url)
         return parsed.netloc or "unknown"

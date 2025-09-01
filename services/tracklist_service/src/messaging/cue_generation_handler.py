@@ -4,23 +4,36 @@ Message handler for CUE generation operations.
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from aio_pika.abc import AbstractIncomingMessage
 
 from services.tracklist_service.src.messaging.message_schemas import (
+    BaseMessage,
+    BatchCueGenerationCompleteMessage,
     BatchCueGenerationMessage,
+    CueConversionMessage,
     CueGenerationCompleteMessage,
     CueGenerationMessage,
-    CueConversionMessage,
     CueValidationMessage,
     MessageType,
 )
 from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient
-from services.tracklist_service.src.models.cue_file import CueFormat, GenerateCueRequest, BatchGenerateCueRequest
-from services.tracklist_service.src.services.cue_generation_service import CueGenerationService
+from services.tracklist_service.src.models.cue_file import (
+    BatchCueGenerationResponse,
+    BatchGenerateCueRequest,
+    CueFormat,
+    CueGenerationResponse,
+    GenerateCueRequest,
+)
+from services.tracklist_service.src.services.cue_generation_service import (
+    CueGenerationService,
+)
 from services.tracklist_service.src.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
@@ -57,7 +70,7 @@ class CueGenerationMessageHandler:
             message: CUE generation message
             rabbitmq_message: RabbitMQ message for acknowledgment
         """
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
         logger.info(f"Processing CUE generation request {message.job_id} for tracklist {message.tracklist_id}")
 
         try:
@@ -83,7 +96,7 @@ class CueGenerationMessageHandler:
             )
 
             # Generate CUE file
-            response = await self.cue_generation_service.generate_cue_file(tracklist, request)
+            response: CueGenerationResponse = await self.cue_generation_service.generate_cue_file(tracklist, request)
 
             # Send completion message
             await self._send_completion_message(
@@ -91,7 +104,7 @@ class CueGenerationMessageHandler:
                 success=response.success,
                 cue_file_id=str(response.cue_file_id) if response.cue_file_id else None,
                 file_path=response.file_path,
-                validation_report=response.validation_report.model_dump() if response.validation_report else None,
+                validation_report=(response.validation_report.model_dump() if response.validation_report else None),
                 error=response.error,
                 processing_time_ms=response.processing_time_ms,
                 start_time=start_time,
@@ -103,12 +116,15 @@ class CueGenerationMessageHandler:
             )
 
         except Exception as e:
-            logger.error(f"Error processing CUE generation request {message.job_id}: {e}", exc_info=True)
+            logger.error(
+                f"Error processing CUE generation request {message.job_id}: {e}",
+                exc_info=True,
+            )
 
             await self._send_completion_message(
                 message,
                 success=False,
-                error=f"Internal error: {str(e)}",
+                error=f"Internal error: {e!s}",
                 error_code="INTERNAL_ERROR",
                 start_time=start_time,
             )
@@ -137,7 +153,7 @@ class CueGenerationMessageHandler:
             message: Batch CUE generation message
             rabbitmq_message: RabbitMQ message for acknowledgment
         """
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
         logger.info(
             f"Processing batch CUE generation request {message.batch_job_id} "
             f"for tracklist {message.tracklist_id} ({len(message.formats)} formats)"
@@ -165,7 +181,9 @@ class CueGenerationMessageHandler:
             )
 
             # Generate CUE files
-            response = await self.cue_generation_service.generate_multiple_formats(tracklist, request)
+            response: BatchCueGenerationResponse = await self.cue_generation_service.generate_multiple_formats(
+                tracklist, request
+            )
 
             # Send completion message
             await self._send_batch_completion_message(
@@ -185,12 +203,15 @@ class CueGenerationMessageHandler:
             )
 
         except Exception as e:
-            logger.error(f"Error processing batch CUE generation request {message.batch_job_id}: {e}", exc_info=True)
+            logger.error(
+                f"Error processing batch CUE generation request {message.batch_job_id}: {e}",
+                exc_info=True,
+            )
 
             await self._send_batch_completion_message(
                 message,
                 success=False,
-                error=f"Internal error: {str(e)}",
+                error=f"Internal error: {e!s}",
                 start_time=start_time,
             )
 
@@ -226,7 +247,10 @@ class CueGenerationMessageHandler:
             await rabbitmq_message.ack()
 
         except Exception as e:
-            logger.error(f"Error processing CUE validation request {message.validation_job_id}: {e}", exc_info=True)
+            logger.error(
+                f"Error processing CUE validation request {message.validation_job_id}: {e}",
+                exc_info=True,
+            )
             await rabbitmq_message.reject(requeue=True)
 
     async def handle_cue_conversion(
@@ -253,10 +277,13 @@ class CueGenerationMessageHandler:
             await rabbitmq_message.ack()
 
         except Exception as e:
-            logger.error(f"Error processing CUE conversion request {message.conversion_job_id}: {e}", exc_info=True)
+            logger.error(
+                f"Error processing CUE conversion request {message.conversion_job_id}: {e}",
+                exc_info=True,
+            )
             await rabbitmq_message.reject(requeue=True)
 
-    async def _get_tracklist_by_id(self, tracklist_id: UUID) -> Optional[Any]:
+    async def _get_tracklist_by_id(self, tracklist_id: UUID) -> Any | None:
         """Get tracklist by ID (placeholder implementation)."""
         # TODO: Implement actual tracklist retrieval from database
         # This would interface with the tracklist repository/service
@@ -264,7 +291,6 @@ class CueGenerationMessageHandler:
 
         # Return mock tracklist for testing until database integration is complete
         # In production, this would query the actual tracklist database
-        from datetime import datetime, timezone
 
         class MockTrack:
             def __init__(self, idx: int):
@@ -281,7 +307,7 @@ class CueGenerationMessageHandler:
                 self.title = "Test Mix"
                 self.artist = "Test DJ"
                 self.audio_file_path = "audio.wav"
-                self.created_at = datetime.now(timezone.utc)
+                self.created_at = datetime.now(UTC)
                 self.tracks = [MockTrack(i) for i in range(1, 6)]
                 self.genre = "Electronic"
                 self.source = "test"
@@ -294,13 +320,13 @@ class CueGenerationMessageHandler:
         self,
         original_message: CueGenerationMessage,
         success: bool,
-        cue_file_id: Optional[str] = None,
-        file_path: Optional[str] = None,
-        validation_report: Optional[Dict[str, Any]] = None,
-        error: Optional[str] = None,
-        error_code: Optional[str] = None,
-        processing_time_ms: Optional[float] = None,
-        start_time: Optional[datetime] = None,
+        cue_file_id: str | None = None,
+        file_path: str | None = None,
+        validation_report: dict[str, Any] | None = None,
+        error: str | None = None,
+        error_code: str | None = None,
+        processing_time_ms: float | None = None,
+        start_time: datetime | None = None,
     ) -> None:
         """Send CUE generation completion message."""
         queue_time_ms = None
@@ -337,20 +363,18 @@ class CueGenerationMessageHandler:
         total_files: int = 0,
         successful_files: int = 0,
         failed_files: int = 0,
-        results: Optional[list[Dict[str, Any]]] = None,
-        error: Optional[str] = None,
-        start_time: Optional[datetime] = None,
+        results: list[dict[str, Any]] | None = None,
+        error: str | None = None,
+        start_time: datetime | None = None,
     ) -> None:
         """Send batch CUE generation completion message."""
         total_processing_time_ms = None
         if start_time:
-            total_processing_time_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+            total_processing_time_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
 
         average_processing_time_ms = None
         if total_processing_time_ms and total_files > 0:
             average_processing_time_ms = total_processing_time_ms / total_files
-
-        from services.tracklist_service.src.messaging.message_schemas import BatchCueGenerationCompleteMessage
 
         completion_message = BatchCueGenerationCompleteMessage(
             message_id=uuid4(),
@@ -375,24 +399,28 @@ class CueGenerationMessageHandler:
 
     async def start_consuming(self) -> None:
         """Start consuming messages from all relevant queues."""
+
         try:
             # Start consuming different message types
             await asyncio.gather(
                 self.rabbitmq_client.consume_messages(
                     message_type=MessageType.CUE_GENERATION,
-                    handler=self.handle_cue_generation,  # type: ignore[arg-type]
+                    handler=cast("Callable[[BaseMessage, AbstractIncomingMessage], Any]", self.handle_cue_generation),
                 ),
                 self.rabbitmq_client.consume_messages(
                     message_type=MessageType.BATCH_CUE_GENERATION,
-                    handler=self.handle_batch_cue_generation,  # type: ignore[arg-type]
+                    handler=cast(
+                        "Callable[[BaseMessage, AbstractIncomingMessage], Any]",
+                        self.handle_batch_cue_generation,
+                    ),
                 ),
                 self.rabbitmq_client.consume_messages(
                     message_type=MessageType.CUE_VALIDATION,
-                    handler=self.handle_cue_validation,  # type: ignore[arg-type]
+                    handler=cast("Callable[[BaseMessage, AbstractIncomingMessage], Any]", self.handle_cue_validation),
                 ),
                 self.rabbitmq_client.consume_messages(
                     message_type=MessageType.CUE_CONVERSION,
-                    handler=self.handle_cue_conversion,  # type: ignore[arg-type]
+                    handler=cast("Callable[[BaseMessage, AbstractIncomingMessage], Any]", self.handle_cue_conversion),
                 ),
             )
 

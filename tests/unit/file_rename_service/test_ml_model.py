@@ -3,7 +3,7 @@
 import json
 import tempfile
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -145,23 +145,21 @@ class TestTrainer:
     @pytest.fixture
     def sample_training_data(self):
         """Create sample training data."""
-        data = []
-        for i in range(50):
-            data.append(
-                TrainingData(
-                    filename_original=f"file_{i}.txt",
-                    filename_renamed=f"renamed_{i % 5}.txt",  # 5 different classes
-                    tokens=[
-                        {"type": "word", "value": "file"},
-                        {"type": "separator", "value": "_"},
-                        {"type": "number", "value": str(i)},
-                        {"type": "extension", "value": "txt"},
-                    ],
-                    user_approved=True,
-                    confidence_score=0.8,
-                )
+        return [
+            TrainingData(
+                filename_original=f"file_{i}.txt",
+                filename_renamed=f"renamed_{i % 5}.txt",  # 5 different classes
+                tokens=[
+                    {"type": "word", "value": "file"},
+                    {"type": "separator", "value": "_"},
+                    {"type": "number", "value": str(i)},
+                    {"type": "extension", "value": "txt"},
+                ],
+                user_approved=True,
+                confidence_score=0.8,
             )
-        return data
+            for i in range(50)
+        ]
 
     def test_trainer_init(self, temp_model_dir):
         """Test trainer initialization."""
@@ -172,7 +170,7 @@ class TestTrainer:
     def test_prepare_training_data(self, temp_model_dir, sample_training_data):
         """Test training data preparation."""
         trainer = Trainer(temp_model_dir)
-        X, y = trainer._prepare_training_data(sample_training_data)
+        X, y = trainer._prepare_training_data(sample_training_data)  # noqa: N806
 
         assert X.shape[0] == len(sample_training_data)
         assert y.shape[0] == len(sample_training_data)
@@ -246,20 +244,19 @@ class TestTrainer:
     def test_training_performance(self, temp_model_dir):
         """Test training performance requirements."""
         # Create 10,000 samples
-        large_training_data = []
-        for i in range(10000):
-            large_training_data.append(
-                TrainingData(
-                    filename_original=f"file_{i}.txt",
-                    filename_renamed=f"renamed_{i % 20}.txt",
-                    tokens=[
-                        {"type": "word", "value": f"word_{i % 10}"},
-                        {"type": "number", "value": str(i)},
-                    ],
-                    user_approved=True,
-                    confidence_score=0.8,
-                )
+        large_training_data = [
+            TrainingData(
+                filename_original=f"file_{i}.txt",
+                filename_renamed=f"renamed_{i % 20}.txt",
+                tokens=[
+                    {"type": "word", "value": f"word_{i % 10}"},
+                    {"type": "number", "value": str(i)},
+                ],
+                user_approved=True,
+                confidence_score=0.8,
             )
+            for i in range(10000)
+        ]
 
         trainer = Trainer(temp_model_dir)
 
@@ -286,21 +283,20 @@ class TestPredictor:
         """Create a trained model for testing."""
         trainer = Trainer(str(tmp_path))
 
-        training_data = []
-        for i in range(100):
-            training_data.append(
-                TrainingData(
-                    filename_original=f"file_{i}.txt",
-                    filename_renamed=f"renamed_{i % 3}.txt",
-                    tokens=[
-                        {"type": "word", "value": "file"},
-                        {"type": "number", "value": str(i % 10)},
-                        {"type": "extension", "value": "txt"},
-                    ],
-                    user_approved=True,
-                    confidence_score=0.8,
-                )
+        training_data = [
+            TrainingData(
+                filename_original=f"file_{i}.txt",
+                filename_renamed=f"renamed_{i % 3}.txt",
+                tokens=[
+                    {"type": "word", "value": "file"},
+                    {"type": "number", "value": str(i % 10)},
+                    {"type": "extension", "value": "txt"},
+                ],
+                user_approved=True,
+                confidence_score=0.8,
             )
+            for i in range(100)
+        ]
 
         model_metadata = trainer.train(training_data)
         return tmp_path, model_metadata
@@ -462,7 +458,7 @@ class TestVersionManager:
                 "file_path": str(model_path),
             }
 
-            with open(metadata_path, "w") as f:
+            with Path(metadata_path).open("w") as f:
                 json.dump(metadata, f)
 
             models.append(version)
@@ -508,7 +504,7 @@ class TestVersionManager:
             "file_path": str(model_path),
         }
 
-        with open(metadata_path, "w") as f:
+        with Path(metadata_path).open("w") as f:
             json.dump(metadata, f)
 
         success = version_manager.deploy_model(version, force=False)
@@ -529,7 +525,8 @@ class TestVersionManager:
         success = version_manager.rollback_model()
 
         assert success
-        with open(version_manager.deployment_dir / "metadata.json") as f:
+        metadata_path = version_manager.deployment_dir / "metadata.json"
+        with metadata_path.open() as f:
             metadata = json.load(f)
         assert metadata["version"] == sample_models[0]
 
@@ -586,7 +583,7 @@ class TestVersionManager:
                 "status": "training",
                 "file_path": str(model_path),
             }
-            with open(metadata_path, "w") as f:
+            with Path(metadata_path).open("w") as f:
                 json.dump(metadata, f)
 
         # Should have 8 models total
@@ -608,7 +605,7 @@ class TestModels:
             id="test_id",
             version="v1.0",
             algorithm=ModelAlgorithm.RANDOM_FOREST,
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             training_metrics={"accuracy": 0.85},
             hyperparameters={"n_estimators": 100},
             feature_config={"max_length": 50},

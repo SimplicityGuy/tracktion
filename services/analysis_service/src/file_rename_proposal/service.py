@@ -1,21 +1,24 @@
 """Service factory for file rename proposal components."""
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
+
+from sqlalchemy import text
+
+from services.analysis_service.src.file_rename_executor.executor import FileRenameExecutor
+from shared.core_types.src.database import DatabaseManager
+from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
+from shared.core_types.src.repositories import RecordingRepository
 
 from .batch_processor import BatchProcessor
 from .confidence_scorer import ConfidenceScorer
-from .conflict_detector import ConflictDetector
 from .config import FileRenameProposalConfig
+from .conflict_detector import ConflictDetector
 from .integration import FileRenameProposalIntegration
 from .message_interface import RenameProposalMessageInterface
 from .pattern_manager import PatternManager
 from .proposal_generator import ProposalGenerator
 from .validator import FilesystemValidator
-from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
-from shared.core_types.src.repositories import RecordingRepository
-from shared.core_types.src.database import DatabaseManager
-from ..file_rename_executor.executor import FileRenameExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -23,17 +26,17 @@ logger = logging.getLogger(__name__)
 class FileRenameProposalServiceFactory:
     """Factory for creating file rename proposal service components."""
 
-    def __init__(self, config: Optional[FileRenameProposalConfig] = None) -> None:
+    def __init__(self, config: FileRenameProposalConfig | None = None) -> None:
         """Initialize the service factory.
 
         Args:
             config: Optional configuration, will load from environment if not provided
         """
         self.config = config or FileRenameProposalConfig.from_env()
-        self._db_manager: Optional[DatabaseManager] = None
-        self._proposal_repo: Optional[RenameProposalRepository] = None
-        self._recording_repo: Optional[RecordingRepository] = None
-        self._rename_executor: Optional[FileRenameExecutor] = None
+        self._db_manager: DatabaseManager | None = None
+        self._proposal_repo: RenameProposalRepository | None = None
+        self._recording_repo: RecordingRepository | None = None
+        self._rename_executor: FileRenameExecutor | None = None
 
     @property
     def db_manager(self) -> DatabaseManager:
@@ -146,13 +149,13 @@ class FileRenameProposalServiceFactory:
             "rename_executor": self.rename_executor,
         }
 
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self) -> dict[str, Any]:
         """Perform health check on service components.
 
         Returns:
             Health status dictionary
         """
-        health: Dict[str, Any] = {
+        health: dict[str, Any] = {
             "service": "file_rename_proposal",
             "status": "healthy",
             "components": {},
@@ -161,7 +164,7 @@ class FileRenameProposalServiceFactory:
         try:
             # Test database connection
             with self.db_manager.get_db_session() as session:
-                session.execute("SELECT 1")  # type: ignore[call-overload]
+                session.execute(text("SELECT 1"))
             health["components"]["database"] = {"status": "connected"}
         except Exception as e:
             health["components"]["database"] = {"status": "error", "message": str(e)}
@@ -181,7 +184,10 @@ class FileRenameProposalServiceFactory:
             _ = self.recording_repo
             health["components"]["repositories"] = {"status": "initialized"}
         except Exception as e:
-            health["components"]["repositories"] = {"status": "error", "message": str(e)}
+            health["components"]["repositories"] = {
+                "status": "error",
+                "message": str(e),
+            }
             health["status"] = "unhealthy"
 
         return health
@@ -189,7 +195,7 @@ class FileRenameProposalServiceFactory:
 
 # Convenience function for quick service creation
 def create_file_rename_proposal_service(
-    config: Optional[FileRenameProposalConfig] = None,
+    config: FileRenameProposalConfig | None = None,
 ) -> FileRenameProposalServiceFactory:
     """Create a file rename proposal service factory.
 

@@ -2,7 +2,7 @@
 Unit tests for CUE file models.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -22,7 +22,7 @@ from services.tracklist_service.src.models.cue_file import (
     GenerateCueRequest,
     ValidationResult,
 )
-from services.tracklist_service.src.models.tracklist import Tracklist
+from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
 
 
 class TestCueFile:
@@ -106,7 +106,11 @@ class TestCueGenerationJob:
         tracklist_id = uuid4()
         validation_report = ValidationResult(valid=True, audio_duration=3600.0, tracklist_duration=3580.0)
 
-        job = CueGenerationJob(tracklist_id=tracklist_id, format=CueFormat.TRAKTOR, validation_report=validation_report)
+        job = CueGenerationJob(
+            tracklist_id=tracklist_id,
+            format=CueFormat.TRAKTOR,
+            validation_report=validation_report,
+        )
 
         assert job.validation_report.valid is True
         assert job.validation_report.audio_duration == 3600.0
@@ -127,7 +131,9 @@ class TestValidationResult:
     def test_validation_result_invalid(self):
         """Test invalid validation result with error."""
         result = ValidationResult(
-            valid=False, error="Track timing exceeds audio duration", warnings=["Gap detected between tracks 3 and 4"]
+            valid=False,
+            error="Track timing exceeds audio duration",
+            warnings=["Gap detected between tracks 3 and 4"],
         )
 
         assert result.valid is False
@@ -141,7 +147,9 @@ class TestRequestModels:
     def test_generate_cue_request(self):
         """Test CUE generation request."""
         request = GenerateCueRequest(
-            format=CueFormat.SERATO, options={"include_bpm": True}, audio_file_path="/audio/mix.mp3"
+            format=CueFormat.SERATO,
+            options={"include_bpm": True},
+            audio_file_path="/audio/mix.mp3",
         )
 
         assert request.format == CueFormat.SERATO
@@ -185,7 +193,10 @@ class TestResponseModels:
         cue_file_id = uuid4()
 
         response = CueGenerationResponse(
-            success=True, job_id=job_id, cue_file_id=cue_file_id, file_path="/data/cue_files/test.cue"
+            success=True,
+            job_id=job_id,
+            cue_file_id=cue_file_id,
+            file_path="/data/cue_files/test.cue",
         )
 
         assert response.success is True
@@ -197,7 +208,11 @@ class TestResponseModels:
         results = [CueGenerationResponse(success=True, job_id=uuid4(), cue_file_id=uuid4())]
 
         response = BatchCueGenerationResponse(
-            success=True, results=results, total_files=3, successful_files=1, failed_files=2
+            success=True,
+            results=results,
+            total_files=3,
+            successful_files=1,
+            failed_files=2,
         )
 
         assert response.success is True
@@ -227,7 +242,7 @@ class TestDatabaseModels:
         """Test converting CueFileDB to Pydantic model."""
         tracklist_id = uuid4()
         cue_file_id = uuid4()
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         db_model = CueFileDB(
             id=cue_file_id,
@@ -272,7 +287,7 @@ class TestDatabaseModels:
         """Test converting CueGenerationJobDB to Pydantic model."""
         tracklist_id = uuid4()
         job_id = uuid4()
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         db_model = CueGenerationJobDB(
             id=job_id,
@@ -296,7 +311,10 @@ class TestDatabaseModels:
         tracklist_id = uuid4()
 
         pydantic_model = CueGenerationJob(
-            tracklist_id=tracklist_id, format=CueFormat.SERATO, status=CueGenerationStatus.COMPLETED, progress=100
+            tracklist_id=tracklist_id,
+            format=CueFormat.SERATO,
+            status=CueGenerationStatus.COMPLETED,
+            progress=100,
         )
 
         db_model = CueGenerationJobDB.from_model(pydantic_model)
@@ -310,7 +328,7 @@ class TestDatabaseModels:
         """Test handling invalid validation report in database."""
         tracklist_id = uuid4()
         job_id = uuid4()
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         db_model = CueGenerationJobDB(
             id=job_id,
@@ -351,7 +369,6 @@ class TestEnums:
 @pytest.fixture
 def sample_tracklist():
     """Create a sample tracklist for testing."""
-    from services.tracklist_service.src.models.tracklist import TrackEntry
 
     tracks = [
         TrackEntry(
@@ -378,6 +395,7 @@ class TestIntegration:
 
     def test_cue_file_with_tracklist(self, sample_tracklist):
         """Test CUE file integration with tracklist."""
+
         cue_file = CueFile(
             tracklist_id=sample_tracklist.id,
             file_path="/data/test.cue",

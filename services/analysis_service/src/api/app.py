@@ -6,7 +6,8 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ..structured_logging import get_logger
+from services.analysis_service.src.structured_logging import get_logger
+
 from .endpoints import (
     analysis_router,
     health_router,

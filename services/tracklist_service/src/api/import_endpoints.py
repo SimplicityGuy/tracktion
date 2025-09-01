@@ -7,38 +7,46 @@ with automatic CUE file generation and async processing support.
 
 import logging
 import time
-from typing import Dict, Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from ..models.tracklist import ImportTracklistRequest, ImportTracklistResponse, TracklistDB
-from ..models.cue_file import CueFormat
-from ..services.import_service import ImportService
-from ..services.matching_service import MatchingService
-from ..services.timing_service import TimingService
-from ..services.cue_integration import CueIntegrationService
-from ..cache.redis_cache import RedisCache
-from ..messaging.simple_handler import MessageHandler
-from ..database.database import get_db_session
-from ..exceptions import (
-    ImportError,
-    ValidationError,
-    MatchingError,
-    TimingError,
+from src.cache.redis_cache import RedisCache
+from src.exceptions import (
     CueGenerationError,
     DatabaseError,
-    TimeoutError,
+    ImportError,
+    MatchingError,
     RateLimitError,
     ServiceUnavailableError,
+    TimeoutError,
+    TimingError,
+    ValidationError,
 )
-from ..retry.retry_manager import RetryManager, RetryPolicy, FailureType
+from src.messaging.import_handler import ImportJobMessage, import_message_handler
+from src.messaging.simple_handler import MessageHandler
+from src.models.cue_file import CueFormat
+from src.models.tracklist import ImportTracklistRequest, ImportTracklistResponse, TracklistDB
+from src.retry.retry_manager import FailureType, RetryManager, RetryPolicy
+from src.services.cue_integration import CueIntegrationService
+from src.services.import_service import ImportService
+from src.services.matching_service import MatchingService
+from src.services.timing_service import TimingService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/tracklists", tags=["tracklist-import"])
+
+
+async def setup_import_message_handler() -> None:
+    """Set up the import message handler connection."""
+    # Placeholder implementation - actual implementation should reconnect
+    logger.info("Setting up import message handler connection")
+
 
 # Initialize services
 import_service = ImportService()
@@ -75,19 +83,14 @@ async def process_import_async(request: ImportTracklistRequest, correlation_id: 
         request: Import request with URL and audio file ID
         correlation_id: Correlation ID for tracking
     """
-    from ..messaging.import_handler import ImportJobMessage, import_message_handler
-    from datetime import datetime, timezone
-
     try:
         # Create import job message
         job_message = ImportJobMessage(
-            correlation_id=correlation_id, request=request, created_at=datetime.now(timezone.utc).isoformat()
+            correlation_id=correlation_id, request=request, created_at=datetime.now(UTC).isoformat()
         )
 
         # Ensure message handler is connected
         if not import_message_handler.connection or import_message_handler.connection.is_closed:
-            from ..messaging.import_handler import setup_import_message_handler
-
             await setup_import_message_handler()
 
         # Publish to import queue
@@ -114,8 +117,8 @@ async def process_import_async(request: ImportTracklistRequest, correlation_id: 
 async def import_tracklist_from_1001tracklists(
     request: ImportTracklistRequest,
     background_tasks: BackgroundTasks,
+    db: Session,  # Will be injected via Depends in route
     async_processing: bool = False,
-    db: Session = Depends(get_db_session),
 ) -> ImportTracklistResponse:
     """
     Import a tracklist from 1001tracklists.com and generate CUE file.
@@ -166,7 +169,7 @@ async def import_tracklist_from_1001tracklists(
                 url=request.url, audio_file_id=request.audio_file_id, force_refresh=request.force_refresh
             )
         except Exception as e:
-            error_msg = f"Import failed: {str(e)}"
+            error_msg = f"Import failed: {e!s}"
             logger.error(
                 error_msg,
                 extra={
@@ -176,7 +179,7 @@ async def import_tracklist_from_1001tracklists(
                     "error_details": getattr(e, "details", {}),
                 },
             )
-            raise ImportError(error_msg, url=request.url, tracklist_id=str(correlation_id))
+            raise ImportError(error_msg, url=request.url, tracklist_id=str(correlation_id)) from e
 
         # Step 2: Perform matching with audio file
         try:
@@ -205,7 +208,7 @@ async def import_tracklist_from_1001tracklists(
                     },
                 )
         except Exception as e:
-            error_msg = f"Matching failed: {str(e)}"
+            error_msg = f"Matching failed: {e!s}"
             logger.error(
                 error_msg,
                 extra={
@@ -214,7 +217,7 @@ async def import_tracklist_from_1001tracklists(
                     "error_type": type(e).__name__,
                 },
             )
-            raise MatchingError(error_msg, audio_file_id=str(request.audio_file_id))
+            raise MatchingError(error_msg, audio_file_id=str(request.audio_file_id)) from e
 
         # Step 3: Apply timing adjustments
         try:
@@ -223,13 +226,12 @@ async def import_tracklist_from_1001tracklists(
                 extra={
                     "correlation_id": str(correlation_id),
                     "track_count": len(imported_tracklist.tracks),
-                    "audio_duration": matching_result.metadata.get("duration_seconds")
-                    if matching_result.metadata
-                    else None,
+                    "audio_duration": (
+                        matching_result.metadata.get("duration_seconds") if matching_result.metadata else None
+                    ),
                 },
             )
             # Convert duration to timedelta for timing service
-            from datetime import timedelta
 
             audio_duration = None
             if matching_result.metadata and matching_result.metadata.get("duration_seconds"):
@@ -240,9 +242,9 @@ async def import_tracklist_from_1001tracklists(
             )
             imported_tracklist.tracks = adjusted_tracks
         except Exception as e:
-            error_msg = f"Timing adjustment failed: {str(e)}"
+            error_msg = f"Timing adjustment failed: {e!s}"
             logger.error(error_msg, extra={"correlation_id": str(correlation_id), "error_type": type(e).__name__})
-            raise TimingError(error_msg)
+            raise TimingError(error_msg) from e
 
         # Step 4: Generate CUE file
         try:
@@ -266,7 +268,7 @@ async def import_tracklist_from_1001tracklists(
                 # imported_tracklist.cue_file_id = some_id  # Would need to save CUE file first
                 pass
         except Exception as e:
-            error_msg = f"CUE generation failed: {str(e)}"
+            error_msg = f"CUE generation failed: {e!s}"
             logger.error(
                 error_msg,
                 extra={
@@ -275,7 +277,9 @@ async def import_tracklist_from_1001tracklists(
                     "error_type": type(e).__name__,
                 },
             )
-            raise CueGenerationError(error_msg, cue_format=request.cue_format, tracklist_id=str(imported_tracklist.id))
+            raise CueGenerationError(
+                error_msg, cue_format=request.cue_format, tracklist_id=str(imported_tracklist.id)
+            ) from e
 
         # Step 5: Save to database
         try:
@@ -293,7 +297,7 @@ async def import_tracklist_from_1001tracklists(
             db.refresh(db_tracklist)
         except Exception as e:
             db.rollback()
-            error_msg = f"Database save failed: {str(e)}"
+            error_msg = f"Database save failed: {e!s}"
             logger.error(
                 error_msg,
                 extra={
@@ -302,7 +306,7 @@ async def import_tracklist_from_1001tracklists(
                     "error_type": type(e).__name__,
                 },
             )
-            raise DatabaseError(error_msg, operation="insert", table="tracklists")
+            raise DatabaseError(error_msg, operation="insert", table="tracklists") from e
 
         # Step 6: Publish success message
         background_tasks.add_task(
@@ -392,7 +396,7 @@ async def import_tracklist_from_1001tracklists(
             },
         )
 
-        raise HTTPException(status_code=400, detail=f"Validation error: {e.message}")
+        raise HTTPException(status_code=400, detail=f"Validation error: {e.message}") from e
 
     except ValueError as e:
         # Handle legacy validation errors (fallback)
@@ -403,7 +407,7 @@ async def import_tracklist_from_1001tracklists(
             success=False,
             tracklist=None,
             cue_file_path=None,
-            error=f"Import failed: {str(e)}",
+            error=f"Import failed: {e!s}",
             cached=False,
             processing_time_ms=processing_time,
             correlation_id=str(correlation_id),
@@ -413,7 +417,7 @@ async def import_tracklist_from_1001tracklists(
     except Exception as e:
         # Handle unexpected errors
         logger.error(
-            f"Unexpected error during import: {str(e)}",
+            f"Unexpected error during import: {e!s}",
             extra={"correlation_id": str(correlation_id), "error_type": type(e).__name__, "traceback": True},
             exc_info=True,
         )
@@ -465,11 +469,11 @@ async def get_import_status(correlation_id: UUID) -> JSONResponse:
         raise
     except Exception as e:
         logger.error(f"Error getting import status: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to retrieve import status")
+        raise HTTPException(status_code=500, detail="Failed to retrieve import status") from e
 
 
 @router.delete("/import/cache")
-async def clear_import_cache(url: Optional[str] = None) -> JSONResponse:
+async def clear_import_cache(url: str | None = None) -> JSONResponse:
     """
     Clear import-related cache entries.
 
@@ -488,16 +492,15 @@ async def clear_import_cache(url: Optional[str] = None) -> JSONResponse:
             return JSONResponse(
                 content={"success": True, "message": f"Cleared import cache for URL: {url}", "entries_cleared": deleted}
             )
-        else:
-            # Clear all import cache entries
-            # This would need implementation in RedisCache to find all keys with pattern
-            return JSONResponse(
-                content={"success": False, "message": "Bulk cache clearing not yet implemented. Please specify a URL."}
-            )
+        # Clear all import cache entries
+        # This would need implementation in RedisCache to find all keys with pattern
+        return JSONResponse(
+            content={"success": False, "message": "Bulk cache clearing not yet implemented. Please specify a URL."}
+        )
 
     except Exception as e:
         logger.error(f"Error clearing import cache: {e}", exc_info=True)
-        return JSONResponse(status_code=500, content={"success": False, "error": f"Failed to clear cache: {str(e)}"})
+        return JSONResponse(status_code=500, content={"success": False, "error": f"Failed to clear cache: {e!s}"})
 
 
 @router.get("/import/health")
@@ -508,7 +511,7 @@ async def import_health_check() -> JSONResponse:
     Returns:
         JSON response with import service health status
     """
-    health_status: Dict[str, Any] = {
+    health_status: dict[str, Any] = {
         "service": "tracklist_import_api",
         "status": "healthy",
         "timestamp": time.time(),
@@ -521,7 +524,7 @@ async def import_health_check() -> JSONResponse:
         ImportService()
         health_status["components"]["import_service"] = "healthy"
     except Exception as e:
-        health_status["components"]["import_service"] = f"unhealthy: {str(e)}"
+        health_status["components"]["import_service"] = f"unhealthy: {e!s}"
         health_status["status"] = "degraded"
 
     # Check matching service
@@ -529,7 +532,7 @@ async def import_health_check() -> JSONResponse:
         MatchingService()
         health_status["components"]["matching_service"] = "healthy"
     except Exception as e:
-        health_status["components"]["matching_service"] = f"unhealthy: {str(e)}"
+        health_status["components"]["matching_service"] = f"unhealthy: {e!s}"
         health_status["status"] = "degraded"
 
     # Check timing service
@@ -537,7 +540,7 @@ async def import_health_check() -> JSONResponse:
         TimingService()
         health_status["components"]["timing_service"] = "healthy"
     except Exception as e:
-        health_status["components"]["timing_service"] = f"unhealthy: {str(e)}"
+        health_status["components"]["timing_service"] = f"unhealthy: {e!s}"
         health_status["status"] = "degraded"
 
     # Check CUE integration service
@@ -545,7 +548,7 @@ async def import_health_check() -> JSONResponse:
         CueIntegrationService()
         health_status["components"]["cue_integration_service"] = "healthy"
     except Exception as e:
-        health_status["components"]["cue_integration_service"] = f"unhealthy: {str(e)}"
+        health_status["components"]["cue_integration_service"] = f"unhealthy: {e!s}"
         health_status["status"] = "degraded"
 
     # Check cache connection
@@ -553,7 +556,7 @@ async def import_health_check() -> JSONResponse:
         await cache.ping()
         health_status["components"]["cache"] = "healthy"
     except Exception as e:
-        health_status["components"]["cache"] = f"unhealthy: {str(e)}"
+        health_status["components"]["cache"] = f"unhealthy: {e!s}"
         health_status["status"] = "degraded"
 
     # Check message handler
@@ -561,7 +564,7 @@ async def import_health_check() -> JSONResponse:
         await message_handler.ping()
         health_status["components"]["message_handler"] = "healthy"
     except Exception as e:
-        health_status["components"]["message_handler"] = f"unhealthy: {str(e)}"
+        health_status["components"]["message_handler"] = f"unhealthy: {e!s}"
         health_status["status"] = "degraded"
 
     status_code = 200 if health_status["status"] == "healthy" else 503

@@ -7,10 +7,10 @@ Demonstrates how to use the tracklist service to search for and retrieve trackli
 
 import asyncio
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiohttp
-import requests  # type: ignore[import-untyped]
+import requests  # type: ignore[import-untyped]  # types-requests not installed in this environment
 
 
 class TracklistClient:
@@ -31,7 +31,7 @@ class TracklistClient:
         query: str,
         limit: int = 20,
         page: int = 1,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Search for DJs, events, or tracklists.
 
         Args:
@@ -61,7 +61,7 @@ class TracklistClient:
         force_refresh: bool = False,
         include_transitions: bool = True,
         async_processing: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Retrieve a tracklist from a URL.
 
         Args:
@@ -87,7 +87,7 @@ class TracklistClient:
         response.raise_for_status()
         return response.json()  # type: ignore[no-any-return]
 
-    def get_job_status(self, correlation_id: str) -> Dict[str, Any]:
+    def get_job_status(self, correlation_id: str) -> dict[str, Any]:
         """Get the status of an async job.
 
         Args:
@@ -106,7 +106,7 @@ class TracklistClient:
         correlation_id: str,
         timeout: int = 60,
         poll_interval: int = 2,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Wait for an async job to complete.
 
         Args:
@@ -128,14 +128,14 @@ class TracklistClient:
 
             if status["status"] == "completed":
                 return status
-            elif status["status"] == "failed":
+            if status["status"] == "failed":
                 raise RuntimeError(f"Job failed: {status.get('error', 'Unknown error')}")
 
             time.sleep(poll_interval)
 
         raise TimeoutError(f"Job {correlation_id} did not complete within {timeout} seconds")
 
-    def clear_cache(self, url: Optional[str] = None) -> Dict[str, Any]:
+    def clear_cache(self, url: str | None = None) -> dict[str, Any]:
         """Clear tracklist cache.
 
         Args:
@@ -152,7 +152,7 @@ class TracklistClient:
         response.raise_for_status()
         return response.json()  # type: ignore[no-any-return]
 
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self) -> dict[str, Any]:
         """Check service health.
 
         Returns:
@@ -170,7 +170,7 @@ class AsyncTracklistClient:
         """Initialize the async client."""
         self.base_url = base_url
         self.api_prefix = "/api/v1"
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self) -> "AsyncTracklistClient":
         """Enter async context."""
@@ -188,7 +188,7 @@ class AsyncTracklistClient:
         query: str,
         limit: int = 20,
         page: int = 1,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Async search for DJs, events, or tracklists."""
         url = f"{self.base_url}{self.api_prefix}/search"
         payload = {
@@ -207,7 +207,7 @@ class AsyncTracklistClient:
         url: str,
         force_refresh: bool = False,
         include_transitions: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Async retrieve a tracklist."""
         endpoint = f"{self.base_url}{self.api_prefix}/tracklist"
         payload = {
@@ -221,87 +221,113 @@ class AsyncTracklistClient:
             return await response.json()  # type: ignore[no-any-return]
 
 
-def main() -> None:
-    """Example usage of the Tracklist Client."""
-
-    # Create client
-    client = TracklistClient()
-
-    # Check health
+def check_service_health(client: TracklistClient) -> None:
+    """Check and display service health status."""
     print("Checking service health...")
     health = client.health_check()
     print(f"Service status: {health['status']}")
     print(f"Components: {health['components']}")
     print()
 
-    # Search for a DJ
-    print("Searching for Amelie Lens...")
-    search_results = client.search("dj", "Amelie Lens", limit=5)
 
-    if search_results["success"] and search_results["results"]:
-        print(f"Found {len(search_results['results'])} results:")
-        for result in search_results["results"]:
-            print(f"  - {result['name']} ({result['result_type']})")
-            if result["result_type"] == "tracklist":
-                print(f"    URL: {result['url']}")
-                print(f"    Tracks: {result['metadata'].get('track_count', 'N/A')}")
-        print()
+def display_search_results(search_results: dict[str, Any]) -> list[dict[str, Any]]:
+    """Display search results and return tracklist results."""
+    if not (search_results["success"] and search_results["results"]):
+        return []
 
-        # Get the first tracklist
-        tracklist_results = [r for r in search_results["results"] if r["result_type"] == "tracklist"]
+    print(f"Found {len(search_results['results'])} results:")
+    for result in search_results["results"]:
+        print(f"  - {result['name']} ({result['result_type']})")
+        if result["result_type"] == "tracklist":
+            print(f"    URL: {result['url']}")
+            print(f"    Tracks: {result['metadata'].get('track_count', 'N/A')}")
+    print()
 
-        if tracklist_results:
-            first_tracklist = tracklist_results[0]
-            print(f"Retrieving tracklist: {first_tracklist['name']}")
+    return [r for r in search_results["results"] if r["result_type"] == "tracklist"]
 
-            # Retrieve tracklist (sync)
-            tracklist_data = client.get_tracklist(first_tracklist["url"])
 
-            if tracklist_data["success"]:
-                tracklist = tracklist_data["tracklist"]
-                print(f"DJ: {tracklist['dj_name']}")
-                print(f"Event: {tracklist.get('event_name', 'N/A')}")
-                print(f"Date: {tracklist.get('date', 'N/A')}")
-                print(f"Tracks: {len(tracklist['tracks'])}")
-                print()
+def display_tracklist_details(tracklist: dict[str, Any]) -> None:
+    """Display tracklist information and tracks."""
+    print(f"DJ: {tracklist['dj_name']}")
+    print(f"Event: {tracklist.get('event_name', 'N/A')}")
+    print(f"Date: {tracklist.get('date', 'N/A')}")
+    print(f"Tracks: {len(tracklist['tracks'])}")
+    print()
 
-                # Print first 5 tracks
-                print("First 5 tracks:")
-                for track in tracklist["tracks"][:5]:
-                    timestamp = track["timestamp"]["formatted_time"] if track.get("timestamp") else "??:??"
-                    artist = track["artist"]
-                    title = track["title"]
-                    remix = f" ({track['remix']})" if track.get("remix") else ""
-                    print(f"  {timestamp} - {artist} - {title}{remix}")
-                print()
+    # Print first 5 tracks
+    print("First 5 tracks:")
+    max_tracks_to_show = 5
+    for track in tracklist["tracks"][:max_tracks_to_show]:
+        timestamp = track["timestamp"]["formatted_time"] if track.get("timestamp") else "??:??"
+        artist = track["artist"]
+        title = track["title"]
+        remix = f" ({track['remix']})" if track.get("remix") else ""
+        print(f"  {timestamp} - {artist} - {title}{remix}")
+    print()
 
-                # Print transitions if available
-                if tracklist.get("transitions"):
-                    print(f"Transitions: {len(tracklist['transitions'])}")
-                    for trans in tracklist["transitions"][:3]:
-                        print(f"  Track {trans['from_track']} → {trans['to_track']}: {trans['transition_type']}")
+    # Print transitions if available
+    if tracklist.get("transitions"):
+        max_transitions_to_show = 3
+        print(f"Transitions: {len(tracklist['transitions'])}")
+        for trans in tracklist["transitions"][:max_transitions_to_show]:
+            print(f"  Track {trans['from_track']} → {trans['to_track']}: {trans['transition_type']}")
 
-    # Example async processing
+
+def demonstrate_async_processing(client: TracklistClient) -> None:
+    """Demonstrate async processing functionality."""
     print("\nExample of async processing:")
     print("Submitting tracklist for async retrieval...")
 
     test_url = "https://www.1001tracklists.com/tracklist/2npkg8l1/carl-cox-the-revolution-2024.html"
     async_result = client.get_tracklist(test_url, async_processing=True)
 
-    if async_result["success"]:
-        correlation_id = async_result["correlation_id"]
-        print(f"Job submitted with ID: {correlation_id}")
-        print("Waiting for completion...")
+    if not async_result["success"]:
+        return
 
-        try:
-            completed = client.wait_for_job(correlation_id, timeout=30)
-            print(f"Job completed! Status: {completed['status']}")
-            if "tracklist" in completed:
-                print(f"Retrieved {len(completed['tracklist']['tracks'])} tracks")
-        except TimeoutError as e:
-            print(f"Job timed out: {e}")
-        except RuntimeError as e:
-            print(f"Job failed: {e}")
+    correlation_id = async_result["correlation_id"]
+    print(f"Job submitted with ID: {correlation_id}")
+    print("Waiting for completion...")
+
+    timeout_seconds = 30
+    try:
+        completed = client.wait_for_job(correlation_id, timeout=timeout_seconds)
+        print(f"Job completed! Status: {completed['status']}")
+        if "tracklist" in completed:
+            print(f"Retrieved {len(completed['tracklist']['tracks'])} tracks")
+    except TimeoutError as e:
+        print(f"Job timed out: {e}")
+    except RuntimeError as e:
+        print(f"Job failed: {e}")
+
+
+def main() -> None:
+    """Example usage of the Tracklist Client."""
+    # Create client
+    client = TracklistClient()
+
+    # Check service health
+    check_service_health(client)
+
+    # Search for a DJ
+    print("Searching for Amelie Lens...")
+    search_limit = 5
+    search_results = client.search("dj", "Amelie Lens", limit=search_limit)
+
+    # Display and process search results
+    tracklist_results = display_search_results(search_results)
+
+    if tracklist_results:
+        first_tracklist = tracklist_results[0]
+        print(f"Retrieving tracklist: {first_tracklist['name']}")
+
+        # Retrieve tracklist (sync)
+        tracklist_data = client.get_tracklist(first_tracklist["url"])
+
+        if tracklist_data["success"]:
+            display_tracklist_details(tracklist_data["tracklist"])
+
+    # Demonstrate async processing
+    demonstrate_async_processing(client)
 
 
 async def async_main() -> None:

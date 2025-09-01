@@ -18,6 +18,7 @@ def create_test_file(size_mb: int) -> Path:
 
     Returns:
         Path to the created file
+
     """
     data = os.urandom(size_mb * 1024 * 1024)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".test") as f:
@@ -34,11 +35,12 @@ def benchmark_single_hash_sha256(file_path: Path, chunk_size: int = 8192) -> tup
 
     Returns:
         Tuple of (hash, time_taken)
+
     """
     start_time = time.perf_counter()
     sha256_hasher = hashlib.sha256()
 
-    with open(file_path, "rb") as f:
+    with Path(file_path).open("rb") as f:
         while chunk := f.read(chunk_size):
             sha256_hasher.update(chunk)
 
@@ -57,11 +59,12 @@ def benchmark_single_hash_xxh128(file_path: Path, chunk_size: int = 8192) -> tup
 
     Returns:
         Tuple of (hash, time_taken)
+
     """
     start_time = time.perf_counter()
     xxh128_hasher = xxhash.xxh128()
 
-    with open(file_path, "rb") as f:
+    with Path(file_path).open("rb") as f:
         while chunk := f.read(chunk_size):
             xxh128_hasher.update(chunk)
 
@@ -80,12 +83,13 @@ def benchmark_dual_hashes(file_path: Path, chunk_size: int = 8192) -> tuple[str,
 
     Returns:
         Tuple of (sha256_hash, xxh128_hash, time_taken)
+
     """
     start_time = time.perf_counter()
     sha256_hasher = hashlib.sha256()
     xxh128_hasher = xxhash.xxh128()
 
-    with open(file_path, "rb") as f:
+    with Path(file_path).open("rb") as f:
         while chunk := f.read(chunk_size):
             sha256_hasher.update(chunk)
             xxh128_hasher.update(chunk)
@@ -129,7 +133,7 @@ def run_benchmarks() -> None:
                 + f"{sha256_time:.3f}s".ljust(15)
                 + f"{xxh128_time:.3f}s".ljust(15)
                 + f"{dual_time:.3f}s".ljust(15)
-                + f"+{overhead_pct:.1f}%".ljust(10)
+                + f"+{overhead_pct:.1f}%".ljust(10),
             )
 
         finally:

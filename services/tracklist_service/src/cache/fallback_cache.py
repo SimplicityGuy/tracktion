@@ -2,10 +2,11 @@
 
 import json
 import logging
-from datetime import datetime, timedelta, UTC
-from typing import Dict, Optional, Any, List
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from enum import Enum
+from typing import Any
+
 import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
@@ -25,14 +26,14 @@ class CachedItem:
     """Cached data with metadata."""
 
     key: str
-    data: Dict[str, Any]
+    data: dict[str, Any]
     cached_at: datetime
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
     quality_score: float = 1.0
     source: str = "primary"
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     access_count: int = 0
-    last_accessed: Optional[datetime] = None
+    last_accessed: datetime | None = None
 
     @property
     def age_seconds(self) -> float:
@@ -69,7 +70,7 @@ class CachedItem:
 
         return max(0.0, min(1.0, score - age_penalty))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
         return {
             "key": self.key,
@@ -80,22 +81,22 @@ class CachedItem:
             "source": self.source,
             "metadata": self.metadata,
             "access_count": self.access_count,
-            "last_accessed": self.last_accessed.isoformat() if self.last_accessed else None,
+            "last_accessed": (self.last_accessed.isoformat() if self.last_accessed else None),
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CachedItem":
+    def from_dict(cls, data: dict[str, Any]) -> "CachedItem":
         """Create from dictionary."""
         return cls(
             key=data["key"],
             data=data["data"],
             cached_at=datetime.fromisoformat(data["cached_at"]),
-            expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
+            expires_at=(datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None),
             quality_score=data.get("quality_score", 1.0),
             source=data.get("source", "primary"),
             metadata=data.get("metadata", {}),
             access_count=data.get("access_count", 0),
-            last_accessed=datetime.fromisoformat(data["last_accessed"]) if data.get("last_accessed") else None,
+            last_accessed=(datetime.fromisoformat(data["last_accessed"]) if data.get("last_accessed") else None),
         )
 
 
@@ -104,7 +105,7 @@ class FallbackCache:
 
     def __init__(
         self,
-        redis_client: Optional[redis.Redis[str]] = None,
+        redis_client: redis.Redis | None = None,
         default_ttl: int = 3600,
         max_fallback_age: int = 86400 * 7,  # 7 days
     ):
@@ -118,7 +119,7 @@ class FallbackCache:
         self.redis_client = redis_client
         self.default_ttl = default_ttl
         self.max_fallback_age = max_fallback_age
-        self._memory_cache: Dict[str, CachedItem] = {}
+        self._memory_cache: dict[str, CachedItem] = {}
         self._cache_stats = {
             "hits": 0,
             "misses": 0,
@@ -129,9 +130,9 @@ class FallbackCache:
     async def get_with_fallback(
         self,
         key: str,
-        max_age: Optional[int] = None,
+        max_age: int | None = None,
         strategy: CacheStrategy = CacheStrategy.FLEXIBLE,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get cached data with fallback options.
 
         Args:
@@ -173,7 +174,7 @@ class FallbackCache:
         self._cache_stats["misses"] += 1
         return None
 
-    def calculate_validity_score(self, cached_data: Dict[str, Any]) -> float:
+    def calculate_validity_score(self, cached_data: dict[str, Any]) -> float:
         """Calculate validity score for cached data.
 
         Args:
@@ -204,10 +205,10 @@ class FallbackCache:
     async def set_with_quality(
         self,
         key: str,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         quality_score: float = 1.0,
-        ttl: Optional[int] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        ttl: int | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Set cached data with quality score.
 
@@ -240,7 +241,7 @@ class FallbackCache:
         # Store in fallback layer
         await self._store_fallback(item)
 
-    async def warm_cache(self, keys: List[str], fetch_func: Optional[Any] = None) -> Dict[str, bool]:
+    async def warm_cache(self, keys: list[str], fetch_func: Any | None = None) -> dict[str, bool]:
         """Warm cache for specified keys.
 
         Args:
@@ -299,7 +300,7 @@ class FallbackCache:
         logger.info(f"Cleared {cleared} expired cache items")
         return cleared
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics.
 
         Returns:
@@ -316,8 +317,8 @@ class FallbackCache:
         }
 
     def _evaluate_cached_item(
-        self, item: CachedItem, max_age: Optional[int], strategy: CacheStrategy
-    ) -> Optional[dict[str, Any]]:
+        self, item: CachedItem, max_age: int | None, strategy: CacheStrategy
+    ) -> dict[str, Any] | None:
         """Evaluate if cached item should be returned.
 
         Args:
@@ -348,7 +349,7 @@ class FallbackCache:
 
         return item.data
 
-    async def _get_from_redis(self, key: str) -> Optional[CachedItem]:
+    async def _get_from_redis(self, key: str) -> CachedItem | None:
         """Get cached item from Redis.
 
         Args:
@@ -416,7 +417,7 @@ class FallbackCache:
         except Exception as e:
             logger.error(f"Error storing fallback: {e}")
 
-    async def _get_fallback_data(self, key: str) -> Optional[dict[str, Any]]:
+    async def _get_fallback_data(self, key: str) -> dict[str, Any] | None:
         """Get data from fallback layers.
 
         Args:

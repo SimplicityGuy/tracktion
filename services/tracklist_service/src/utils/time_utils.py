@@ -6,7 +6,6 @@ and avoid code duplication across the tracklist service.
 
 import re
 from datetime import timedelta
-from typing import Optional, Union
 
 
 def parse_time_string(time_str: str) -> timedelta:
@@ -61,7 +60,7 @@ def parse_time_string(time_str: str) -> timedelta:
                 minutes = int(parts[0])
                 seconds = int(parts[1])
                 return timedelta(minutes=minutes, seconds=seconds)
-            elif len(parts) == 3:
+            if len(parts) == 3:
                 # HH:MM:SS or H:MM:SS format
                 hours = int(parts[0])
                 minutes = int(parts[1])
@@ -109,7 +108,7 @@ def timedelta_to_milliseconds(td: timedelta) -> int:
     return int(td.total_seconds() * 1000)
 
 
-def milliseconds_to_timedelta(ms: Union[int, float]) -> timedelta:
+def milliseconds_to_timedelta(ms: int | float) -> timedelta:
     """Convert milliseconds to timedelta.
 
     Args:
@@ -154,8 +153,8 @@ def format_timedelta(td: timedelta, format: str = "HH:MM:SS") -> str:
         # Convert hours to minutes if present
         total_minutes = hours * 60 + minutes
         return f"{total_minutes:02d}:{seconds:02d}"
-    else:  # HH:MM:SS
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    # HH:MM:SS
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 
 def parse_cue_time(time_str: str) -> float:
@@ -213,7 +212,7 @@ def seconds_to_cue_time(seconds: float) -> str:
 
 def validate_time_range(
     start_time: timedelta,
-    end_time: Optional[timedelta],
+    end_time: timedelta | None,
     min_duration: timedelta = timedelta(seconds=30),
     max_duration: timedelta = timedelta(minutes=20),
 ) -> bool:

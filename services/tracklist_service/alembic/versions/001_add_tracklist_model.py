@@ -6,9 +6,10 @@ Create Date: 2025-08-27 12:00:00.000000
 
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op  # type: ignore[attr-defined]  # Alembic adds op at runtime
 
 # revision identifiers, used by Alembic.
 revision = "001"
@@ -34,7 +35,13 @@ def upgrade() -> None:
     )
 
     # Add foreign key constraint to recordings table
-    op.create_foreign_key("fk_tracklists_recording_id", "tracklists", "recordings", ["audio_file_id"], ["id"])
+    op.create_foreign_key(
+        "fk_tracklists_recording_id",
+        "tracklists",
+        "recordings",
+        ["audio_file_id"],
+        ["id"],
+    )
 
     # Add indexes for performance
     op.create_index("ix_tracklists_audio_file_id", "tracklists", ["audio_file_id"])

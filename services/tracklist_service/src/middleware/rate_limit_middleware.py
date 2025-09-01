@@ -1,13 +1,15 @@
 """Rate limiting middleware for FastAPI applications."""
 
 import logging
-from typing import Callable, Any, Union
+from collections.abc import Callable
+from typing import Any
+
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ..auth.dependencies import authenticate_from_request
-from ..rate_limiting.limiter import RateLimiter
+from src.auth.dependencies import authenticate_from_request
+from src.rate_limiting.limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.limiter = rate_limiter
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Any]) -> Union[Response, JSONResponse]:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Any]) -> Response | JSONResponse:
         """Process request through rate limiting middleware.
 
         Args:
@@ -37,7 +39,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """
         # Skip rate limiting for health check and documentation endpoints
         if request.url.path in ["/health", "/docs", "/redoc", "/openapi.json"]:
-            return await call_next(request)  # type: ignore
+            return await call_next(request)
 
         try:
             # Authenticate the request to get user information
@@ -47,7 +49,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # For now, we'll let the authentication error propagate
             # In production, you might want to apply anonymous rate limits
             logger.warning(f"Authentication failed for rate limiting: {e}")
-            return await call_next(request)  # type: ignore
+            return await call_next(request)
 
         # Check rate limits
         rate_limit_result = await self.limiter.check_rate_limit(user)
@@ -103,4 +105,4 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             },
         )
 
-        return response  # type: ignore
+        return response

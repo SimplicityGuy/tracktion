@@ -7,15 +7,16 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.tracklist_service.src.services.file_lifecycle_service import FileLifecycleService
+from services.tracklist_service.src.services.file_lifecycle_service import (
+    FileLifecycleService,
+)
 from shared.core_types.src.models import Recording
 
 
 @pytest.fixture
 def mock_session():
     """Create a mock database session."""
-    session = AsyncMock(spec=AsyncSession)
-    return session
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
@@ -52,7 +53,10 @@ class TestFileLifecycleService:
 
         # Test
         success, error = await lifecycle_service.handle_file_created(
-            file_path="/music/new.mp3", sha256_hash="hash123", xxh128_hash="hash456", file_size=2048
+            file_path="/music/new.mp3",
+            sha256_hash="hash123",
+            xxh128_hash="hash456",
+            file_size=2048,
         )
 
         # Verify
@@ -94,7 +98,10 @@ class TestFileLifecycleService:
 
         # Test
         success, error = await lifecycle_service.handle_file_modified(
-            file_path="/music/test.mp3", sha256_hash="newhash123", xxh128_hash="newhash456", file_size=4096
+            file_path="/music/test.mp3",
+            sha256_hash="newhash123",
+            xxh128_hash="newhash456",
+            file_size=4096,
         )
 
         # Verify
@@ -119,7 +126,10 @@ class TestFileLifecycleService:
             mock_create.return_value = (True, None)
 
             success, error = await lifecycle_service.handle_file_modified(
-                file_path="/music/new.mp3", sha256_hash="hash123", xxh128_hash="hash456", file_size=2048
+                file_path="/music/new.mp3",
+                sha256_hash="hash123",
+                xxh128_hash="hash456",
+                file_size=2048,
             )
 
             # Verify
@@ -186,7 +196,10 @@ class TestFileLifecycleService:
 
         # Test
         success, error = await lifecycle_service.handle_file_moved(
-            old_path="/music/test.mp3", new_path="/music/moved/test.mp3", sha256_hash="abc123", xxh128_hash="def456"
+            old_path="/music/test.mp3",
+            new_path="/music/moved/test.mp3",
+            sha256_hash="abc123",
+            xxh128_hash="def456",
         )
 
         # Verify
@@ -209,7 +222,10 @@ class TestFileLifecycleService:
             mock_create.return_value = (True, None)
 
             success, error = await lifecycle_service.handle_file_moved(
-                old_path="/music/old.mp3", new_path="/music/new.mp3", sha256_hash="hash123", xxh128_hash="hash456"
+                old_path="/music/old.mp3",
+                new_path="/music/new.mp3",
+                sha256_hash="hash123",
+                xxh128_hash="hash456",
             )
 
             # Verify
@@ -225,7 +241,10 @@ class TestFileLifecycleService:
 
         # Test
         success, error = await lifecycle_service.handle_file_renamed(
-            old_path="/music/test.mp3", new_path="/music/renamed.mp3", sha256_hash="abc123", xxh128_hash="def456"
+            old_path="/music/test.mp3",
+            new_path="/music/renamed.mp3",
+            sha256_hash="abc123",
+            xxh128_hash="def456",
         )
 
         # Verify
@@ -284,7 +303,10 @@ class TestFileLifecycleService:
         old_recording2.deleted_at = datetime.now(UTC) - timedelta(days=45)
 
         mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [old_recording1, old_recording2]
+        mock_result.scalars.return_value.all.return_value = [
+            old_recording1,
+            old_recording2,
+        ]
         mock_session.execute.return_value = mock_result
 
         # Test

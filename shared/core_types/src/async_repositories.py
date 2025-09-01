@@ -1,14 +1,15 @@
 """Async repository pattern implementations for database operations."""
 
 import logging
-from typing import List, Optional, Dict, Any, AsyncGenerator, cast
+from collections.abc import AsyncGenerator
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, update, delete, String
+from sqlalchemy import String, delete, select, update
 from sqlalchemy.orm import selectinload
 
-from .models import Recording, Metadata, Tracklist
 from .async_database import AsyncDatabaseManager
+from .models import Metadata, Recording, Tracklist
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,11 @@ class AsyncRecordingRepository:
         self.db = db_manager
 
     async def create(
-        self, file_path: str, file_name: str, sha256_hash: Optional[str] = None, xxh128_hash: Optional[str] = None
+        self,
+        file_path: str,
+        file_name: str,
+        sha256_hash: str | None = None,
+        xxh128_hash: str | None = None,
     ) -> Recording:
         """Create a new recording.
 
@@ -40,14 +45,17 @@ class AsyncRecordingRepository:
         """
         async with self.db.get_db_session() as session:
             recording = Recording(
-                file_path=file_path, file_name=file_name, sha256_hash=sha256_hash, xxh128_hash=xxh128_hash
+                file_path=file_path,
+                file_name=file_name,
+                sha256_hash=sha256_hash,
+                xxh128_hash=xxh128_hash,
             )
             session.add(recording)
             await session.flush()
             await session.refresh(recording)
             return recording
 
-    async def get_by_id(self, recording_id: UUID) -> Optional[Recording]:
+    async def get_by_id(self, recording_id: UUID) -> Recording | None:
         """Get recording by ID.
 
         Args:
@@ -59,9 +67,9 @@ class AsyncRecordingRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Recording).where(Recording.id == recording_id)
             result = await session.execute(stmt)
-            return cast(Optional[Recording], result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Recording | None
 
-    async def get_by_file_path(self, file_path: str) -> Optional[Recording]:
+    async def get_by_file_path(self, file_path: str) -> Recording | None:
         """Get recording by file path.
 
         Args:
@@ -73,9 +81,9 @@ class AsyncRecordingRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Recording).where(Recording.file_path == file_path)
             result = await session.execute(stmt)
-            return cast(Optional[Recording], result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Recording | None
 
-    async def get_by_hash(self, sha256_hash: str) -> Optional[Recording]:
+    async def get_by_hash(self, sha256_hash: str) -> Recording | None:
         """Get recording by SHA256 hash.
 
         Args:
@@ -87,9 +95,9 @@ class AsyncRecordingRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Recording).where(Recording.sha256_hash == sha256_hash)
             result = await session.execute(stmt)
-            return cast(Optional[Recording], result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Recording | None
 
-    async def get_all(self, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Recording]:
+    async def get_all(self, limit: int | None = None, offset: int | None = None) -> list[Recording]:
         """Get all recordings with optional pagination.
 
         Args:
@@ -108,7 +116,7 @@ class AsyncRecordingRepository:
             result = await session.execute(stmt)
             return list(result.scalars().all())
 
-    async def update(self, recording_id: UUID, **kwargs: Any) -> Optional[Recording]:
+    async def update(self, recording_id: UUID, **kwargs: Any) -> Recording | None:
         """Update a recording.
 
         Args:
@@ -122,7 +130,7 @@ class AsyncRecordingRepository:
             stmt = update(Recording).where(Recording.id == recording_id).values(**kwargs).returning(Recording)
             result = await session.execute(stmt)
             await session.commit()
-            return cast(Optional[Recording], result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Recording | None
 
     async def delete(self, recording_id: UUID) -> bool:
         """Delete a recording.
@@ -137,9 +145,9 @@ class AsyncRecordingRepository:
             stmt = delete(Recording).where(Recording.id == recording_id)
             result = await session.execute(stmt)
             await session.commit()
-            return cast(bool, result.rowcount > 0)
+            return result.rowcount > 0  # type: ignore[no-any-return] # Comparison operation returns bool but mypy sees result.rowcount as Any
 
-    async def batch_create(self, recordings: List[Dict[str, Any]]) -> List[Recording]:
+    async def batch_create(self, recordings: list[dict[str, Any]]) -> list[Recording]:
         """Create multiple recordings in a batch.
 
         Args:
@@ -186,7 +194,7 @@ class AsyncMetadataRepository:
             await session.refresh(metadata)
             return metadata
 
-    async def get_by_recording(self, recording_id: UUID) -> List[Metadata]:
+    async def get_by_recording(self, recording_id: UUID) -> list[Metadata]:
         """Get all metadata for a recording.
 
         Args:
@@ -200,7 +208,7 @@ class AsyncMetadataRepository:
             result = await session.execute(stmt)
             return list(result.scalars().all())
 
-    async def get_by_key(self, recording_id: UUID, key: str) -> Optional[Metadata]:
+    async def get_by_key(self, recording_id: UUID, key: str) -> Metadata | None:
         """Get metadata by recording ID and key.
 
         Args:
@@ -213,9 +221,9 @@ class AsyncMetadataRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Metadata).where(Metadata.recording_id == recording_id, Metadata.key == key)
             result = await session.execute(stmt)
-            return cast(Optional[Metadata], result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Metadata | None
 
-    async def update(self, metadata_id: int, value: str) -> Optional[Metadata]:
+    async def update(self, metadata_id: int, value: str) -> Metadata | None:
         """Update a metadata value.
 
         Args:
@@ -229,7 +237,7 @@ class AsyncMetadataRepository:
             stmt = update(Metadata).where(Metadata.id == metadata_id).values(value=value).returning(Metadata)
             result = await session.execute(stmt)
             await session.commit()
-            return cast(Optional[Metadata], result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Metadata | None
 
     async def delete(self, metadata_id: int) -> bool:
         """Delete a metadata entry.
@@ -244,9 +252,9 @@ class AsyncMetadataRepository:
             stmt = delete(Metadata).where(Metadata.id == metadata_id)
             result = await session.execute(stmt)
             await session.commit()
-            return cast(bool, result.rowcount > 0)
+            return result.rowcount > 0  # type: ignore[no-any-return] # Comparison operation returns bool but mypy sees result.rowcount as Any
 
-    async def batch_create(self, recording_id: UUID, metadata_dict: Dict[str, str]) -> List[Metadata]:
+    async def batch_create(self, recording_id: UUID, metadata_dict: dict[str, str]) -> list[Metadata]:
         """Create multiple metadata entries for a recording.
 
         Args:
@@ -277,7 +285,11 @@ class AsyncTracklistRepository:
         self.db = db_manager
 
     async def create(
-        self, recording_id: UUID, source: str, tracks: Dict[str, Any], cue_file_path: Optional[str] = None
+        self,
+        recording_id: UUID,
+        source: str,
+        tracks: dict[str, Any],
+        cue_file_path: str | None = None,
     ) -> Tracklist:
         """Create a new tracklist.
 
@@ -291,13 +303,18 @@ class AsyncTracklistRepository:
             Created Tracklist instance
         """
         async with self.db.get_db_session() as session:
-            tracklist = Tracklist(recording_id=recording_id, source=source, tracks=tracks, cue_file_path=cue_file_path)
+            tracklist = Tracklist(
+                recording_id=recording_id,
+                source=source,
+                tracks=tracks,
+                cue_file_path=cue_file_path,
+            )
             session.add(tracklist)
             await session.flush()
             await session.refresh(tracklist)
             return tracklist
 
-    async def get_by_recording(self, recording_id: UUID) -> Optional[Tracklist]:
+    async def get_by_recording(self, recording_id: UUID) -> Tracklist | None:
         """Get tracklist for a recording.
 
         Args:
@@ -309,9 +326,9 @@ class AsyncTracklistRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Tracklist).where(Tracklist.recording_id == recording_id)
             result = await session.execute(stmt)
-            return cast(Optional[Tracklist], result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Tracklist | None
 
-    async def get_with_recording(self, tracklist_id: int) -> Optional[Tracklist]:
+    async def get_with_recording(self, tracklist_id: int) -> Tracklist | None:
         """Get tracklist with its associated recording.
 
         Args:
@@ -323,9 +340,9 @@ class AsyncTracklistRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Tracklist).options(selectinload(Tracklist.recording)).where(Tracklist.id == tracklist_id)
             result = await session.execute(stmt)
-            return cast(Optional[Tracklist], result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Tracklist | None
 
-    async def update(self, tracklist_id: int, **kwargs: Any) -> Optional[Tracklist]:
+    async def update(self, tracklist_id: int, **kwargs: Any) -> Tracklist | None:
         """Update a tracklist.
 
         Args:
@@ -339,7 +356,7 @@ class AsyncTracklistRepository:
             stmt = update(Tracklist).where(Tracklist.id == tracklist_id).values(**kwargs).returning(Tracklist)
             result = await session.execute(stmt)
             await session.commit()
-            return cast(Optional[Tracklist], result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Tracklist | None
 
     async def delete(self, tracklist_id: int) -> bool:
         """Delete a tracklist.
@@ -354,9 +371,9 @@ class AsyncTracklistRepository:
             stmt = delete(Tracklist).where(Tracklist.id == tracklist_id)
             result = await session.execute(stmt)
             await session.commit()
-            return cast(bool, result.rowcount > 0)
+            return result.rowcount > 0  # type: ignore[no-any-return] # Comparison operation returns bool but mypy sees result.rowcount as Any
 
-    async def search_by_track(self, track_name: str) -> List[Tracklist]:
+    async def search_by_track(self, track_name: str) -> list[Tracklist]:
         """Search tracklists by track name.
 
         Args:
@@ -383,7 +400,7 @@ class AsyncBatchOperations:
         """
         self.db = db_manager
 
-    async def bulk_insert_recordings(self, recordings_data: List[Dict[str, Any]]) -> int:
+    async def bulk_insert_recordings(self, recordings_data: list[dict[str, Any]]) -> int:
         """Bulk insert recordings efficiently.
 
         Args:
@@ -398,7 +415,7 @@ class AsyncBatchOperations:
             await session.commit()
             return len(recordings_data)
 
-    async def bulk_update_recordings(self, updates: List[Dict[str, Any]]) -> int:
+    async def bulk_update_recordings(self, updates: list[dict[str, Any]]) -> int:
         """Bulk update recordings efficiently.
 
         Args:
@@ -415,7 +432,7 @@ class AsyncBatchOperations:
             await session.commit()
             return len(updates)
 
-    async def stream_large_dataset(self, query_limit: int = 1000) -> AsyncGenerator[List[Recording], None]:
+    async def stream_large_dataset(self, query_limit: int = 1000) -> AsyncGenerator[list[Recording]]:
         """Stream large dataset in chunks for memory efficiency.
 
         Args:

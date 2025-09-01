@@ -6,7 +6,11 @@ from uuid import uuid4
 import pytest
 
 from shared.core_types.src.models import Metadata, Recording, Tracklist
-from shared.core_types.src.repositories import MetadataRepository, RecordingRepository, TracklistRepository
+from shared.core_types.src.repositories import (
+    MetadataRepository,
+    RecordingRepository,
+    TracklistRepository,
+)
 
 
 class TestRecordingRepository:
@@ -33,7 +37,10 @@ class TestRecordingRepository:
 
         # Call create method
         repository.create(
-            file_path="/path/to/file.wav", file_name="file.wav", sha256_hash="abc123", xxh128_hash="def456"
+            file_path="/path/to/file.wav",
+            file_name="file.wav",
+            sha256_hash="abc123",
+            xxh128_hash="def456",
         )
 
         # Verify session methods were called
@@ -320,7 +327,10 @@ class TestMetadataRepository:
         _, session = mock_db_manager
         recording_id = uuid4()
 
-        metadata_items = [{"key": "artist", "value": "Test Artist"}, {"key": "album", "value": "Test Album"}]
+        metadata_items = [
+            {"key": "artist", "value": "Test Artist"},
+            {"key": "album", "value": "Test Album"},
+        ]
 
         # Call bulk_create
         result = repository.bulk_create(recording_id, metadata_items)
@@ -361,7 +371,10 @@ class TestTracklistRepository:
         with patch.object(Tracklist, "validate_tracks", return_value=True):
             # Call create method
             repository.create(
-                recording_id=recording_id, source="manual", tracks=tracks, cue_file_path="/path/to/file.cue"
+                recording_id=recording_id,
+                source="manual",
+                tracks=tracks,
+                cue_file_path="/path/to/file.cue",
             )
 
             # Verify session methods were called
@@ -377,10 +390,11 @@ class TestTracklistRepository:
         tracks = [{"invalid": "structure"}]
 
         # Mock the validate_tracks method to return False
-        with patch.object(Tracklist, "validate_tracks", return_value=False):
-            # Call create method and expect ValueError
-            with pytest.raises(ValueError, match="Invalid tracks structure"):
-                repository.create(recording_id=recording_id, source="manual", tracks=tracks)
+        with (
+            patch.object(Tracklist, "validate_tracks", return_value=False),
+            pytest.raises(ValueError, match="Invalid tracks structure"),
+        ):
+            repository.create(recording_id=recording_id, source="manual", tracks=tracks)
 
     def test_get_by_recording(self, repository, mock_db_manager):
         """Test getting tracklist by recording."""

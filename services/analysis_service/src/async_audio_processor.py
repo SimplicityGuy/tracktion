@@ -6,12 +6,14 @@ simultaneously using asyncio and ThreadPoolExecutor for CPU-bound operations.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
 import psutil
 
@@ -37,7 +39,7 @@ class AudioTaskConfig:
     max_threads_absolute: int = 32  # Absolute maximum threads
 
     # Resource limits
-    max_concurrent_analyses: Optional[int] = None  # None = CPU count * 2
+    max_concurrent_analyses: int | None = None  # None = CPU count * 2
     max_memory_per_file_mb: int = 100
     task_timeout_seconds: int = 30
 
@@ -59,7 +61,7 @@ class AsyncAudioProcessor:
     parallel audio analysis operations.
     """
 
-    def __init__(self, config: Optional[AudioTaskConfig] = None):
+    def __init__(self, config: AudioTaskConfig | None = None):
         """
         Initialize the async audio processor.
 
@@ -83,7 +85,7 @@ class AsyncAudioProcessor:
         self.analysis_semaphore = asyncio.Semaphore(max_concurrent)
 
         # Task tracking
-        self.active_tasks: Dict[str, asyncio.Task] = {}
+        self.active_tasks: dict[str, asyncio.Task] = {}
         self.pending_queue: asyncio.Queue = asyncio.Queue(maxsize=self.config.max_queue_size)
         self.completed_count = 0
         self.failed_count = 0
@@ -125,7 +127,7 @@ class AsyncAudioProcessor:
         processing_func: Callable,
         *args: Any,
         priority: TaskPriority = TaskPriority.NORMAL,
-        task_id: Optional[str] = None,
+        task_id: str | None = None,
         **kwargs: Any,
     ) -> Any:
         """
@@ -167,14 +169,14 @@ class AsyncAudioProcessor:
                 logger.debug(f"Completed processing for {audio_file}")
                 return result
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.failed_count += 1
                 logger.error(f"Processing timeout for {audio_file} after {self.config.task_timeout_seconds}s")
                 raise
 
             except Exception as e:
                 self.failed_count += 1
-                logger.error(f"Processing failed for {audio_file}: {str(e)}")
+                logger.error(f"Processing failed for {audio_file}: {e!s}")
                 raise
 
             finally:
@@ -247,9 +249,9 @@ class AsyncAudioProcessor:
         self,
         audio_files: list[str],
         processing_func: Callable[..., Any],
-        max_batch_size: Optional[int] = None,
+        max_batch_size: int | None = None,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Process multiple audio files in parallel batches.
 
@@ -285,7 +287,7 @@ class AsyncAudioProcessor:
 
         return results
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get current processor statistics.
 
@@ -312,11 +314,9 @@ class AsyncAudioProcessor:
             if not task.done():
                 task.cancel()
                 logger.debug(f"Cancelling task {task_id}")
-                try:
-                    await task
-                except asyncio.CancelledError:
+                with contextlib.suppress(asyncio.CancelledError):
                     # Expected when task is cancelled
-                    pass
+                    await task
                 logger.debug(f"Cancelled task {task_id}")
 
         # Shutdown thread pool
@@ -339,14 +339,14 @@ class AudioAnalysisScheduler:
         self.processor = processor
         self.priority_queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
         self.running = False
-        self.scheduler_task: Optional[asyncio.Task] = None
+        self.scheduler_task: asyncio.Task | None = None
 
     async def schedule_analysis(
         self,
         audio_file: str,
         processing_func: Callable[..., Any],
         priority: TaskPriority = TaskPriority.NORMAL,
-        callback: Optional[Callable] = None,
+        callback: Callable | None = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -381,10 +381,8 @@ class AudioAnalysisScheduler:
         self.running = False
         if self.scheduler_task:
             self.scheduler_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.scheduler_task
-            except asyncio.CancelledError:
-                pass
         logger.info("AudioAnalysisScheduler stopped")
 
     async def _process_queue(self) -> None:
@@ -408,15 +406,15 @@ class AudioAnalysisScheduler:
                             callback(audio_file, result, None)
 
                 except Exception as e:
-                    logger.error(f"Task failed for {audio_file}: {str(e)}")
+                    logger.error(f"Task failed for {audio_file}: {e!s}")
                     if callback:
                         if asyncio.iscoroutinefunction(callback):
                             await callback(audio_file, None, e)
                         else:
                             callback(audio_file, None, e)
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # No tasks in queue, continue
                 continue
             except Exception as e:
-                logger.error(f"Scheduler error: {str(e)}")
+                logger.error(f"Scheduler error: {e!s}")

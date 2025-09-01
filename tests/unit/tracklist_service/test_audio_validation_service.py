@@ -9,7 +9,9 @@ from uuid import uuid4
 import pytest
 
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
-from services.tracklist_service.src.services.audio_validation_service import AudioValidationService
+from services.tracklist_service.src.services.audio_validation_service import (
+    AudioValidationService,
+)
 
 
 class TestAudioValidationService:

@@ -1,16 +1,16 @@
 """CUE file editor module for modifying CUE sheets."""
 
-from pathlib import Path
-from typing import Optional, List, Dict, Any, Union, Tuple
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
 import copy
 import logging
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
-from .parser import CueParser
-from .generator import CueGenerator, CueDisc, CueFile
-from .models import CueSheet, Track, CueTime
 from .backup import BackupManager
+from .generator import CueDisc, CueFile, CueGenerator, CueTrack
+from .models import CueSheet, CueTime, FileReference, Track
+from .parser import CueParser
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +21,10 @@ class EditCommand(ABC):
     @abstractmethod
     def execute(self, editor: "CueEditor") -> None:
         """Execute the command."""
-        pass
 
     @abstractmethod
     def undo(self, editor: "CueEditor") -> None:
         """Undo the command."""
-        pass
 
 
 @dataclass
@@ -34,15 +32,19 @@ class AddTrackCommand(EditCommand):
     """Command to add a track."""
 
     title: str
-    performer: Optional[str]
-    start_time: Optional[Union[str, CueTime]]
+    performer: str | None
+    start_time: str | CueTime | None
     track_type: str = "AUDIO"
     file_index: int = -1
-    added_track: Optional[Track] = None
+    added_track: Track | None = None
 
     def execute(self, editor: "CueEditor") -> None:
         self.added_track = editor._add_track_impl(
-            self.title, self.performer, self.start_time, self.track_type, self.file_index
+            self.title,
+            self.performer,
+            self.start_time,
+            self.track_type,
+            self.file_index,
         )
 
     def undo(self, editor: "CueEditor") -> None:
@@ -55,7 +57,7 @@ class RemoveTrackCommand(EditCommand):
     """Command to remove a track."""
 
     track_number: int
-    removed_track: Optional[Track] = None
+    removed_track: Track | None = None
     file_index: int = -1
 
     def execute(self, editor: "CueEditor") -> None:
@@ -72,7 +74,7 @@ class RemoveTrackCommand(EditCommand):
     def undo(self, editor: "CueEditor") -> None:
         if self.removed_track and self.file_index >= 0 and editor.cue_sheet:
             # Re-insert the track at its original position
-            all_tracks: List[Track] = []
+            all_tracks: list[Track] = []
             for file_ref in editor.cue_sheet.files:
                 all_tracks.extend(file_ref.tracks)
 
@@ -100,9 +102,9 @@ class RemoveTrackCommand(EditCommand):
 class UpdateMetadataCommand(EditCommand):
     """Command to update metadata."""
 
-    track_number: Optional[int]
-    metadata: Dict[str, Any]
-    old_values: Optional[Dict[str, Any]] = None
+    track_number: int | None
+    metadata: dict[str, Any]
+    old_values: dict[str, Any] | None = None
 
     def execute(self, editor: "CueEditor") -> None:
         self.old_values = {}
@@ -132,7 +134,7 @@ class UpdateMetadataCommand(EditCommand):
 class CueEditor:
     """Editor for modifying CUE files while preserving format and validity."""
 
-    def __init__(self, backup_manager: Optional[BackupManager] = None, max_undo_history: int = 50):
+    def __init__(self, backup_manager: BackupManager | None = None, max_undo_history: int = 50):
         """Initialize CUE editor.
 
         Args:
@@ -142,16 +144,16 @@ class CueEditor:
         self.parser = CueParser()
         self.generator = CueGenerator()
         self.backup_manager = backup_manager or BackupManager()
-        self.cue_sheet: Optional[CueSheet] = None
-        self.original_format: Optional[str] = None
-        self.original_path: Optional[Path] = None
+        self.cue_sheet: CueSheet | None = None
+        self.original_format: str | None = None
+        self.original_path: Path | None = None
         self._dirty = False
-        self._original_content: Optional[str] = None  # For preserving formatting
-        self._format_style: Dict[str, Any] = {}  # Store formatting preferences
+        self._original_content: str | None = None  # For preserving formatting
+        self._format_style: dict[str, Any] = {}  # Store formatting preferences
 
         # Undo/redo support
-        self._undo_stack: List[EditCommand] = []
-        self._redo_stack: List[EditCommand] = []
+        self._undo_stack: list[EditCommand] = []
+        self._redo_stack: list[EditCommand] = []
         self._max_undo_history = max_undo_history
 
     @property
@@ -159,7 +161,7 @@ class CueEditor:
         """Check if CUE sheet has unsaved modifications."""
         return self._dirty
 
-    def load_cue_file(self, filepath: Union[str, Path]) -> CueSheet:
+    def load_cue_file(self, filepath: str | Path) -> CueSheet:
         """Load a CUE file for editing.
 
         Args:
@@ -171,7 +173,7 @@ class CueEditor:
         filepath = Path(filepath)
         self.original_path = filepath
 
-        with open(filepath, "r", encoding="utf-8") as f:
+        with Path(filepath).open(encoding="utf-8") as f:
             content = f.read()
 
         # Preserve original content for format preservation
@@ -186,7 +188,10 @@ class CueEditor:
         return self.cue_sheet
 
     def save_cue_file(
-        self, filepath: Optional[Union[str, Path]] = None, create_backup: bool = True, format_type: Optional[str] = None
+        self,
+        filepath: str | Path | None = None,
+        create_backup: bool = True,
+        format_type: str | None = None,
     ) -> Path:
         """Save the CUE sheet to file.
 
@@ -221,7 +226,7 @@ class CueEditor:
 
         # Write to file
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        with open(filepath, "w", encoding="utf-8") as f:
+        with Path(filepath).open("w", encoding="utf-8") as f:
             f.write(content)
 
         self._dirty = False
@@ -247,18 +252,22 @@ class CueEditor:
         """
         # Check REM fields for generator hints
         if cue_sheet.rem_fields:
+            format_detectors: list[tuple[str | tuple[str, ...], str]] = [
+                ("traktor", "traktor"),
+                ("serato", "serato"),
+                ("rekordbox", "rekordbox"),
+                (("kodi", "xbmc"), "kodi"),
+                (("cdj", "pioneer"), "cdj"),
+            ]
+
             for key, value in cue_sheet.rem_fields.items():
                 combined = f"{key} {value}".lower()
-                if "traktor" in combined:
-                    return "traktor"
-                elif "serato" in combined:
-                    return "serato"
-                elif "rekordbox" in combined:
-                    return "rekordbox"
-                elif "kodi" in combined or "xbmc" in combined:
-                    return "kodi"
-                elif "cdj" in combined or "pioneer" in combined:
-                    return "cdj"
+                for keywords, format_name in format_detectors:
+                    if isinstance(keywords, tuple):
+                        if any(keyword in combined for keyword in keywords):
+                            return format_name
+                    elif keywords in combined:
+                        return format_name
 
         # Check for CDJ-specific FLAGS
         for file_ref in cue_sheet.files:
@@ -285,7 +294,7 @@ class CueEditor:
                 indent_count = len(line) - len(line.lstrip())
                 self._format_style["indent"] = " " * (indent_count // 2)
                 break
-            elif line.startswith("\t"):
+            if line.startswith("\t"):
                 self._format_style["indent"] = "\t"
                 break
 
@@ -340,7 +349,7 @@ class CueEditor:
         """Mark the CUE sheet as modified."""
         self._dirty = True
 
-    def _convert_to_generator_format(self, cue_sheet: CueSheet) -> Tuple[CueDisc, List[CueFile]]:
+    def _convert_to_generator_format(self, cue_sheet: CueSheet) -> tuple[CueDisc, list[CueFile]]:
         """Convert CueSheet to generator format (CueDisc, list[CueFile]).
 
         Args:
@@ -349,8 +358,6 @@ class CueEditor:
         Returns:
             Tuple of (CueDisc, list[CueFile])
         """
-        from .generator import CueTrack
-
         # Create disc metadata
         disc = CueDisc(
             title=cue_sheet.title,
@@ -493,11 +500,9 @@ class CueEditor:
         value = value.replace("\\n", "\n")
         value = value.replace("\\r", "\r")
         value = value.replace("\\t", "\t")
-        value = value.replace("\\\\", "\\")
+        return value.replace("\\\\", "\\")
 
-        return value
-
-    def validate_timestamps(self) -> List[str]:
+    def validate_timestamps(self) -> list[str]:
         """Validate that timestamps don't overlap or exceed file duration.
 
         Returns:
@@ -508,14 +513,17 @@ class CueEditor:
 
         errors = []
 
-        for file_idx, file_ref in enumerate(self.cue_sheet.files):
+        for _file_idx, file_ref in enumerate(self.cue_sheet.files):
             prev_track = None
 
-            for track_idx, track in enumerate(file_ref.tracks):
+            for _track_idx, track in enumerate(file_ref.tracks):
                 # Check INDEX 00 comes before INDEX 01
-                if 0 in track.indices and 1 in track.indices:
-                    if track.indices[0].to_frames() >= track.indices[1].to_frames():
-                        errors.append(f"Track {track.number}: INDEX 00 must come before INDEX 01")
+                if (
+                    0 in track.indices
+                    and 1 in track.indices
+                    and track.indices[0].to_frames() >= track.indices[1].to_frames()
+                ):
+                    errors.append(f"Track {track.number}: INDEX 00 must come before INDEX 01")
 
                 # Check for required INDEX 01
                 if 1 not in track.indices:
@@ -523,9 +531,13 @@ class CueEditor:
                     continue
 
                 # Check for overlap with previous track
-                if prev_track and 1 in prev_track.indices and 1 in track.indices:
-                    if track.indices[1].to_frames() <= prev_track.indices[1].to_frames():
-                        errors.append(f"Track {track.number}: Start time overlaps with track {prev_track.number}")
+                if (
+                    prev_track
+                    and 1 in prev_track.indices
+                    and 1 in track.indices
+                    and track.indices[1].to_frames() <= prev_track.indices[1].to_frames()
+                ):
+                    errors.append(f"Track {track.number}: Start time overlaps with track {prev_track.number}")
 
                 # Check all indices are in order within the track
                 sorted_indices = sorted(track.indices.keys())
@@ -544,11 +556,11 @@ class CueEditor:
     def add_track(
         self,
         title: str,
-        performer: Optional[str] = None,
-        start_time: Optional[Union[str, CueTime]] = None,
+        performer: str | None = None,
+        start_time: str | CueTime | None = None,
         track_type: str = "AUDIO",
         file_index: int = -1,
-    ) -> Optional[Track]:
+    ) -> Track | None:
         """Add a new track to the CUE sheet.
 
         Args:
@@ -568,8 +580,8 @@ class CueEditor:
     def _add_track_impl(
         self,
         title: str,
-        performer: Optional[str] = None,
-        start_time: Optional[Union[str, CueTime]] = None,
+        performer: str | None = None,
+        start_time: str | CueTime | None = None,
         track_type: str = "AUDIO",
         file_index: int = -1,
     ) -> Track:
@@ -579,16 +591,11 @@ class CueEditor:
 
         # Ensure we have at least one file
         if not self.cue_sheet.files:
-            from .models import FileReference
-
             file_ref = FileReference(filename="audio.wav", file_type="WAVE")
             self.cue_sheet.files.append(file_ref)
 
         # Get target file
-        if file_index < 0:
-            file_ref = self.cue_sheet.files[-1]
-        else:
-            file_ref = self.cue_sheet.files[file_index]
+        file_ref = self.cue_sheet.files[-1] if file_index < 0 else self.cue_sheet.files[file_index]
 
         # Calculate track number
         all_tracks = []
@@ -606,18 +613,17 @@ class CueEditor:
             if isinstance(start_time, str):
                 start_time = CueTime.from_string(start_time)
             track.indices[1] = start_time
-        else:
-            # Auto-calculate based on last track (add 3 seconds)
-            if all_tracks:
-                last_track = all_tracks[-1]
-                if 1 in last_track.indices:
-                    last_time = last_track.indices[1]
-                    new_frames = last_time.to_frames() + (3 * 75)  # Add 3 seconds
-                    track.indices[1] = CueTime.from_frames(new_frames)
-                else:
-                    track.indices[1] = CueTime(0, 0, 0)
+        # Auto-calculate based on last track (add 3 seconds)
+        elif all_tracks:
+            last_track = all_tracks[-1]
+            if 1 in last_track.indices:
+                last_time = last_track.indices[1]
+                new_frames = last_time.to_frames() + (3 * 75)  # Add 3 seconds
+                track.indices[1] = CueTime.from_frames(new_frames)
             else:
                 track.indices[1] = CueTime(0, 0, 0)
+        else:
+            track.indices[1] = CueTime(0, 0, 0)
 
         # Add to file
         file_ref.tracks.append(track)
@@ -665,7 +671,7 @@ class CueEditor:
 
         return removed
 
-    def reorder_tracks(self, new_order: List[int]) -> None:
+    def reorder_tracks(self, new_order: list[int]) -> None:
         """Reorder tracks according to new order.
 
         Args:
@@ -705,9 +711,9 @@ class CueEditor:
         self,
         position: int,
         title: str,
-        performer: Optional[str] = None,
-        start_time: Optional[Union[str, CueTime]] = None,
-    ) -> Optional[Track]:
+        performer: str | None = None,
+        start_time: str | CueTime | None = None,
+    ) -> Track | None:
         """Insert a track at specific position.
 
         Args:
@@ -745,7 +751,7 @@ class CueEditor:
 
         return track
 
-    def merge_tracks(self, track1_num: int, track2_num: int) -> Optional[Track]:
+    def merge_tracks(self, track1_num: int, track2_num: int) -> Track | None:
         """Merge two adjacent tracks.
 
         Args:
@@ -784,8 +790,11 @@ class CueEditor:
         return track1
 
     def split_track(
-        self, track_num: int, split_time: Union[str, CueTime], new_title: Optional[str] = None
-    ) -> Optional[Track]:
+        self,
+        track_num: int,
+        split_time: str | CueTime,
+        new_title: str | None = None,
+    ) -> Track | None:
         """Split a track at specified time.
 
         Args:
@@ -836,7 +845,7 @@ class CueEditor:
 
     # Timestamp Adjustment Operations (Task 4)
 
-    def adjust_track_time(self, track_number: int, new_time: Union[str, CueTime], ripple: bool = True) -> None:
+    def adjust_track_time(self, track_number: int, new_time: str | CueTime, ripple: bool = True) -> None:
         """Adjust track timestamp with optional ripple effect.
 
         Args:
@@ -857,20 +866,27 @@ class CueEditor:
             for i, track in enumerate(tracks):
                 if track.number == track_number:
                     # Check overlap with previous track
-                    if i > 0 and 1 in tracks[i - 1].indices:
-                        if new_time.to_frames() <= tracks[i - 1].indices[1].to_frames():
-                            raise ValueError(f"New time would overlap with track {tracks[i - 1].number}")
+                    if (
+                        i > 0
+                        and 1 in tracks[i - 1].indices
+                        and new_time.to_frames() <= tracks[i - 1].indices[1].to_frames()
+                    ):
+                        raise ValueError(f"New time would overlap with track {tracks[i - 1].number}")
 
                     # Check overlap with next track (if not rippling)
-                    if not ripple and i < len(tracks) - 1 and 1 in tracks[i + 1].indices:
-                        if new_time.to_frames() >= tracks[i + 1].indices[1].to_frames():
-                            raise ValueError(f"New time would overlap with track {tracks[i + 1].number}")
+                    if (
+                        not ripple
+                        and i < len(tracks) - 1
+                        and 1 in tracks[i + 1].indices
+                        and new_time.to_frames() >= tracks[i + 1].indices[1].to_frames()
+                    ):
+                        raise ValueError(f"New time would overlap with track {tracks[i + 1].number}")
                     break
 
         # Proceed with the adjustment
         self._adjust_track_time_impl(track_number, new_time, ripple)
 
-    def _adjust_track_time_impl(self, track_number: int, new_time: Union[str, CueTime], ripple: bool = True) -> None:
+    def _adjust_track_time_impl(self, track_number: int, new_time: str | CueTime, ripple: bool = True) -> None:
         """Internal implementation of adjust_track_time."""
         if not self.cue_sheet:
             raise ValueError("No CUE sheet loaded")
@@ -947,7 +963,7 @@ class CueEditor:
         self._mark_dirty()
         logger.info(f"Shifted all times by {offset_seconds} seconds")
 
-    def set_track_index(self, track_number: int, index_number: int, time: Union[str, CueTime]) -> None:
+    def set_track_index(self, track_number: int, index_number: int, time: str | CueTime) -> None:
         """Set a specific INDEX for a track.
 
         Args:
@@ -973,11 +989,8 @@ class CueEditor:
                                 raise ValueError(
                                     f"INDEX {index_number:02d} time must be after INDEX {existing_idx:02d}"
                                 )
-                        elif existing_idx > index_number:
-                            if time.to_frames() > existing_time.to_frames():
-                                raise ValueError(
-                                    f"INDEX {index_number:02d} time must be before INDEX {existing_idx:02d}"
-                                )
+                        elif existing_idx > index_number and time.to_frames() > existing_time.to_frames():
+                            raise ValueError(f"INDEX {index_number:02d} time must be before INDEX {existing_idx:02d}")
 
                     track.indices[index_number] = time
                     self._mark_dirty()
@@ -986,7 +999,7 @@ class CueEditor:
 
         raise ValueError(f"Track {track_number} not found")
 
-    def add_pregap(self, track_number: int, pregap_duration: Union[str, CueTime]) -> None:
+    def add_pregap(self, track_number: int, pregap_duration: str | CueTime) -> None:
         """Add pregap (INDEX 00) to a track.
 
         Args:
@@ -1062,23 +1075,25 @@ class CueEditor:
         if not self.cue_sheet:
             raise ValueError("No CUE sheet loaded")
 
-        for field, value in kwargs.items():
+        for field, original_value in kwargs.items():
             if field in ["title", "performer", "catalog", "cdtextfile"]:
+                processed_value = original_value
+
                 # Escape special characters
-                if field in ["title", "performer"] and value:
-                    value = self.escape_metadata_value(value)
+                if field in ["title", "performer"] and processed_value:
+                    processed_value = self.escape_metadata_value(processed_value)
 
                 # Apply character limits
-                if field in ["title", "performer"] and value and len(value) > 80:
-                    value = value[:80]
+                if field in ["title", "performer"] and processed_value and len(processed_value) > 80:
+                    processed_value = processed_value[:80]
                     logger.warning(f"Truncated {field} to 80 characters")
 
                 # Validate catalog
-                if field == "catalog" and value and len(value) != 13:
-                    logger.warning(f"CATALOG should be 13 digits, got {len(value)}")
+                if field == "catalog" and processed_value and len(processed_value) != 13:
+                    logger.warning(f"CATALOG should be 13 digits, got {len(processed_value)}")
 
-                setattr(self.cue_sheet, field, value)
-                logger.info(f"Updated disc {field}: {value}")
+                setattr(self.cue_sheet, field, processed_value)
+                logger.info(f"Updated disc {field}: {processed_value}")
             else:
                 logger.warning(f"Unknown disc metadata field: {field}")
 
@@ -1101,30 +1116,32 @@ class CueEditor:
         for file_ref in self.cue_sheet.files:
             for track in file_ref.tracks:
                 if track.number == track_number:
-                    for field, value in kwargs.items():
+                    for field, original_value in kwargs.items():
                         if field in ["title", "performer", "songwriter", "isrc"]:
+                            processed_value = original_value
+
                             # Escape special characters
-                            if field in ["title", "performer", "songwriter"] and value:
-                                value = self.escape_metadata_value(value)
+                            if field in ["title", "performer", "songwriter"] and processed_value:
+                                processed_value = self.escape_metadata_value(processed_value)
 
                             # Apply character limits
-                            if field in ["title", "performer"] and value and len(value) > 80:
-                                value = value[:80]
+                            if field in ["title", "performer"] and processed_value and len(processed_value) > 80:
+                                processed_value = processed_value[:80]
                                 logger.warning(f"Truncated {field} to 80 characters")
 
                             # Validate ISRC
-                            if field == "isrc" and value and len(value) != 12:
-                                logger.warning(f"ISRC should be 12 characters, got {len(value)}")
+                            if field == "isrc" and processed_value and len(processed_value) != 12:
+                                logger.warning(f"ISRC should be 12 characters, got {len(processed_value)}")
 
-                            setattr(track, field, value)
-                            logger.info(f"Updated track {track_number} {field}: {value}")
+                            setattr(track, field, processed_value)
+                            logger.info(f"Updated track {track_number} {field}: {processed_value}")
                         else:
                             logger.warning(f"Unknown track metadata field: {field}")
                     return
 
         raise ValueError(f"Track {track_number} not found")
 
-    def batch_update_metadata(self, updates: List[Dict[str, Any]]) -> None:
+    def batch_update_metadata(self, updates: list[dict[str, Any]]) -> None:
         """Batch update metadata for multiple tracks.
 
         Args:
@@ -1144,7 +1161,7 @@ class CueEditor:
                 track_update = {k: v for k, v in update.items() if k != "track"}
                 self.update_track_metadata(track_num, **track_update)
 
-    def update_rem_field(self, key: str, value: str, track_number: Optional[int] = None) -> None:
+    def update_rem_field(self, key: str, value: str, track_number: int | None = None) -> None:
         """Update or add a REM field.
 
         Args:
@@ -1173,7 +1190,7 @@ class CueEditor:
 
     # Advanced Editing Features (Task 8)
 
-    def find_track_by_title(self, title: str, partial: bool = True) -> Optional[Track]:
+    def find_track_by_title(self, title: str, partial: bool = True) -> Track | None:
         """Find a track by title.
 
         Args:
@@ -1189,14 +1206,14 @@ class CueEditor:
         title_lower = title.lower()
         for file_ref in self.cue_sheet.files:
             for track in file_ref.tracks:
-                if track.title:
-                    if partial and title_lower in track.title.lower():
-                        return track
-                    elif not partial and track.title.lower() == title_lower:
-                        return track
+                if track.title and (
+                    (partial and title_lower in track.title.lower())
+                    or (not partial and track.title.lower() == title_lower)
+                ):
+                    return track
         return None
 
-    def find_track_by_time(self, time: str) -> Optional[Track]:
+    def find_track_by_time(self, time: str) -> Track | None:
         """Find track at or containing the specified time.
 
         Args:
@@ -1283,13 +1300,13 @@ class CueEditor:
 
         return changed
 
-    def validate_and_fix(self) -> Dict[str, List[str]]:
+    def validate_and_fix(self) -> dict[str, list[str]]:
         """Validate CUE sheet and fix common issues.
 
         Returns:
             Dictionary of issues found and fixed
         """
-        issues: Dict[str, List[str]] = {"fixed": [], "warnings": [], "errors": []}
+        issues: dict[str, list[str]] = {"fixed": [], "warnings": [], "errors": []}
 
         if not self.cue_sheet:
             issues["errors"].append("No CUE sheet loaded")
@@ -1325,7 +1342,11 @@ class CueEditor:
     # Multi-File CUE Editing (Task 9)
 
     def update_file_reference(
-        self, file_index: int, new_filename: str, new_filetype: str = "WAVE", recalculate_timing: bool = False
+        self,
+        file_index: int,
+        new_filename: str,
+        new_filetype: str = "WAVE",
+        recalculate_timing: bool = False,
     ) -> None:
         """Update file reference for a FILE entry.
 
@@ -1355,7 +1376,7 @@ class CueEditor:
         self._mark_dirty()
         logger.info(f"Updated file reference {file_index} to {new_filename}")
 
-    def validate_file_transitions(self) -> List[str]:
+    def validate_file_transitions(self) -> list[str]:
         """Validate that transitions between FILE entries are valid.
 
         Returns:
@@ -1384,7 +1405,7 @@ class CueEditor:
 
         return errors
 
-    def consolidate_to_single_file(self, target_filename: Optional[str] = None) -> None:
+    def consolidate_to_single_file(self, target_filename: str | None = None) -> None:
         """Consolidate multi-file CUE to single file.
 
         Args:
@@ -1407,8 +1428,6 @@ class CueEditor:
             target_filename = self.cue_sheet.files[0].filename
 
         # Create new single file reference
-        from .models import FileReference
-
         new_file = FileReference(filename=target_filename, file_type=self.cue_sheet.files[0].file_type)
         new_file.tracks = all_tracks
 
@@ -1421,7 +1440,7 @@ class CueEditor:
         self._mark_dirty()
         logger.info(f"Consolidated {len(all_tracks)} tracks to single file: {target_filename}")
 
-    def split_by_file_references(self, split_points: List[int]) -> None:
+    def split_by_file_references(self, split_points: list[int]) -> None:
         """Split tracks into multiple FILE entries.
 
         Args:
@@ -1445,9 +1464,7 @@ class CueEditor:
         split_points = sorted(set(split_points))
 
         # Create new file references
-        from .models import FileReference
-
-        new_files: List[FileReference] = []
+        new_files: list[FileReference] = []
         current_start = 0
 
         for split_point in split_points:
@@ -1476,7 +1493,7 @@ class CueEditor:
 
     # Integration Methods (Task 10)
 
-    def edit_from_tracklist(self, tracklist_data: Dict[str, Any]) -> None:
+    def edit_from_tracklist(self, tracklist_data: dict[str, Any]) -> None:
         """Update CUE sheet from Tracklist model data.
 
         Args:
@@ -1505,7 +1522,7 @@ class CueEditor:
         self._mark_dirty()
         logger.info(f"Updated CUE sheet with {len(tracks)} tracks from tracklist")
 
-    def sync_to_tracklist(self) -> Dict[str, Any]:
+    def sync_to_tracklist(self) -> dict[str, Any]:
         """Convert CUE sheet to Tracklist-compatible format.
 
         Returns:
@@ -1537,7 +1554,7 @@ class CueEditor:
             "cue_file_path": str(self.original_path) if self.original_path else None,
         }
 
-    def batch_edit(self, operations: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def batch_edit(self, operations: list[dict[str, Any]]) -> dict[str, Any]:
         """Perform batch editing operations.
 
         Args:
@@ -1549,7 +1566,7 @@ class CueEditor:
         if not self.cue_sheet:
             raise ValueError("No CUE sheet loaded")
 
-        results: Dict[str, Any] = {"successful": 0, "failed": 0, "errors": []}
+        results: dict[str, Any] = {"successful": 0, "failed": 0, "errors": []}
 
         for op in operations:
             try:
@@ -1583,12 +1600,12 @@ class CueEditor:
 
             except Exception as e:
                 results["failed"] += 1
-                results["errors"].append(f"Operation {op_type} failed: {str(e)}")
+                results["errors"].append(f"Operation {op_type} failed: {e!s}")
                 logger.error(f"Batch operation failed: {e}")
 
         return results
 
-    def validate_before_save(self) -> Tuple[bool, List[str]]:
+    def validate_before_save(self) -> tuple[bool, list[str]]:
         """Validate CUE sheet before saving.
 
         Returns:
@@ -1631,7 +1648,7 @@ class CueEditor:
             # Try parsing the generated content
             self.parser.parse(content)
         except Exception as e:
-            errors.append(f"Generated CUE validation failed: {str(e)}")
+            errors.append(f"Generated CUE validation failed: {e!s}")
 
         return len(errors) == 0, errors
 
@@ -1641,7 +1658,6 @@ class CueEditor:
             raise ValueError("No CUE sheet loaded")
 
         # Store current state for rollback
-        import copy
 
         self._transaction_backup = copy.deepcopy(self.cue_sheet)
         self._transaction_dirty = self._dirty

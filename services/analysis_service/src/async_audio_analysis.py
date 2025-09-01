@@ -7,10 +7,13 @@ mood analysis, and other audio processing operations.
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
+import aiofiles  # type: ignore[import-untyped]  # types-aiofiles not installed in this environment
+import essentia.standard as es
 import numpy as np
 
 from services.analysis_service.src.async_audio_processor import (
@@ -29,11 +32,11 @@ class AudioAnalysisResult:
     """Complete audio analysis results."""
 
     file_path: str
-    bpm: Optional[Dict[str, Any]] = None
-    key: Optional[Dict[str, Any]] = None
-    mood: Optional[Dict[str, Any]] = None
-    metadata: Optional[Dict[str, Any]] = None
-    errors: Optional[Dict[str, str]] = None
+    bpm: dict[str, Any] | None = None
+    key: dict[str, Any] | None = None
+    mood: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+    errors: dict[str, str] | None = None
     processing_time_ms: float = 0.0
 
 
@@ -47,10 +50,10 @@ class AsyncAudioAnalyzer:
 
     def __init__(
         self,
-        processor: Optional[AsyncAudioProcessor] = None,
-        bpm_detector: Optional[BPMDetector] = None,
-        key_detector: Optional[KeyDetector] = None,
-        mood_analyzer: Optional[MoodAnalyzer] = None,
+        processor: AsyncAudioProcessor | None = None,
+        bpm_detector: BPMDetector | None = None,
+        key_detector: KeyDetector | None = None,
+        mood_analyzer: MoodAnalyzer | None = None,
         enable_buffering: bool = True,
         buffer_size: int = 8192,
     ):
@@ -74,7 +77,7 @@ class AsyncAudioAnalyzer:
 
         logger.info("AsyncAudioAnalyzer initialized")
 
-    async def analyze_bpm_async(self, audio_file: str, priority: TaskPriority = TaskPriority.NORMAL) -> Dict[str, Any]:
+    async def analyze_bpm_async(self, audio_file: str, priority: TaskPriority = TaskPriority.NORMAL) -> dict[str, Any]:
         """
         Detect BPM asynchronously.
 
@@ -94,14 +97,14 @@ class AsyncAudioAnalyzer:
                 priority=priority,
                 task_id=f"bpm_{Path(audio_file).stem}",
             )
-            return result  # type: ignore[no-any-return]
+            return dict(result) if result else {}
         except Exception as e:
-            logger.error(f"Async BPM detection failed for {audio_file}: {str(e)}")
+            logger.error(f"Async BPM detection failed for {audio_file}: {e!s}")
             raise
 
     async def analyze_key_async(
         self, audio_file: str, priority: TaskPriority = TaskPriority.NORMAL
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Detect musical key asynchronously.
 
@@ -116,7 +119,7 @@ class AsyncAudioAnalyzer:
 
         try:
             # Convert KeyDetectionResult to dict for serialization
-            def detect_and_convert(file_path: str) -> Optional[Dict[str, Any]]:
+            def detect_and_convert(file_path: str) -> dict[str, Any] | None:
                 result = self.key_detector.detect_key(file_path)
                 if result:
                     return {
@@ -136,14 +139,14 @@ class AsyncAudioAnalyzer:
                 priority=priority,
                 task_id=f"key_{Path(audio_file).stem}",
             )
-            return result  # type: ignore[no-any-return]
+            return dict(result) if result else None
         except Exception as e:
-            logger.error(f"Async key detection failed for {audio_file}: {str(e)}")
+            logger.error(f"Async key detection failed for {audio_file}: {e!s}")
             raise
 
     async def analyze_mood_async(
         self, audio_file: str, priority: TaskPriority = TaskPriority.NORMAL
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Analyze mood and genre asynchronously.
 
@@ -158,7 +161,7 @@ class AsyncAudioAnalyzer:
 
         try:
             # Convert MoodAnalysisResult to dict for serialization
-            def analyze_and_convert(file_path: str) -> Optional[Dict[str, Any]]:
+            def analyze_and_convert(file_path: str) -> dict[str, Any] | None:
                 result = self.mood_analyzer.analyze_mood(file_path)
                 if result:
                     return {
@@ -183,9 +186,9 @@ class AsyncAudioAnalyzer:
                 priority=priority,
                 task_id=f"mood_{Path(audio_file).stem}",
             )
-            return result  # type: ignore[no-any-return]
+            return dict(result) if result else None
         except Exception as e:
-            logger.error(f"Async mood analysis failed for {audio_file}: {str(e)}")
+            logger.error(f"Async mood analysis failed for {audio_file}: {e!s}")
             raise
 
     async def analyze_audio_complete(
@@ -209,42 +212,14 @@ class AsyncAudioAnalyzer:
         Returns:
             Complete AudioAnalysisResult
         """
-        import time
-
         start_time = time.time()
         result = AudioAnalysisResult(file_path=audio_file)
-        errors = {}
 
         # Create tasks for parallel execution
-        tasks: list[tuple[str, asyncio.Task[Dict[str, Any] | None]]] = []
+        tasks = self._create_analysis_tasks(audio_file, enable_bpm, enable_key, enable_mood, priority)
 
-        if enable_bpm:
-            tasks.append(("bpm", asyncio.create_task(self.analyze_bpm_async(audio_file, priority))))
-
-        if enable_key:
-            tasks.append(("key", asyncio.create_task(self.analyze_key_async(audio_file, priority))))
-
-        if enable_mood:
-            tasks.append(("mood", asyncio.create_task(self.analyze_mood_async(audio_file, priority))))
-
-        # Execute all tasks in parallel
-        if tasks:
-            # Gather results
-            task_results = await asyncio.gather(*[task for _, task in tasks], return_exceptions=True)
-
-            # Process results
-            for i, (task_name, _) in enumerate(tasks):
-                task_result = task_results[i]
-                if isinstance(task_result, Exception):
-                    errors[task_name] = str(task_result)
-                    logger.error(f"{task_name} analysis failed: {task_result}")
-                else:
-                    if task_name == "bpm":
-                        result.bpm = task_result  # type: ignore[assignment]
-                    elif task_name == "key":
-                        result.key = task_result  # type: ignore[assignment]
-                    elif task_name == "mood":
-                        result.mood = task_result  # type: ignore[assignment]
+        # Execute and process results
+        errors = await self._execute_and_process_tasks(tasks, result)
 
         # Calculate processing time
         result.processing_time_ms = (time.time() - start_time) * 1000
@@ -257,14 +232,65 @@ class AsyncAudioAnalyzer:
 
         return result
 
+    def _create_analysis_tasks(
+        self,
+        audio_file: str,
+        enable_bpm: bool,
+        enable_key: bool,
+        enable_mood: bool,
+        priority: TaskPriority,
+    ) -> list[tuple[str, asyncio.Task[dict[str, Any] | None]]]:
+        """Create analysis tasks based on enabled components."""
+        tasks: list[tuple[str, asyncio.Task[dict[str, Any] | None]]] = []
+
+        if enable_bpm:
+            tasks.append(("bpm", asyncio.create_task(self.analyze_bpm_async(audio_file, priority))))
+
+        if enable_key:
+            tasks.append(("key", asyncio.create_task(self.analyze_key_async(audio_file, priority))))
+
+        if enable_mood:
+            tasks.append(("mood", asyncio.create_task(self.analyze_mood_async(audio_file, priority))))
+
+        return tasks
+
+    async def _execute_and_process_tasks(
+        self,
+        tasks: list[tuple[str, asyncio.Task[dict[str, Any] | None]]],
+        result: AudioAnalysisResult,
+    ) -> dict[str, str]:
+        """Execute tasks and process their results."""
+        errors: dict[str, str] = {}
+
+        if not tasks:
+            return errors
+
+        # Gather results
+        task_results = await asyncio.gather(*[task for _, task in tasks], return_exceptions=True)
+
+        # Process results
+        for i, (task_name, _) in enumerate(tasks):
+            task_result = task_results[i]
+            if isinstance(task_result, Exception):
+                errors[task_name] = str(task_result)
+                logger.error(f"{task_name} analysis failed: {task_result}")
+            elif task_name == "bpm":
+                result.bpm = task_result  # type: ignore[assignment]
+            elif task_name == "key":
+                result.key = task_result  # type: ignore[assignment]
+            elif task_name == "mood":
+                result.mood = task_result  # type: ignore[assignment]
+
+        return errors
+
     async def analyze_batch(
         self,
         audio_files: list[str],
         enable_bpm: bool = True,
         enable_key: bool = True,
         enable_mood: bool = True,
-        max_concurrent: Optional[int] = None,
-    ) -> Dict[str, AudioAnalysisResult]:
+        max_concurrent: int | None = None,
+    ) -> dict[str, AudioAnalysisResult]:
         """
         Analyze multiple audio files in parallel.
 
@@ -302,7 +328,7 @@ class AsyncAudioAnalyzer:
                     result = await task
                     results[audio_file] = result
                 except Exception as e:
-                    logger.error(f"Batch analysis failed for {audio_file}: {str(e)}")
+                    logger.error(f"Batch analysis failed for {audio_file}: {e!s}")
                     results[audio_file] = AudioAnalysisResult(file_path=audio_file, errors={"general": str(e)})
 
         return results
@@ -319,19 +345,17 @@ class AsyncAudioAnalyzer:
         """
         if not self.enable_buffering:
             # Fall back to synchronous loading in thread pool
-            import essentia.standard as es
-
             def load_audio() -> np.ndarray:
                 loader = es.MonoLoader(filename=audio_file)
-                return loader()  # type: ignore[no-any-return]
+                audio_data = loader()
+                return np.array(audio_data, dtype=np.float32)  # Explicit numpy array conversion
 
-            return await self.processor._run_in_executor(load_audio)  # type: ignore[no-any-return]
+            result = await self.processor._run_in_executor(load_audio)
+            return np.array(result, dtype=np.float32)  # Ensure proper numpy array type
 
         # Async buffered reading implementation
         # This is a simplified version - in production, you'd want
         # to stream chunks asynchronously
-        import aiofiles
-        import essentia.standard as es
 
         # Read file asynchronously
         async with aiofiles.open(audio_file, "rb") as f:
@@ -351,9 +375,11 @@ class AsyncAudioAnalyzer:
             # This would need a proper implementation to decode from bytes
             # For now, falling back to file path loading
             loader = es.MonoLoader(filename=audio_file)
-            return loader()  # type: ignore[no-any-return]
+            audio_data = loader()
+            return np.array(audio_data, dtype=np.float32)  # Explicit numpy array conversion
 
-        return await self.processor._run_in_executor(decode_audio, audio_data)  # type: ignore[no-any-return]
+        result = await self.processor._run_in_executor(decode_audio, audio_data)
+        return np.array(result, dtype=np.float32)  # Ensure proper numpy array type
 
 
 class AsyncFFTProcessor:
@@ -374,7 +400,7 @@ class AsyncFFTProcessor:
         self,
         audio_data: np.ndarray,
         fft_size: int = 2048,
-        hop_size: Optional[int] = None,
+        hop_size: int | None = None,
         window_type: str = "hann",
     ) -> np.ndarray:
         """
@@ -394,8 +420,6 @@ class AsyncFFTProcessor:
         def compute_stft(data: np.ndarray) -> np.ndarray:
             """Compute Short-Time Fourier Transform."""
             try:
-                import essentia.standard as es
-
                 # Create windowing function
                 windowing = es.Windowing(type=window_type, size=fft_size)
 
@@ -406,11 +430,13 @@ class AsyncFFTProcessor:
                 frames = []
                 for i in range(0, len(data) - fft_size, hop_size):
                     frame = data[i : i + fft_size]
-                    windowed = windowing(frame)
-                    spectrum = fft(windowed)
-                    frames.append(np.abs(spectrum[: fft_size // 2 + 1]))
+                    windowed_data = windowing(frame)
+                    windowed_array = np.array(windowed_data, dtype=np.complex64)  # Explicit conversion for mypy
+                    spectrum_data = fft(windowed_array)
+                    spectrum_array = np.array(spectrum_data, dtype=np.complex64)  # Explicit conversion for mypy
+                    frames.append(np.abs(spectrum_array[: fft_size // 2 + 1]))
 
-                return np.array(frames)
+                return np.array(frames, dtype=np.float32)
             except ImportError:
                 # Fallback to numpy FFT if essentia not available
                 frames = []
@@ -422,11 +448,11 @@ class AsyncFFTProcessor:
                     spectrum = np.fft.fft(windowed)
                     frames.append(np.abs(spectrum[: fft_size // 2 + 1]))
 
-                return np.array(frames)
+                return np.array(frames, dtype=np.float32)
 
         # Run FFT computation in thread pool
         result = await self.processor._run_in_executor(compute_stft, audio_data)
-        return result  # type: ignore[no-any-return]
+        return np.array(result, dtype=np.float32)  # Ensure proper numpy array type
 
     async def compute_parallel_ffts(self, audio_segments: list[np.ndarray], fft_size: int = 2048) -> list[np.ndarray]:
         """

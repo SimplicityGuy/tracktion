@@ -13,6 +13,7 @@ Note: This code is part of research spike Story 2.2 to validate approach.
 from itertools import chain
 from json import load
 from os import environ
+from pathlib import Path
 from sys import argv
 from typing import Any
 
@@ -34,7 +35,7 @@ def get_genres_per_minute(filename: str) -> dict[str, Any]:
     json_file = "discogs/discogs-effnet-bs64-1.json"
     model_file = "discogs/discogs-effnet-bs64-1.pb"
 
-    with open(json_file) as f:
+    with Path(json_file).open() as f:
         metadata = load(f)
 
     sample_rate = metadata["inference"]["sample_rate"]

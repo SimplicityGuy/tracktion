@@ -8,22 +8,22 @@ import asyncio
 import json
 import logging
 import time
-from typing import Optional
 from uuid import uuid4
 
 import aio_pika
 from aio_pika import ExchangeType, Message
-from aio_pika.abc import AbstractIncomingMessage
-
-from ..cache.redis_cache import get_cache
-from ..config import get_config
-from ..models.search_models import (
-    SearchError,
-    SearchRequest,
-    SearchRequestMessage,
-    SearchResponseMessage,
+from aio_pika.abc import (
+    AbstractChannel,
+    AbstractExchange,
+    AbstractIncomingMessage,
+    AbstractQueue,
+    AbstractRobustConnection,
 )
-from ..scraper.search_scraper import SearchScraper
+
+from src.cache.redis_cache import get_cache
+from src.config import get_config
+from src.models.search_models import SearchError, SearchRequest, SearchRequestMessage, SearchResponseMessage
+from src.scraper.search_scraper import SearchScraper
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +35,10 @@ class TracklistMessageHandler:
         """Initialize the message handler."""
         self.config = get_config().message_queue
         self._running = False
-        self._connection: Optional[aio_pika.Connection] = None
-        self._channel: Optional[aio_pika.Channel] = None
-        self._exchange: Optional[aio_pika.Exchange] = None
-        self._queue: Optional[aio_pika.Queue] = None
+        self._connection: AbstractRobustConnection | None = None
+        self._channel: AbstractChannel | None = None
+        self._exchange: AbstractExchange | None = None
+        self._queue: AbstractQueue | None = None
         self._scraper = SearchScraper()
         self._cache = get_cache()
 
@@ -46,7 +46,7 @@ class TracklistMessageHandler:
         """Establish connection to RabbitMQ."""
         try:
             # Create connection
-            self._connection = await aio_pika.connect_robust(  # type: ignore[assignment]
+            self._connection = await aio_pika.connect_robust(
                 self.config.rabbitmq_url,
                 client_properties={
                     "connection_name": "tracklist-service",
@@ -54,18 +54,18 @@ class TracklistMessageHandler:
             )
 
             # Create channel
-            self._channel = await self._connection.channel()  # type: ignore[union-attr,assignment]
-            await self._channel.set_qos(prefetch_count=self.config.prefetch_count)  # type: ignore[union-attr]
+            self._channel = await self._connection.channel()
+            await self._channel.set_qos(prefetch_count=self.config.prefetch_count)
 
             # Declare exchange
-            self._exchange = await self._channel.declare_exchange(  # type: ignore[union-attr,assignment]
+            self._exchange = await self._channel.declare_exchange(
                 self.config.exchange_name,
                 ExchangeType.TOPIC,
                 durable=True,
             )
 
             # Declare and bind queue
-            self._queue = await self._channel.declare_queue(  # type: ignore[union-attr,assignment]
+            self._queue = await self._channel.declare_queue(
                 self.config.search_queue,
                 durable=True,
                 arguments={
@@ -76,7 +76,7 @@ class TracklistMessageHandler:
 
             # Bind queue to exchange
             if self._exchange:
-                await self._queue.bind(  # type: ignore[union-attr]
+                await self._queue.bind(
                     self._exchange,
                     routing_key=self.config.search_routing_key,
                 )
@@ -190,7 +190,7 @@ class TracklistMessageHandler:
                     error = SearchError(
                         error_code="PROCESSING_ERROR",
                         error_message=str(e),
-                        correlation_id=request.correlation_id if "request" in locals() and request else uuid4(),
+                        correlation_id=(request.correlation_id if "request" in locals() and request else uuid4()),
                         details=None,
                         retry_after=None,
                     )
@@ -215,7 +215,7 @@ class TracklistMessageHandler:
             requeue = (message.redelivered or 0) < self.config.max_retries
             await message.reject(requeue=requeue)
 
-    async def _publish_response(self, response: SearchResponseMessage, reply_to: Optional[str] = None) -> None:
+    async def _publish_response(self, response: SearchResponseMessage, reply_to: str | None = None) -> None:
         """Publish a response message.
 
         Args:
@@ -233,7 +233,7 @@ class TracklistMessageHandler:
             body=response.model_dump_json().encode(),
             content_type="application/json",
             delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-            correlation_id=str(response.response.correlation_id) if response.response else None,
+            correlation_id=(str(response.response.correlation_id) if response.response else None),
         )
 
         # Publish message
@@ -281,7 +281,10 @@ class TracklistMessageHandler:
         await self.disconnect()
 
     async def publish_search_request(
-        self, request: SearchRequest, reply_to: Optional[str] = None, timeout_seconds: int = 30
+        self,
+        request: SearchRequest,
+        reply_to: str | None = None,
+        timeout_seconds: int = 30,
     ) -> None:
         """Publish a search request to the queue.
 

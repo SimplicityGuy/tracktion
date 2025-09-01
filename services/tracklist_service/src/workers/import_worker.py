@@ -8,22 +8,21 @@ the import services with proper error handling and result publishing.
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 
-
-from ..messaging.import_handler import (
+from src.exceptions import CueGenerationError, DatabaseError, ImportError, MatchingError, MessageQueueError, TimingError
+from src.messaging.import_handler import (
     ImportJobMessage,
     ImportResultMessage,
     import_message_handler,
     setup_import_message_handler,
 )
-from ..models.cue_file import CueFormat
-from ..services.import_service import ImportService
-from ..services.matching_service import MatchingService
-from ..services.timing_service import TimingService
-from ..services.cue_integration import CueIntegrationService
-from ..exceptions import ImportError, MatchingError, TimingError, CueGenerationError, DatabaseError, MessageQueueError
+from src.models.cue_file import CueFormat
+from src.services.cue_integration import CueIntegrationService
+from src.services.import_service import ImportService
+from src.services.matching_service import MatchingService
+from src.services.timing_service import TimingService
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +50,7 @@ class ImportWorker:
             await setup_import_message_handler()
 
             # Register this worker as message handler
-            import_message_handler.register_import_handler(self.process_import_job)  # type: ignore[arg-type]
+            import_message_handler.register_import_handler(self.process_import_job)
 
             # Start consuming messages
             await import_message_handler.start_consuming()
@@ -97,15 +96,23 @@ class ImportWorker:
 
         try:
             # Step 1: Import tracklist from 1001tracklists
-            logger.info("Step 1: Importing tracklist from 1001tracklists", extra={"correlation_id": correlation_id})
+            logger.info(
+                "Step 1: Importing tracklist from 1001tracklists",
+                extra={"correlation_id": correlation_id},
+            )
             imported_tracklist = self.import_service.import_tracklist(
-                url=request.url, audio_file_id=request.audio_file_id, force_refresh=request.force_refresh
+                url=request.url,
+                audio_file_id=request.audio_file_id,
+                force_refresh=request.force_refresh,
             )
 
             # Step 2: Perform matching with audio file
-            logger.info("Step 2: Matching tracklist with audio file", extra={"correlation_id": correlation_id})
+            logger.info(
+                "Step 2: Matching tracklist with audio file",
+                extra={"correlation_id": correlation_id},
+            )
             matching_result = self.matching_service.match_tracklist_to_audio(
-                scraped_tracklist=imported_tracklist,  # type: ignore[arg-type]
+                scraped_tracklist=imported_tracklist,
                 audio_metadata={"audio_file_id": request.audio_file_id},
             )
 
@@ -113,10 +120,13 @@ class ImportWorker:
             _ = matching_result[0]  # confidence_score - not used yet
 
             # Step 3: Apply timing adjustments
-            logger.info("Step 3: Applying timing adjustments", extra={"correlation_id": correlation_id})
+            logger.info(
+                "Step 3: Applying timing adjustments",
+                extra={"correlation_id": correlation_id},
+            )
             adjusted_tracklist = self.timing_service.adjust_track_timings(
-                tracks=imported_tracklist,  # type: ignore[arg-type]
-                audio_duration=matching_result[1].get("duration_seconds") if len(matching_result) > 1 else None,
+                tracks=imported_tracklist,
+                audio_duration=(matching_result[1].get("duration_seconds") if len(matching_result) > 1 else None),
             )
 
             # Step 4: Generate CUE file
@@ -151,7 +161,7 @@ class ImportWorker:
                 success=True,
                 tracklist_id=str(imported_tracklist.id),
                 processing_time_ms=processing_time_ms,
-                completed_at=datetime.now(timezone.utc).isoformat(),
+                completed_at=datetime.now(UTC).isoformat(),
             )
 
             await import_message_handler.publish_import_result(result_message)
@@ -168,7 +178,13 @@ class ImportWorker:
                 },
             )
 
-        except (ImportError, MatchingError, TimingError, CueGenerationError, DatabaseError) as e:
+        except (
+            ImportError,
+            MatchingError,
+            TimingError,
+            CueGenerationError,
+            DatabaseError,
+        ) as e:
             # Handle expected service errors
             processing_time_ms = int((time.time() - start_time) * 1000)
 
@@ -188,7 +204,7 @@ class ImportWorker:
                 success=False,
                 error=f"Import failed: {e.message}",
                 processing_time_ms=processing_time_ms,
-                completed_at=datetime.now(timezone.utc).isoformat(),
+                completed_at=datetime.now(UTC).isoformat(),
             )
 
             await import_message_handler.publish_import_result(result_message)
@@ -203,7 +219,7 @@ class ImportWorker:
             processing_time_ms = int((time.time() - start_time) * 1000)
 
             logger.error(
-                f"Unexpected error during import: {str(e)}",
+                f"Unexpected error during import: {e!s}",
                 extra={
                     "correlation_id": correlation_id,
                     "error_type": type(e).__name__,
@@ -218,7 +234,7 @@ class ImportWorker:
                 success=False,
                 error="Internal server error occurred during import",
                 processing_time_ms=processing_time_ms,
-                completed_at=datetime.now(timezone.utc).isoformat(),
+                completed_at=datetime.now(UTC).isoformat(),
             )
 
             try:
@@ -229,9 +245,9 @@ class ImportWorker:
             self.error_count += 1
 
             # Re-raise for potential retry handling by message queue
-            raise MessageQueueError(f"Failed to process import job: {str(e)}", correlation_id=correlation_id)
+            raise MessageQueueError(f"Failed to process import job: {e!s}", correlation_id=correlation_id) from e
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get worker statistics."""
         return {
             "is_running": self.is_running,
@@ -259,7 +275,7 @@ async def stop_import_worker() -> None:
     await import_worker.stop()
 
 
-def get_import_worker_stats() -> Dict[str, Any]:
+def get_import_worker_stats() -> dict[str, Any]:
     """Get import worker statistics."""
     return import_worker.get_stats()
 

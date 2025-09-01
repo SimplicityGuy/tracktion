@@ -7,9 +7,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent / "services" / "analysis_service" / "src"))
+sys.path.insert(
+    0,
+    str(Path(__file__).parent.parent.parent.parent.parent / "services" / "analysis_service" / "src"),
+)
 
-from metadata_extractor import InvalidAudioFileError, MetadataExtractionError, MetadataExtractor
+from metadata_extractor import (
+    InvalidAudioFileError,
+    MetadataExtractionError,
+    MetadataExtractor,
+)
 
 
 class TestMetadataExtractor:
@@ -125,7 +132,10 @@ class TestMetadataExtractor:
         """Test successful WAV extraction."""
         # Mock WAV file object
         mock_audio = MagicMock()
-        mock_audio.tags = {"TIT2": MagicMock(text=["Test WAV Title"]), "TPE1": MagicMock(text=["Test WAV Artist"])}
+        mock_audio.tags = {
+            "TIT2": MagicMock(text=["Test WAV Title"]),
+            "TPE1": MagicMock(text=["Test WAV Artist"]),
+        }
         mock_audio.info.length = 120.0
         mock_audio.info.bitrate = 1411200
         mock_audio.info.sample_rate = 44100
@@ -180,15 +190,20 @@ class TestMetadataExtractor:
         """Test generic extraction fallback."""
         # Mock generic file object
         mock_audio = MagicMock()
-        mock_audio.tags = {"TIT2": MagicMock(text=["Generic Title"]), "TPE1": MagicMock(text=["Generic Artist"])}
+        mock_audio.tags = {
+            "TIT2": MagicMock(text=["Generic Title"]),
+            "TPE1": MagicMock(text=["Generic Artist"]),
+        }
         mock_audio.info.length = 300.0
         mock_audio.info.bitrate = 192000
         mock_file.return_value = mock_audio
 
         # Patch specific handlers to None to force generic fallback
-        with patch.object(self.extractor, "_format_handlers", {}):
-            with tempfile.NamedTemporaryFile(suffix=".mp3") as tmpfile:
-                result = self.extractor.extract(tmpfile.name)
+        with (
+            patch.object(self.extractor, "_format_handlers", {}),
+            tempfile.NamedTemporaryFile(suffix=".mp3") as tmpfile,
+        ):
+            result = self.extractor.extract(tmpfile.name)
 
         assert result["format"] == "mp3"
         assert result["title"] == "Generic Title"

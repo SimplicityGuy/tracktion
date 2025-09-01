@@ -1,8 +1,10 @@
 """Confidence scoring system for file rename proposals."""
 
+from __future__ import annotations
+
+import datetime
 import logging
 import re
-from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +28,14 @@ class ConfidenceScorer:
 
     def calculate_confidence(
         self,
-        metadata: Dict[str, Optional[str]],
+        metadata: dict[str, str | None],
         original_filename: str,
         proposed_filename: str,
-        conflicts: List[str],
-        warnings: List[str],
-        pattern_used: Optional[str] = None,
-        source: Optional[str] = None,
-    ) -> Tuple[float, Dict[str, float]]:
+        conflicts: list[str],
+        warnings: list[str],
+        pattern_used: str | None = None,
+        source: str | None = None,
+    ) -> tuple[float, dict[str, float]]:
         """Calculate overall confidence score for a rename proposal.
 
         Args:
@@ -79,7 +81,7 @@ class ConfidenceScorer:
 
         return overall_score, component_scores
 
-    def _score_metadata_completeness(self, metadata: Dict[str, Optional[str]]) -> float:
+    def _score_metadata_completeness(self, metadata: dict[str, str | None]) -> float:
         """Score based on how complete the metadata is.
 
         Args:
@@ -120,7 +122,10 @@ class ConfidenceScorer:
         return score / max_score
 
     def _score_pattern_match(
-        self, metadata: Dict[str, Optional[str]], proposed_filename: str, pattern_used: Optional[str]
+        self,
+        metadata: dict[str, str | None],
+        proposed_filename: str,
+        pattern_used: str | None,
     ) -> float:
         """Score based on how well the pattern matches the metadata.
 
@@ -145,7 +150,7 @@ class ConfidenceScorer:
 
                     if artist_lower in filename_lower and title_lower in filename_lower:
                         return 0.8
-                    elif artist_lower in filename_lower or title_lower in filename_lower:
+                    if artist_lower in filename_lower or title_lower in filename_lower:
                         return 0.5
             return 0.3
 
@@ -180,7 +185,14 @@ class ConfidenceScorer:
         proposed_lower = proposed_filename.lower()
 
         # Improvement: Removes generic names
-        generic_patterns = [r"^track\d+", r"^audio\d+", r"^unknown", r"^untitled", r"^recording", r"^\d+$"]
+        generic_patterns = [
+            r"^track\d+",
+            r"^audio\d+",
+            r"^unknown",
+            r"^untitled",
+            r"^recording",
+            r"^\d+$",
+        ]
 
         for pattern in generic_patterns:
             if re.match(pattern, original_lower) and not re.match(pattern, proposed_lower):
@@ -206,7 +218,7 @@ class ConfidenceScorer:
 
         return max(0.0, min(1.0, score))
 
-    def _score_conflict_absence(self, conflicts: List[str], warnings: List[str]) -> float:
+    def _score_conflict_absence(self, conflicts: list[str], warnings: list[str]) -> float:
         """Score based on absence of conflicts and warnings.
 
         Args:
@@ -229,7 +241,7 @@ class ConfidenceScorer:
 
         return max(0.0, score)
 
-    def _score_source_reliability(self, source: Optional[str]) -> float:
+    def _score_source_reliability(self, source: str | None) -> float:
         """Score based on metadata source reliability.
 
         Args:
@@ -256,7 +268,7 @@ class ConfidenceScorer:
 
         return source_scores.get(source.lower(), 0.5)
 
-    def _score_consistency(self, metadata: Dict[str, Optional[str]], proposed_filename: str) -> float:
+    def _score_consistency(self, metadata: dict[str, str | None], proposed_filename: str) -> float:
         """Score based on internal consistency of the proposal.
 
         Args:
@@ -292,9 +304,8 @@ class ConfidenceScorer:
         if date:
             try:
                 year = int(date[:4])
-                import datetime
 
-                current_year = datetime.datetime.now().year
+                current_year = datetime.datetime.now(datetime.UTC).year
                 if year < 1900 or year > current_year + 1:
                     # Invalid year
                     score -= 0.3
@@ -309,7 +320,11 @@ class ConfidenceScorer:
         return max(0.0, score)
 
     def adjust_confidence_for_context(
-        self, base_score: float, file_type: str, is_compilation: bool = False, has_multiple_artists: bool = False
+        self,
+        base_score: float,
+        file_type: str,
+        is_compilation: bool = False,
+        has_multiple_artists: bool = False,
     ) -> float:
         """Adjust confidence score based on context.
 
@@ -350,14 +365,13 @@ class ConfidenceScorer:
         """
         if score >= 0.9:
             return "very_high"
-        elif score >= 0.75:
+        if score >= 0.75:
             return "high"
-        elif score >= 0.6:
+        if score >= 0.6:
             return "medium"
-        elif score >= 0.4:
+        if score >= 0.4:
             return "low"
-        else:
-            return "very_low"
+        return "very_low"
 
     def should_auto_approve(self, score: float, threshold: float = 0.85) -> bool:
         """Determine if proposal should be auto-approved.

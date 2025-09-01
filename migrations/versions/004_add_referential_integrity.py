@@ -6,7 +6,7 @@ Create Date: 2024-01-28 10:00:00.000000
 
 """
 
-from alembic import op  # type: ignore
+from alembic import op  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
 
 # revision identifiers, used by Alembic.
 revision = "004_add_referential_integrity"
@@ -23,49 +23,62 @@ def upgrade() -> None:
     # but we'll add explicit constraints for safety
 
     # 1. Ensure metadata cascades on recording deletion
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE metadata
         DROP CONSTRAINT IF EXISTS metadata_recording_id_fkey;
-    """)
+    """
+    )
 
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE metadata
         ADD CONSTRAINT metadata_recording_id_fkey
         FOREIGN KEY (recording_id)
         REFERENCES recordings(id)
         ON DELETE CASCADE;
-    """)
+    """
+    )
 
     # 2. Ensure tracklist cascades on recording deletion
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE tracklist
         DROP CONSTRAINT IF EXISTS tracklist_recording_id_fkey;
-    """)
+    """
+    )
 
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE tracklist
         ADD CONSTRAINT tracklist_recording_id_fkey
         FOREIGN KEY (recording_id)
         REFERENCES recordings(id)
         ON DELETE CASCADE;
-    """)
+    """
+    )
 
     # 3. Ensure rename_proposals cascades on recording deletion
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE rename_proposals
         DROP CONSTRAINT IF EXISTS rename_proposals_recording_id_fkey;
-    """)
+    """
+    )
 
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE rename_proposals
         ADD CONSTRAINT rename_proposals_recording_id_fkey
         FOREIGN KEY (recording_id)
         REFERENCES recordings(id)
         ON DELETE CASCADE;
-    """)
+    """
+    )
 
     # 4. Create a trigger to clean up orphaned records automatically
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION cleanup_orphaned_metadata()
         RETURNS TRIGGER AS $$
         BEGIN
@@ -84,10 +97,12 @@ def upgrade() -> None:
             RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;
-    """)
+    """
+    )
 
     # 5. Create trigger for soft delete cascade
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION cascade_soft_delete()
         RETURNS TRIGGER AS $$
         BEGIN
@@ -103,18 +118,22 @@ def upgrade() -> None:
             RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;
-    """)
+    """
+    )
 
     # 6. Attach the soft delete trigger to recordings table
-    op.execute("""
+    op.execute(
+        """
         CREATE TRIGGER trigger_cascade_soft_delete
         AFTER UPDATE OF deleted_at ON recordings
         FOR EACH ROW
         EXECUTE FUNCTION cascade_soft_delete();
-    """)
+    """
+    )
 
     # 7. Create a function to validate referential integrity
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION validate_referential_integrity()
         RETURNS TABLE(
             table_name TEXT,
@@ -173,19 +192,29 @@ def upgrade() -> None:
             RETURN;
         END;
         $$ LANGUAGE plpgsql;
-    """)
+    """
+    )
 
     # 8. Create indexes for better performance on foreign key lookups
-    op.create_index("idx_metadata_recording_id_key", "metadata", ["recording_id", "key"], if_not_exists=True)
+    op.create_index(
+        "idx_metadata_recording_id_key",
+        "metadata",
+        ["recording_id", "key"],
+        if_not_exists=True,
+    )
 
     op.create_index("idx_tracklist_recording_id", "tracklist", ["recording_id"], if_not_exists=True)
 
     op.create_index(
-        "idx_rename_proposals_recording_id_status", "rename_proposals", ["recording_id", "status"], if_not_exists=True
+        "idx_rename_proposals_recording_id_status",
+        "rename_proposals",
+        ["recording_id", "status"],
+        if_not_exists=True,
     )
 
     # 9. Create a scheduled cleanup function for old soft-deleted records
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION cleanup_old_soft_deleted_records(days_to_keep INTEGER DEFAULT 30)
         RETURNS TABLE(
             deleted_recordings BIGINT,
@@ -241,7 +270,8 @@ def upgrade() -> None:
             RETURN QUERY SELECT rec_count, meta_count, track_count, prop_count;
         END;
         $$ LANGUAGE plpgsql;
-    """)
+    """
+    )
 
 
 def downgrade() -> None:

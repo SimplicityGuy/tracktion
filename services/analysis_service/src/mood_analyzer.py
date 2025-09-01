@@ -7,11 +7,19 @@ scoring using pre-trained models from Essentia.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar
 
 import numpy as np
 
 from services.analysis_service.src.model_manager import ModelManager
+
+try:
+    import essentia.standard as es
+
+    HAS_ESSENTIA = True
+except ImportError:
+    HAS_ESSENTIA = False
+    es = None
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +29,11 @@ class MoodAnalysisResult:
     """Results from mood and genre analysis."""
 
     # Mood dimensions (0.0 to 1.0)
-    mood_scores: Dict[str, float] = field(default_factory=dict)
+    mood_scores: dict[str, float] = field(default_factory=dict)
 
     # Genre predictions with confidence
-    genres: List[Dict[str, Any]] = field(default_factory=list)
-    primary_genre: Optional[str] = None
+    genres: list[dict[str, Any]] = field(default_factory=list)
+    primary_genre: str | None = None
     genre_confidence: float = 0.0
 
     # Additional attributes
@@ -52,7 +60,7 @@ class MoodAnalyzer:
     """
 
     # Mood dimension models
-    MOOD_MODELS = [
+    MOOD_MODELS: ClassVar[list[str]] = [
         "mood_happy",
         "mood_sad",
         "mood_aggressive",
@@ -60,17 +68,17 @@ class MoodAnalyzer:
     ]
 
     # Genre models
-    GENRE_MODELS = [
+    GENRE_MODELS: ClassVar[list[str]] = [
         "genre_discogs_effnet",
     ]
 
     # Additional feature models
-    FEATURE_MODELS = [
+    FEATURE_MODELS: ClassVar[list[str]] = [
         "danceability",
     ]
 
     # Genre labels for Discogs EffNet model
-    DISCOGS_GENRES = [
+    DISCOGS_GENRES: ClassVar[list[str]] = [
         "Blues",
         "Brass & Military",
         "Children's",
@@ -90,13 +98,13 @@ class MoodAnalyzer:
 
     def __init__(
         self,
-        model_manager: Optional[ModelManager] = None,
+        model_manager: ModelManager | None = None,
         enable_mood_detection: bool = True,
         enable_genre_detection: bool = True,
         enable_danceability: bool = True,
         ensemble_voting_threshold: float = 0.5,
         confidence_threshold: float = 0.6,
-        mood_dimensions: Optional[List[str]] = None,
+        mood_dimensions: list[str] | None = None,
     ):
         """
         Initialize the mood analyzer.
@@ -127,9 +135,9 @@ class MoodAnalyzer:
         ]
 
         # Cache for loaded models
-        self._loaded_models: Dict[str, Any] = {}
+        self._loaded_models: dict[str, Any] = {}
 
-    def analyze_mood(self, audio_file: str) -> Optional[MoodAnalysisResult]:
+    def analyze_mood(self, audio_file: str) -> MoodAnalysisResult | None:
         """
         Analyze mood and genre characteristics of an audio file.
 
@@ -139,10 +147,11 @@ class MoodAnalyzer:
         Returns:
             MoodAnalysisResult with all analyzed features
         """
-        try:
-            # Import Essentia for audio loading
-            import essentia.standard as es
+        if not HAS_ESSENTIA:
+            logger.error("Essentia not installed. Install with: uv pip install essentia")
+            return None
 
+        try:
             # Load audio file (16kHz for most models)
             logger.info(f"Loading audio file for mood analysis: {audio_file}")
             audio = es.MonoLoader(filename=audio_file, sampleRate=16000)()
@@ -191,10 +200,10 @@ class MoodAnalyzer:
             logger.error("Essentia not installed. Install with: uv pip install essentia")
             return None
         except Exception as e:
-            logger.error(f"Error analyzing mood for {audio_file}: {str(e)}")
+            logger.error(f"Error analyzing mood for {audio_file}: {e!s}")
             return None
 
-    def _analyze_mood_dimensions(self, audio: np.ndarray) -> Dict[str, float]:
+    def _analyze_mood_dimensions(self, audio: np.ndarray) -> dict[str, float]:
         """
         Analyze mood dimensions using multiple models.
 
@@ -221,11 +230,11 @@ class MoodAnalyzer:
                     mood_scores[dimension] = score
                     logger.debug(f"Mood {dimension}: {score:.3f}")
             except Exception as e:
-                logger.warning(f"Failed to analyze mood dimension {dimension}: {str(e)}")
+                logger.warning(f"Failed to analyze mood dimension {dimension}: {e!s}")
 
         return mood_scores
 
-    def _run_mood_model(self, model_id: str, audio: np.ndarray) -> Optional[float]:
+    def _run_mood_model(self, model_id: str, audio: np.ndarray) -> float | None:
         """
         Run a mood model on audio.
 
@@ -253,18 +262,15 @@ class MoodAnalyzer:
             predictions = model(audio_input)
 
             # Extract score (models typically output probabilities)
-            if hasattr(predictions, "numpy"):
-                score = float(predictions.numpy()[0])
-            else:
-                score = float(predictions[0])
+            score = float(predictions.numpy()[0]) if hasattr(predictions, "numpy") else float(predictions[0])
 
             return min(max(score, 0.0), 1.0)  # Clamp to [0, 1]
 
         except Exception as e:
-            logger.error(f"Error running mood model {model_id}: {str(e)}")
+            logger.error(f"Error running mood model {model_id}: {e!s}")
             return None
 
-    def _analyze_genre(self, audio: np.ndarray) -> List[Dict[str, Any]]:
+    def _analyze_genre(self, audio: np.ndarray) -> list[dict[str, Any]]:
         """
         Analyze genre using classification models.
 
@@ -285,13 +291,13 @@ class MoodAnalyzer:
                 if predictions:
                     genre_predictions.extend(predictions)
             except Exception as e:
-                logger.warning(f"Failed to run genre model {model_id}: {str(e)}")
+                logger.warning(f"Failed to run genre model {model_id}: {e!s}")
 
         # Sort by confidence and return top predictions
         genre_predictions.sort(key=lambda x: x["confidence"], reverse=True)
         return genre_predictions[:5]  # Return top 5 genres
 
-    def _run_genre_model(self, model_id: str, audio: np.ndarray) -> List[Dict[str, Any]]:
+    def _run_genre_model(self, model_id: str, audio: np.ndarray) -> list[dict[str, Any]]:
         """
         Run a genre classification model.
 
@@ -333,13 +339,17 @@ class MoodAnalyzer:
             for i, prob in enumerate(probs):
                 if i < len(self.DISCOGS_GENRES) and prob > 0.1:  # Only include significant predictions
                     genre_predictions.append(
-                        {"genre": self.DISCOGS_GENRES[i], "confidence": float(prob), "model": model_id}
+                        {
+                            "genre": self.DISCOGS_GENRES[i],
+                            "confidence": float(prob),
+                            "model": model_id,
+                        }
                     )
 
             return genre_predictions
 
         except Exception as e:
-            logger.error(f"Error running genre model {model_id}: {str(e)}")
+            logger.error(f"Error running genre model {model_id}: {e!s}")
             return []
 
     def _analyze_danceability(self, audio: np.ndarray) -> float:
@@ -361,10 +371,10 @@ class MoodAnalyzer:
             score = self._run_mood_model(model_id, audio)
             return score if score is not None else 0.5
         except Exception as e:
-            logger.warning(f"Failed to analyze danceability: {str(e)}")
+            logger.warning(f"Failed to analyze danceability: {e!s}")
             return 0.5
 
-    def _calculate_valence(self, mood_scores: Dict[str, float]) -> float:
+    def _calculate_valence(self, mood_scores: dict[str, float]) -> float:
         """
         Calculate musical valence (positivity) from mood scores.
 
@@ -381,14 +391,9 @@ class MoodAnalyzer:
         negative_sum = sum(mood_scores.get(m, 0) for m in negative_moods)
 
         # Calculate valence as balance between positive and negative
-        if positive_sum + negative_sum > 0:
-            valence = positive_sum / (positive_sum + negative_sum)
-        else:
-            valence = 0.5  # Neutral
+        return positive_sum / (positive_sum + negative_sum) if positive_sum + negative_sum > 0 else 0.5
 
-        return valence
-
-    def _calculate_arousal(self, mood_scores: Dict[str, float]) -> float:
+    def _calculate_arousal(self, mood_scores: dict[str, float]) -> float:
         """
         Calculate musical arousal (intensity) from mood scores.
 
@@ -405,12 +410,7 @@ class MoodAnalyzer:
         low_sum = sum(mood_scores.get(m, 0) for m in low_arousal)
 
         # Calculate arousal as balance between high and low energy
-        if high_sum + low_sum > 0:
-            arousal = high_sum / (high_sum + low_sum)
-        else:
-            arousal = 0.5  # Neutral
-
-        return arousal
+        return high_sum / (high_sum + low_sum) if high_sum + low_sum > 0 else 0.5
 
     def _calculate_energy(self, result: MoodAnalysisResult) -> float:
         """
@@ -435,7 +435,7 @@ class MoodAnalyzer:
         energy = sum(energy_components) / len(energy_components)
         return min(max(energy, 0.0), 1.0)
 
-    def _detect_voice_instrumental(self, mood_scores: Dict[str, float]) -> tuple[str, float]:
+    def _detect_voice_instrumental(self, mood_scores: dict[str, float]) -> tuple[str, float]:
         """
         Detect if track is vocal or instrumental.
 
@@ -451,10 +451,9 @@ class MoodAnalyzer:
 
         if acoustic_score > 0.7:
             return "voice", 0.6  # Acoustic often indicates vocals
-        elif acoustic_score < 0.3:
+        if acoustic_score < 0.3:
             return "instrumental", 0.6  # Electronic often instrumental
-        else:
-            return "unknown", 0.3
+        return "unknown", 0.3
 
     def _calculate_overall_confidence(self, result: MoodAnalysisResult) -> float:
         """
@@ -486,12 +485,9 @@ class MoodAnalyzer:
         # Calculate weighted average
         if confidences:
             return sum(confidences) / len(confidences)
-        else:
-            return 0.0
+        return 0.0
 
-    def analyze_with_ensemble(
-        self, audio_file: str, models: Optional[List[str]] = None
-    ) -> Optional[MoodAnalysisResult]:
+    def analyze_with_ensemble(self, audio_file: str, models: list[str] | None = None) -> MoodAnalysisResult | None:
         """
         Analyze using ensemble of models for improved accuracy.
 
@@ -517,7 +513,7 @@ class MoodAnalyzer:
 
         return result
 
-    def get_loaded_models(self) -> List[str]:
+    def get_loaded_models(self) -> list[str]:
         """Get list of currently loaded model IDs."""
         return list(self._loaded_models.keys())
 

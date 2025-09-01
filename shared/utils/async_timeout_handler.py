@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from enum import Enum
 from typing import Any, TypeVar
@@ -42,10 +42,8 @@ class TimeoutStrategy(Enum):
     ADAPTIVE = "adaptive"  # Adjust based on historical performance
 
 
-class DeadlineExceeded(Exception):
+class DeadlineExceededError(Exception):
     """Raised when a deadline is exceeded."""
-
-    pass
 
 
 class TimeoutConfig:
@@ -99,7 +97,7 @@ class TimeoutHandler:
 
     async def execute_with_timeout(
         self,
-        func: Callable[..., T],
+        func: Callable[..., Awaitable[T]],
         *args: Any,
         timeout: float | None = None,
         service: str = "default",
@@ -126,7 +124,7 @@ class TimeoutHandler:
         start_time = time.time()
 
         try:
-            result = await asyncio.wait_for(
+            result: T = await asyncio.wait_for(
                 func(*args, **kwargs),
                 timeout=timeout_value,
             )
@@ -200,17 +198,17 @@ class TimeoutHandler:
         if self.config.strategy == TimeoutStrategy.FIXED:
             return base_timeout
 
-        elif self.config.strategy == TimeoutStrategy.LINEAR:
+        if self.config.strategy == TimeoutStrategy.LINEAR:
             timeout_count = self._timeout_counts.get(operation_key, 0)
             timeout = base_timeout + (timeout_count * 2)
             return min(timeout, self.config.max_timeout)
 
-        elif self.config.strategy == TimeoutStrategy.EXPONENTIAL:
+        if self.config.strategy == TimeoutStrategy.EXPONENTIAL:
             timeout_count = self._timeout_counts.get(operation_key, 0)
             timeout = base_timeout * (self.config.escalation_factor**timeout_count)
             return min(timeout, self.config.max_timeout)
 
-        elif self.config.strategy == TimeoutStrategy.ADAPTIVE:
+        if self.config.strategy == TimeoutStrategy.ADAPTIVE:
             history = self._operation_history.get(operation_key, [])
             if len(history) >= 5:
                 # Use 95th percentile of recent operations
@@ -287,11 +285,11 @@ class DeadlineManager:
             request_id: Unique request identifier
 
         Raises:
-            DeadlineExceeded: If deadline has been exceeded
+            DeadlineExceededError: If deadline has been exceeded
         """
         deadline = self._deadlines.get(request_id)
         if deadline and time.time() > deadline:
-            raise DeadlineExceeded(f"Deadline exceeded for request {request_id}")
+            raise DeadlineExceededError(f"Deadline exceeded for request {request_id}")
 
     def remaining_time(self, request_id: str) -> float | None:
         """Get remaining time until deadline.
@@ -334,7 +332,7 @@ class DeadlineManager:
             None
 
         Raises:
-            DeadlineExceeded: If deadline is exceeded
+            DeadlineExceededError: If deadline is exceeded
         """
         deadline = time.time() + timeout
         self.set_deadline(request_id, deadline)
@@ -455,7 +453,7 @@ def get_timeout_handler(config: TimeoutConfig | None = None) -> TimeoutHandler:
     Returns:
         Global timeout handler instance
     """
-    global _timeout_handler
+    global _timeout_handler  # noqa: PLW0603 - Module-level singleton pattern for timeout handler
     if _timeout_handler is None:
         _timeout_handler = TimeoutHandler(config)
     return _timeout_handler
@@ -467,7 +465,7 @@ def get_deadline_manager() -> DeadlineManager:
     Returns:
         Global deadline manager instance
     """
-    global _deadline_manager
+    global _deadline_manager  # noqa: PLW0603 - Module-level singleton pattern for deadline manager
     if _deadline_manager is None:
         _deadline_manager = DeadlineManager()
     return _deadline_manager
@@ -479,7 +477,7 @@ def get_cancellation_handler() -> CancellationHandler:
     Returns:
         Global cancellation handler instance
     """
-    global _cancellation_handler
+    global _cancellation_handler  # noqa: PLW0603 - Module-level singleton pattern for cancellation handler
     if _cancellation_handler is None:
         _cancellation_handler = CancellationHandler()
     return _cancellation_handler

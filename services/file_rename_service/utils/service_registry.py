@@ -9,6 +9,9 @@ from services.file_rename_service.app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Constants
+HTTP_OK = 200  # HTTP OK status code for Consul API responses
+
 
 class ServiceRegistry:
     """Service registry for registering and discovering services."""
@@ -49,13 +52,12 @@ class ServiceRegistry:
                     json=service_data,
                 )
 
-                if response.status_code == 200:
+                if response.status_code == HTTP_OK:
                     self.is_registered = True
                     logger.info(f"Successfully registered service '{self.service_name}' with Consul")
                     return True
-                else:
-                    logger.error(f"Failed to register service: {response.status_code} - {response.text}")
-                    return False
+                logger.error(f"Failed to register service: {response.status_code} - {response.text}")
+                return False
 
         except Exception as e:
             logger.error(f"Error registering service with Consul: {e}")
@@ -70,13 +72,12 @@ class ServiceRegistry:
             async with httpx.AsyncClient() as client:
                 response = await client.put(f"{self.consul_url}/v1/agent/service/deregister/{self.service_id}")
 
-                if response.status_code == 200:
+                if response.status_code == HTTP_OK:
                     self.is_registered = False
                     logger.info(f"Successfully deregistered service '{self.service_name}' from Consul")
                     return True
-                else:
-                    logger.error(f"Failed to deregister service: {response.status_code} - {response.text}")
-                    return False
+                logger.error(f"Failed to deregister service: {response.status_code} - {response.text}")
+                return False
 
         except Exception as e:
             logger.error(f"Error deregistering service from Consul: {e}")
@@ -95,12 +96,11 @@ class ServiceRegistry:
                     json={"Status": status},
                 )
 
-                if response.status_code == 200:
+                if response.status_code == HTTP_OK:
                     logger.debug(f"Updated health check status to '{status}'")
                     return True
-                else:
-                    logger.error(f"Failed to update health check: {response.status_code}")
-                    return False
+                logger.error(f"Failed to update health check: {response.status_code}")
+                return False
 
         except Exception as e:
             logger.error(f"Error updating health check: {e}")
@@ -115,7 +115,7 @@ class ServiceRegistry:
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{self.consul_url}/v1/health/service/{service_name}?passing=true")
 
-                if response.status_code == 200:
+                if response.status_code == HTTP_OK:
                     services = response.json()
                     if services:
                         # Return the first healthy service instance
@@ -125,12 +125,10 @@ class ServiceRegistry:
                             "port": service["Service"]["Port"],
                             "tags": service["Service"]["Tags"],
                         }
-                    else:
-                        logger.warning(f"No healthy instances found for service '{service_name}'")
-                        return None
-                else:
-                    logger.error(f"Failed to discover service: {response.status_code}")
+                    logger.warning(f"No healthy instances found for service '{service_name}'")
                     return None
+                logger.error(f"Failed to discover service: {response.status_code}")
+                return None
 
         except Exception as e:
             logger.error(f"Error discovering service: {e}")

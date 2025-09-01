@@ -8,12 +8,12 @@ from neo4j import GraphDatabase
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-# Load environment variables
-load_dotenv()
-
 # Import models to ensure they're registered
 from shared.core_types.src.database import DatabaseManager
 from shared.core_types.src.models import Base
+
+# Load environment variables
+load_dotenv()
 
 
 @pytest.fixture(scope="function")
@@ -23,7 +23,10 @@ def test_db_session():
     Creates a clean database for each test and tears it down after.
     """
     # Use test database URL
-    test_db_url = os.getenv("TEST_DATABASE_URL", "postgresql://tracktion_user:changeme@localhost:5432/test_tracktion")
+    test_db_url = os.getenv(
+        "TEST_DATABASE_URL",
+        "postgresql://tracktion_user:changeme@localhost:5432/test_tracktion",
+    )
 
     # Create engine and tables
     engine = create_engine(test_db_url)
@@ -37,8 +40,8 @@ def test_db_session():
     Base.metadata.create_all(engine)
 
     # Create session
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
+    session_local = sessionmaker(bind=engine)
+    session = session_local()
 
     yield session
 
@@ -80,7 +83,10 @@ def db_manager(monkeypatch):
     Uses test database URLs and mocks environment variables.
     """
     # Mock environment variables for testing
-    monkeypatch.setenv("DATABASE_URL", "postgresql://tracktion_user:changeme@localhost:5432/test_tracktion")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://tracktion_user:changeme@localhost:5432/test_tracktion",
+    )
     monkeypatch.setenv("NEO4J_URI", "bolt://localhost:7687")
     monkeypatch.setenv("NEO4J_USER", "neo4j")
     monkeypatch.setenv("NEO4J_PASSWORD", "changeme")

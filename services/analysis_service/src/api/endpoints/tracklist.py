@@ -1,12 +1,12 @@
 """Tracklist management endpoints for Analysis Service."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from ...structured_logging import get_logger
+from services.analysis_service.src.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -18,11 +18,11 @@ class TrackInfo(BaseModel):
 
     index: int
     title: str
-    artist: Optional[str]
+    artist: str | None
     start_time: float
     end_time: float
     duration: float
-    file_path: Optional[str]
+    file_path: str | None
 
 
 class TracklistResponse(BaseModel):
@@ -32,7 +32,7 @@ class TracklistResponse(BaseModel):
     format: str
     total_tracks: int
     total_duration: float
-    tracks: List[TrackInfo]
+    tracks: list[TrackInfo]
 
 
 class CueSheetRequest(BaseModel):
@@ -56,7 +56,13 @@ async def get_tracklist(recording_id: UUID) -> TracklistResponse:
     # In real implementation, fetch from database
     tracks = [
         TrackInfo(
-            index=1, title="Track 1", artist="Artist 1", start_time=0.0, end_time=300.5, duration=300.5, file_path=None
+            index=1,
+            title="Track 1",
+            artist="Artist 1",
+            start_time=0.0,
+            end_time=300.5,
+            duration=300.5,
+            file_path=None,
         ),
         TrackInfo(
             index=2,
@@ -83,7 +89,7 @@ async def detect_tracks(
     recording_id: UUID,
     min_duration: float = Query(30.0, description="Minimum track duration in seconds"),
     sensitivity: float = Query(0.5, ge=0.0, le=1.0, description="Detection sensitivity"),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Detect tracks in a recording using silence detection.
 
     Args:
@@ -114,8 +120,9 @@ async def detect_tracks(
 
 @router.post("/{recording_id}/split")
 async def split_tracks(
-    recording_id: UUID, output_format: str = Query("flac", description="Output format for split tracks")
-) -> Dict[str, Any]:
+    recording_id: UUID,
+    output_format: str = Query("flac", description="Output format for split tracks"),
+) -> dict[str, Any]:
     """Split recording into individual track files.
 
     Args:
@@ -140,7 +147,7 @@ async def split_tracks(
 
 
 @router.post("/parse-cue")
-async def parse_cue_sheet(request: CueSheetRequest) -> Dict[str, Any]:
+async def parse_cue_sheet(request: CueSheetRequest) -> dict[str, Any]:
     """Parse a CUE sheet and extract tracklist.
 
     Args:
@@ -178,7 +185,7 @@ async def parse_cue_sheet(request: CueSheetRequest) -> Dict[str, Any]:
 
 
 @router.put("/{recording_id}/tracks")
-async def update_tracklist(recording_id: UUID, tracks: List[TrackInfo]) -> Dict[str, str]:
+async def update_tracklist(recording_id: UUID, tracks: list[TrackInfo]) -> dict[str, str]:
     """Update tracklist for a recording.
 
     Args:
@@ -194,4 +201,8 @@ async def update_tracklist(recording_id: UUID, tracks: List[TrackInfo]) -> Dict[
     )
 
     # In real implementation, update in database
-    return {"id": str(recording_id), "status": "updated", "message": f"Tracklist updated with {len(tracks)} tracks"}
+    return {
+        "id": str(recording_id),
+        "status": "updated",
+        "message": f"Tracklist updated with {len(tracks)} tracks",
+    }

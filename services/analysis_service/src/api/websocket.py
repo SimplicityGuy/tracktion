@@ -2,12 +2,12 @@
 
 import asyncio
 import json
-from typing import Any, Dict, Set
+from typing import Any
 
 from fastapi import WebSocket
 from fastapi.websockets import WebSocketState
 
-from ..structured_logging import get_logger
+from services.analysis_service.src.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -18,11 +18,11 @@ class ConnectionManager:
     def __init__(self) -> None:
         """Initialize connection manager."""
         # Active connections by client ID
-        self.active_connections: Dict[str, WebSocket] = {}
+        self.active_connections: dict[str, WebSocket] = {}
         # Subscriptions: recording_id -> set of client_ids
-        self.subscriptions: Dict[str, Set[str]] = {}
+        self.subscriptions: dict[str, set[str]] = {}
         # Client metadata
-        self.client_metadata: Dict[str, Dict[str, Any]] = {}
+        self.client_metadata: dict[str, dict[str, Any]] = {}
 
     async def connect(self, websocket: WebSocket, client_id: str) -> None:
         """Accept and register a new WebSocket connection.
@@ -33,7 +33,10 @@ class ConnectionManager:
         """
         await websocket.accept()
         self.active_connections[client_id] = websocket
-        self.client_metadata[client_id] = {"connected_at": asyncio.get_event_loop().time(), "subscriptions": set()}
+        self.client_metadata[client_id] = {
+            "connected_at": asyncio.get_event_loop().time(),
+            "subscriptions": set(),
+        }
         logger.info("WebSocket client connected", extra={"client_id": client_id})
 
     def disconnect(self, client_id: str) -> None:
@@ -77,7 +80,7 @@ class ConnectionManager:
                     )
                     self.disconnect(client_id)
 
-    async def send_json(self, data: Dict[str, Any], client_id: str) -> None:
+    async def send_json(self, data: dict[str, Any], client_id: str) -> None:
         """Send JSON data to a specific client.
 
         Args:
@@ -111,7 +114,7 @@ class ConnectionManager:
         for client_id in disconnected_clients:
             self.disconnect(client_id)
 
-    async def broadcast_json(self, data: Dict[str, Any]) -> None:
+    async def broadcast_json(self, data: dict[str, Any]) -> None:
         """Broadcast JSON data to all connected clients.
 
         Args:
@@ -159,7 +162,7 @@ class ConnectionManager:
             extra={"client_id": client_id, "recording_id": recording_id},
         )
 
-    async def broadcast_to_recording(self, recording_id: str, data: Dict[str, Any]) -> None:
+    async def broadcast_to_recording(self, recording_id: str, data: dict[str, Any]) -> None:
         """Broadcast update to all clients subscribed to a recording.
 
         Args:

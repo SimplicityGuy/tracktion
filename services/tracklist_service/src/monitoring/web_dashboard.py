@@ -1,14 +1,13 @@
 """Web-based monitoring dashboard for resilient scraping system."""
 
-from typing import List, Optional
+import aiohttp_cors
 from aiohttp import web
 from aiohttp.web import Application, Request, Response
-import aiohttp_cors  # type: ignore[import-not-found]
 
-from services.tracklist_service.src.monitoring.dashboard import MonitoringDashboard
-from services.tracklist_service.src.monitoring.alert_manager import AlertManager
-from services.tracklist_service.src.monitoring.structure_monitor import StructureMonitor
 from services.tracklist_service.src.cache.fallback_cache import FallbackCache
+from services.tracklist_service.src.monitoring.alert_manager import AlertManager
+from services.tracklist_service.src.monitoring.dashboard import MonitoringDashboard
+from services.tracklist_service.src.monitoring.structure_monitor import StructureMonitor
 
 
 class WebMonitoringDashboard:
@@ -32,7 +31,10 @@ class WebMonitoringDashboard:
             app,
             defaults={
                 "*": aiohttp_cors.ResourceOptions(
-                    allow_credentials=True, expose_headers="*", allow_headers="*", allow_methods="*"
+                    allow_credentials=True,
+                    expose_headers="*",
+                    allow_headers="*",
+                    allow_methods="*",
                 )
             },
         )
@@ -62,7 +64,12 @@ class WebMonitoringDashboard:
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
         .container { max-width: 1200px; margin: 0 auto; }
         .header { background: #2c3e50; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
         .metric-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .metric-title { font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #2c3e50; }
         .metric-value { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
@@ -75,7 +82,14 @@ class WebMonitoringDashboard:
         .issue-critical { border-left-color: #e74c3c; }
         .issue-high { border-left-color: #f39c12; }
         .issue-medium { border-left-color: #3498db; }
-        .refresh-btn { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+        .refresh-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
         .refresh-btn:hover { background: #2980b9; }
         .timestamp { color: #666; font-size: 12px; }
         #loading { display: none; color: #666; }
@@ -151,7 +165,9 @@ class WebMonitoringDashboard:
 
                 <div class="metric-card">
                     <div class="metric-title">Parser Health</div>
-                    <div class="metric-value">${health.uptime_metrics.parsers_healthy}/${health.uptime_metrics.total_parsers}</div>
+                    <div class="metric-value">
+                        ${health.uptime_metrics.parsers_healthy}/${health.uptime_metrics.total_parsers}
+                    </div>
                     <div class="metric-description">Healthy parsers</div>
                 </div>
 
@@ -234,7 +250,7 @@ class WebMonitoringDashboard:
         """API endpoint for system metrics."""
         try:
             page_types_param = request.query.get("page_types")
-            page_types: Optional[List[str]] = None
+            page_types: list[str] | None = None
             if page_types_param:
                 page_types = page_types_param.split(",")
 
@@ -272,12 +288,11 @@ class WebMonitoringDashboard:
                     content_type="text/csv",
                     headers={"Content-Disposition": "attachment; filename=metrics.csv"},
                 )
-            else:
-                return web.Response(
-                    text=data,
-                    content_type="application/json",
-                    headers={"Content-Disposition": "attachment; filename=metrics.json"},
-                )
+            return web.Response(
+                text=data,
+                content_type="application/json",
+                headers={"Content-Disposition": "attachment; filename=metrics.json"},
+            )
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 

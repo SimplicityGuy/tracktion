@@ -2,10 +2,12 @@
 Caching service for CUE generation operations.
 """
 
+import gzip
+import hashlib
 import json
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -20,6 +22,7 @@ try:
 except ImportError:
     logger.warning("Redis not available, using in-memory cache fallback")
     REDIS_AVAILABLE = False
+    Redis = type("Redis", (), {})  # Fallback when redis not available
 
 
 class CacheConfig(BaseModel):
@@ -29,8 +32,8 @@ class CacheConfig(BaseModel):
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
-    redis_password: Optional[str] = None
-    redis_username: Optional[str] = None
+    redis_password: str | None = None
+    redis_username: str | None = None
     redis_ssl: bool = False
     connection_timeout: int = 5
     socket_timeout: int = 5
@@ -46,7 +49,7 @@ class CacheConfig(BaseModel):
     enable_compression: bool = True
     enable_metrics: bool = True
     cache_warming_enabled: bool = True
-    popular_formats: List[str] = ["standard", "cdj", "traktor"]
+    popular_formats: list[str] = ["standard", "cdj", "traktor"]
 
     # Fallback settings
     memory_cache_max_size: int = 1000  # Max items in memory cache
@@ -69,7 +72,7 @@ class CacheMetrics(BaseModel):
         total_reads = self.hits + self.misses
         return (self.hits / total_reads * 100) if total_reads > 0 else 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert metrics to dictionary."""
         return {
             "hits": self.hits,
@@ -89,8 +92,8 @@ class MemoryCache:
         """Initialize memory cache."""
         self.max_size = max_size
         self.default_ttl = default_ttl
-        self._cache: Dict[str, Tuple[Any, float]] = {}  # key -> (value, expiry_time)
-        self._access_order: List[str] = []  # For LRU eviction
+        self._cache: dict[str, tuple[Any, float]] = {}  # key -> (value, expiry_time)
+        self._access_order: list[str] = []  # For LRU eviction
 
     def _evict_expired(self) -> None:
         """Remove expired entries."""
@@ -113,7 +116,7 @@ class MemoryCache:
             if lru_key in self._cache:
                 del self._cache[lru_key]
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """Get value from cache."""
         self._evict_expired()
 
@@ -132,7 +135,7 @@ class MemoryCache:
 
         return value
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
+    def set(self, key: str, value: Any, ttl: int | None = None) -> bool:
         """Set value in cache."""
         self._evict_expired()
         self._evict_lru()
@@ -176,7 +179,7 @@ class CacheService:
             config: Cache configuration
         """
         self.config = config
-        self.redis_client: Optional[Redis[str]] = None
+        self.redis_client: Redis | None = None
         self.memory_cache = MemoryCache(max_size=config.memory_cache_max_size, default_ttl=config.memory_cache_ttl)
         self.metrics = CacheMetrics()
         self._redis_available = False
@@ -238,8 +241,6 @@ class CacheService:
             serialized_value = json.dumps(value)
 
             if self.config.enable_compression and len(serialized_value) > 1000:
-                import gzip
-
                 compressed = gzip.compress(serialized_value.encode("utf-8"))
                 await self.redis_client.setex(f"{key}:gz", ttl, compressed)
                 await self.redis_client.setex(f"{key}:meta", ttl, json.dumps({"compressed": True}))
@@ -253,7 +254,7 @@ class CacheService:
             self.metrics.errors += 1
             return False
 
-    async def _get_redis(self, key: str) -> Optional[Any]:
+    async def _get_redis(self, key: str) -> Any | None:
         """Get value from Redis with decompression if needed."""
         if not self._redis_available or not self.redis_client:
             return None
@@ -266,8 +267,6 @@ class CacheService:
                 if meta.get("compressed"):
                     compressed_data = await self.redis_client.get(f"{key}:gz")
                     if compressed_data:
-                        import gzip
-
                         decompressed = gzip.decompress(
                             compressed_data.encode() if isinstance(compressed_data, str) else compressed_data
                         ).decode("utf-8")
@@ -300,7 +299,7 @@ class CacheService:
             self.metrics.errors += 1
             return False
 
-    async def get_cue_content(self, tracklist_id: UUID, cue_format: str) -> Optional[str]:
+    async def get_cue_content(self, tracklist_id: UUID, cue_format: str) -> str | None:
         """
         Get cached CUE file content.
 
@@ -318,14 +317,14 @@ class CacheService:
         if content:
             self.metrics.hits += 1
             logger.debug(f"Cache hit (Redis) for CUE content: {key}")
-            return str(content) if content is not None else None
+            return str(content)
 
         # Try memory cache
         content = self.memory_cache.get(key)
         if content:
             self.metrics.hits += 1
             logger.debug(f"Cache hit (memory) for CUE content: {key}")
-            return str(content) if content is not None else None
+            return str(content)
 
         self.metrics.misses += 1
         logger.debug(f"Cache miss for CUE content: {key}")
@@ -359,8 +358,8 @@ class CacheService:
         return False
 
     async def get_validation_result(
-        self, cue_file_id: UUID, audio_file_path: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, cue_file_id: UUID, audio_file_path: str | None = None
+    ) -> dict[str, Any] | None:
         """
         Get cached validation result.
 
@@ -372,8 +371,6 @@ class CacheService:
             Cached validation result if available
         """
         if audio_file_path:
-            import hashlib
-
             audio_hash = hashlib.md5(audio_file_path.encode()).hexdigest()[:8]
             key = self._generate_cache_key("validation", cue_file_id, audio_hash)
         else:
@@ -383,19 +380,22 @@ class CacheService:
         result = await self._get_redis(key)
         if result:
             self.metrics.hits += 1
-            return result  # type: ignore[no-any-return]
+            return dict(result) if isinstance(result, dict) else result
 
         # Try memory cache
         result = self.memory_cache.get(key)
         if result:
             self.metrics.hits += 1
-            return result  # type: ignore[no-any-return]
+            return dict(result) if isinstance(result, dict) else result
 
         self.metrics.misses += 1
         return None
 
     async def set_validation_result(
-        self, cue_file_id: UUID, result: Dict[str, Any], audio_file_path: Optional[str] = None
+        self,
+        cue_file_id: UUID,
+        result: dict[str, Any],
+        audio_file_path: str | None = None,
     ) -> bool:
         """
         Cache validation result.
@@ -409,8 +409,6 @@ class CacheService:
             True if cached successfully
         """
         if audio_file_path:
-            import hashlib
-
             audio_hash = hashlib.md5(audio_file_path.encode()).hexdigest()[:8]
             key = self._generate_cache_key("validation", cue_file_id, audio_hash)
         else:
@@ -425,7 +423,7 @@ class CacheService:
 
         return False
 
-    async def get_format_capabilities(self, cue_format: str) -> Optional[Dict[str, Any]]:
+    async def get_format_capabilities(self, cue_format: str) -> dict[str, Any] | None:
         """
         Get cached format capabilities.
 
@@ -441,18 +439,18 @@ class CacheService:
         capabilities = await self._get_redis(key)
         if capabilities:
             self.metrics.hits += 1
-            return capabilities  # type: ignore[no-any-return]
+            return dict(capabilities) if isinstance(capabilities, dict) else capabilities
 
         # Try memory cache
         capabilities = self.memory_cache.get(key)
         if capabilities:
             self.metrics.hits += 1
-            return capabilities  # type: ignore[no-any-return]
+            return dict(capabilities) if isinstance(capabilities, dict) else capabilities
 
         self.metrics.misses += 1
         return None
 
-    async def set_format_capabilities(self, cue_format: str, capabilities: Dict[str, Any]) -> bool:
+    async def set_format_capabilities(self, cue_format: str, capabilities: dict[str, Any]) -> bool:
         """
         Cache format capabilities.
 
@@ -507,7 +505,7 @@ class CacheService:
             self.metrics.errors += 1
             return 0
 
-    async def warm_cache(self, tracklist_ids: List[UUID], formats: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def warm_cache(self, tracklist_ids: list[UUID], formats: list[str] | None = None) -> dict[str, Any]:
         """
         Warm cache for popular tracklist/format combinations.
 
@@ -554,7 +552,7 @@ class CacheService:
         logger.info(f"Cache warming completed: {results}")
         return results
 
-    async def get_cache_stats(self) -> Dict[str, Any]:
+    async def get_cache_stats(self) -> dict[str, Any]:
         """
         Get cache statistics and health information.
 
@@ -597,7 +595,7 @@ class CacheService:
 
         return stats
 
-    async def clear_cache(self, pattern: Optional[str] = None) -> int:
+    async def clear_cache(self, pattern: str | None = None) -> int:
         """
         Clear cache entries matching pattern.
 
@@ -635,7 +633,7 @@ class CacheService:
 
 
 # Global cache service instance
-cache_service: Optional[CacheService] = None
+cache_service: CacheService | None = None
 
 
 def get_cache_service() -> CacheService:
@@ -647,6 +645,6 @@ def get_cache_service() -> CacheService:
 
 def initialize_cache_service(config: CacheConfig) -> CacheService:
     """Initialize the global cache service."""
-    global cache_service
+    global cache_service  # noqa: PLW0603  # Global is needed for cache service initialization
     cache_service = CacheService(config)
     return cache_service

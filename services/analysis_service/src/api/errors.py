@@ -1,13 +1,13 @@
 """Error handling and custom exceptions for API."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import HTTPException, Request, status
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
 
-from ..structured_logging import get_logger
+from services.analysis_service.src.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -16,7 +16,11 @@ class APIError(HTTPException):
     """Base API error class."""
 
     def __init__(
-        self, status_code: int, detail: str, error_code: Optional[str] = None, headers: Optional[Dict[str, str]] = None
+        self,
+        status_code: int,
+        detail: str,
+        error_code: str | None = None,
+        headers: dict[str, str] | None = None,
     ):
         """Initialize API error.
 
@@ -50,7 +54,7 @@ class NotFoundError(APIError):
 class ValidationError(APIError):
     """Request validation error."""
 
-    def __init__(self, detail: str, field: Optional[str] = None):
+    def __init__(self, detail: str, field: str | None = None):
         """Initialize validation error.
 
         Args:
@@ -59,7 +63,9 @@ class ValidationError(APIError):
         """
         message = f"Validation error in field '{field}': {detail}" if field else detail
         super().__init__(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message, error_code="VALIDATION_ERROR"
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=message,
+            error_code="VALIDATION_ERROR",
         )
 
 
@@ -89,7 +95,11 @@ class AuthorizationError(APIError):
         Args:
             detail: Error details
         """
-        super().__init__(status_code=status.HTTP_403_FORBIDDEN, detail=detail, error_code="INSUFFICIENT_PERMISSIONS")
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=detail,
+            error_code="INSUFFICIENT_PERMISSIONS",
+        )
 
 
 class RateLimitError(APIError):
@@ -112,7 +122,7 @@ class RateLimitError(APIError):
 class ServiceUnavailableError(APIError):
     """Service unavailable error."""
 
-    def __init__(self, service: str, retry_after: Optional[int] = None):
+    def __init__(self, service: str, retry_after: int | None = None):
         """Initialize service unavailable error.
 
         Args:
@@ -137,7 +147,11 @@ class ConflictError(APIError):
         Args:
             detail: Conflict details
         """
-        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail, error_code="RESOURCE_CONFLICT")
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=detail,
+            error_code="RESOURCE_CONFLICT",
+        )
 
 
 async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
@@ -166,7 +180,11 @@ async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
 
     # Build error response
     error_response = {
-        "error": {"code": exc.error_code or "API_ERROR", "message": exc.detail, "status": exc.status_code}
+        "error": {
+            "code": exc.error_code or "API_ERROR",
+            "message": exc.detail,
+            "status": exc.status_code,
+        }
     }
 
     if request_id:
@@ -190,15 +208,23 @@ async def validation_exception_handler(request: Request, exc: PydanticValidation
     # Log validation error
     logger.warning(
         "Request validation failed",
-        extra={"request_id": request_id, "path": request.url.path, "method": request.method, "errors": str(exc)},
+        extra={
+            "request_id": request_id,
+            "path": request.url.path,
+            "method": request.method,
+            "errors": str(exc),
+        },
     )
 
     # Parse validation errors
-    errors = []
-    for error in exc.errors():
-        errors.append(
-            {"field": ".".join(str(loc) for loc in error["loc"]), "message": error["msg"], "type": error["type"]}
-        )
+    errors = [
+        {
+            "field": ".".join(str(loc) for loc in error["loc"]),
+            "message": error["msg"],
+            "type": error["type"],
+        }
+        for error in exc.errors()
+    ]
 
     # Build error response
     error_response = {
@@ -231,7 +257,12 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
     # Log unexpected error
     logger.error(
         "Unexpected error occurred",
-        extra={"request_id": request_id, "path": request.url.path, "method": request.method, "error": str(exc)},
+        extra={
+            "request_id": request_id,
+            "path": request.url.path,
+            "method": request.method,
+            "error": str(exc),
+        },
         exc_info=True,
     )
 

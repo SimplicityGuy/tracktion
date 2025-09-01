@@ -5,24 +5,24 @@ version management, saving, retrieval, and publishing to final versions.
 """
 
 import json
-from datetime import datetime
-from typing import Any, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 import redis
 from sqlalchemy.orm import Session
 
 from services.tracklist_service.src.models.tracklist import (
+    TrackEntry,
     Tracklist,
     TracklistDB,
-    TrackEntry,
 )
 
 
 class DraftService:
     """Service for managing draft tracklists."""
 
-    def __init__(self, db_session: Session, redis_client: Optional[redis.Redis[str]] = None):
+    def __init__(self, db_session: Session, redis_client: redis.Redis | None = None):
         """Initialize draft service.
 
         Args:
@@ -37,7 +37,7 @@ class DraftService:
     def create_draft(
         self,
         audio_file_id: UUID,
-        tracks: Optional[List[TrackEntry]] = None,
+        tracks: list[TrackEntry] | None = None,
     ) -> Tracklist:
         """Create a new draft tracklist.
 
@@ -79,7 +79,7 @@ class DraftService:
     def save_draft(
         self,
         draft_id: UUID,
-        tracks: List[TrackEntry],
+        tracks: list[TrackEntry],
         auto_version: bool = True,
     ) -> Tracklist:
         """Save or update a draft tracklist.
@@ -121,7 +121,7 @@ class DraftService:
 
         # Update existing draft
         draft_db.tracks = [track.to_dict() for track in tracks]
-        draft_db.updated_at = datetime.utcnow()
+        draft_db.updated_at = datetime.now(UTC)
         self.db.commit()
 
         # Update cache
@@ -130,9 +130,9 @@ class DraftService:
         if self.redis:
             self._cache_draft(draft)
 
-        return draft
+        return draft  # type: ignore[no-any-return]  # to_model() returns Tracklist but typed as Any
 
-    def get_draft(self, draft_id: UUID) -> Optional[Tracklist]:
+    def get_draft(self, draft_id: UUID) -> Tracklist | None:
         """Retrieve a draft tracklist.
 
         Args:
@@ -166,13 +166,13 @@ class DraftService:
         if self.redis:
             self._cache_draft(draft)
 
-        return draft
+        return draft  # type: ignore[no-any-return]  # to_model() returns Tracklist but typed as Any
 
     def list_drafts(
         self,
         audio_file_id: UUID,
         include_versions: bool = False,
-    ) -> List[Tracklist]:
+    ) -> list[Tracklist]:
         """List all draft tracklists for an audio file.
 
         Args:
@@ -191,7 +191,7 @@ class DraftService:
             # Only get latest version of each draft lineage
             query = query.filter_by(parent_tracklist_id=None)
 
-        drafts_db = query.order_by(TracklistDB.draft_version.desc()).all()  # type: ignore[union-attr]
+        drafts_db = query.order_by(TracklistDB.draft_version.desc()).all()
 
         return [draft_db.to_model() for draft_db in drafts_db]
 
@@ -234,7 +234,7 @@ class DraftService:
 
         # Convert draft to published
         draft_db.is_draft = False
-        draft_db.updated_at = datetime.utcnow()
+        draft_db.updated_at = datetime.now(UTC)
 
         # Clear draft version since it's now published
         draft_db.draft_version = None
@@ -245,7 +245,7 @@ class DraftService:
         if self.redis:
             self._invalidate_cache(draft_id)
 
-        return draft_db.to_model()
+        return draft_db.to_model()  # type: ignore[no-any-return]  # to_model() returns Tracklist but typed as Any
 
     def delete_draft(self, draft_id: UUID) -> bool:
         """Delete a draft tracklist.
@@ -280,7 +280,7 @@ class DraftService:
     def batch_update_tracks(
         self,
         draft_id: UUID,
-        track_updates: List[dict[str, Any]],
+        track_updates: list[dict[str, Any]],
     ) -> Tracklist:
         """Batch update multiple tracks efficiently.
 
@@ -319,8 +319,8 @@ class DraftService:
 
     def bulk_create_drafts(
         self,
-        draft_data: List[dict[str, Any]],
-    ) -> List[Tracklist]:
+        draft_data: list[dict[str, Any]],
+    ) -> list[Tracklist]:
         """Create multiple drafts efficiently in batch.
 
         Args:
@@ -347,7 +347,7 @@ class DraftService:
 
         return created_drafts
 
-    def _get_latest_draft_version(self, audio_file_id: UUID) -> Optional[int]:
+    def _get_latest_draft_version(self, audio_file_id: UUID) -> int | None:
         """Get the latest draft version number for an audio file.
 
         Args:
@@ -362,7 +362,7 @@ class DraftService:
                 audio_file_id=audio_file_id,
                 is_draft=True,
             )
-            .order_by(TracklistDB.draft_version.desc())  # type: ignore[union-attr]
+            .order_by(TracklistDB.draft_version.desc())
             .first()
         )
 
@@ -370,8 +370,8 @@ class DraftService:
 
     def _has_significant_changes(
         self,
-        old_tracks: List[TrackEntry],
-        new_tracks: List[TrackEntry],
+        old_tracks: list[TrackEntry],
+        new_tracks: list[TrackEntry],
     ) -> bool:
         """Check if track changes are significant enough for new version.
 
@@ -387,7 +387,7 @@ class DraftService:
             return True
 
         # Check for major changes in track order or content
-        for old, new in zip(old_tracks, new_tracks):
+        for old, new in zip(old_tracks, new_tracks, strict=False):
             # Position change is significant
             if old.position != new.position:
                 return True
@@ -415,7 +415,7 @@ class DraftService:
         value = draft.model_dump_json()
         self.redis.setex(key, self.cache_ttl, value)
 
-    def _get_cached_draft(self, draft_id: UUID) -> Optional[Tracklist]:
+    def _get_cached_draft(self, draft_id: UUID) -> Tracklist | None:
         """Get a draft from Redis cache.
 
         Args:
@@ -431,8 +431,14 @@ class DraftService:
         value = self.redis.get(key)
 
         if value:
-            data = json.loads(value if isinstance(value, (str, bytes)) else value.decode("utf-8"))  # type: ignore[union-attr]
-            return Tracklist.model_validate(data)
+            if isinstance(value, str):
+                data = json.loads(value)
+            elif isinstance(value, bytes):
+                data = json.loads(value.decode("utf-8"))
+            else:
+                # Should not happen with Redis, but handle gracefully
+                return None
+            return Tracklist.model_validate(data)  # type: ignore[no-any-return]  # Pydantic returns model but typed as Any
 
         return None
 

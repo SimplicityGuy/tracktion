@@ -1,14 +1,15 @@
 """Distributed rate limiting with Redis using token bucket algorithm."""
 
+import json
 import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, List, Any
-import redis.asyncio as redis
-import json
+from typing import Any
 
-from ..auth.models import User
+import redis.asyncio as redis
+
+from src.auth.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +38,15 @@ class RateLimitResult:
     allowed: bool
     remaining: int
     reset_time: int
-    retry_after: Optional[int] = None
+    retry_after: int | None = None
     limit: int = 0
-    headers: Optional[Dict[str, str]] = None
+    headers: dict[str, str] | None = None
 
 
 class RateLimiter:
     """Distributed rate limiter using Redis and token bucket algorithm."""
 
-    def __init__(self, redis_client: redis.Redis[str]):
+    def __init__(self, redis_client: redis.Redis):
         """Initialize rate limiter.
 
         Args:
@@ -130,8 +131,12 @@ class RateLimiter:
         return result.allowed
 
     def get_limit_headers(
-        self, user: User, remaining: int, reset_time: int, retry_after: Optional[int] = None
-    ) -> Dict[str, str]:
+        self,
+        user: User,
+        remaining: int,
+        reset_time: int,
+        retry_after: int | None = None,
+    ) -> dict[str, str]:
         """Generate rate limit headers for HTTP responses.
 
         Args:
@@ -160,7 +165,7 @@ class RateLimiter:
 
     async def _execute_token_bucket_script(
         self, key: str, bucket: TokenBucket, cost: int, current_time: int
-    ) -> List[int]:
+    ) -> list[int]:
         """Execute Lua script for atomic token bucket operations.
 
         Args:
@@ -216,7 +221,7 @@ class RateLimiter:
         return {allowed, remaining, reset_time}
         """
 
-        result = await self.redis.eval(  # type: ignore[no-untyped-call]
+        result = await self.redis.eval(
             script,
             1,  # Number of keys
             key,  # The key
@@ -228,7 +233,7 @@ class RateLimiter:
         )
         return [int(x) for x in result]
 
-    async def get_user_stats(self, user: User) -> Dict[str, Any]:
+    async def get_user_stats(self, user: User) -> dict[str, Any]:
         """Get current rate limit stats for a user.
 
         Args:
@@ -278,7 +283,12 @@ class RateLimiter:
         return bool(result > 0)
 
     async def set_custom_limit(
-        self, user: User, rate: float, capacity: int, burst_allowance: int = 0, ttl: int = 3600
+        self,
+        user: User,
+        rate: float,
+        capacity: int,
+        burst_allowance: int = 0,
+        ttl: int = 3600,
     ) -> bool:
         """Set custom rate limits for a user (override tier limits).
 
@@ -293,7 +303,11 @@ class RateLimiter:
             True if set successfully
         """
         key = f"rate_limit_custom:{user.id}"
-        custom_config = {"rate": rate, "capacity": capacity, "burst_allowance": burst_allowance}
+        custom_config = {
+            "rate": rate,
+            "capacity": capacity,
+            "burst_allowance": burst_allowance,
+        }
 
         await self.redis.setex(key, ttl, json.dumps(custom_config))
         logger.info(f"Set custom rate limits for user {user.id}: {rate}/s, {capacity}+{burst_allowance}")
@@ -317,7 +331,9 @@ class RateLimiter:
             try:
                 config = json.loads(custom_data)
                 return TokenBucket(
-                    rate=config["rate"], capacity=config["capacity"], burst_allowance=config.get("burst_allowance", 0)
+                    rate=config["rate"],
+                    capacity=config["capacity"],
+                    burst_allowance=config.get("burst_allowance", 0),
                 )
             except (json.JSONDecodeError, KeyError):
                 logger.warning(f"Invalid custom rate limit config for user {user.id}")
@@ -326,7 +342,7 @@ class RateLimiter:
         tier = user.tier.value
         return self.tiers.get(tier, self.tiers[RateLimitTier.FREE.value])
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Check rate limiter health and Redis connectivity.
 
         Returns:

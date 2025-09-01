@@ -32,19 +32,17 @@ def mock_job():
 @pytest.fixture
 def mock_jobs():
     """Create multiple mock jobs."""
-    jobs = []
-    for i in range(5):
-        jobs.append(
-            Job(
-                id=f"job-{i}",
-                batch_id="batch-123",
-                url=f"http://1001tracklists.com/track{i}",
-                priority=JobPriority.NORMAL,
-                user_id="user123",
-                created_at=datetime.now(UTC),
-            )
+    return [
+        Job(
+            id=f"job-{i}",
+            batch_id="batch-123",
+            url=f"http://1001tracklists.com/track{i}",
+            priority=JobPriority.NORMAL,
+            user_id="user123",
+            created_at=datetime.now(UTC),
         )
-    return jobs
+        for i in range(5)
+    ]
 
 
 class TestLoadMetrics:
@@ -233,7 +231,11 @@ class TestParallelProcessor:
             for i, job in enumerate(mock_jobs):
                 future = Mock()
                 if i == 2:  # Make third job fail
-                    future.result.return_value = {"success": False, "job_id": job.id, "error": "Processing error"}
+                    future.result.return_value = {
+                        "success": False,
+                        "job_id": job.id,
+                        "error": "Processing error",
+                    }
                 else:
                     future.result.return_value = {
                         "success": True,

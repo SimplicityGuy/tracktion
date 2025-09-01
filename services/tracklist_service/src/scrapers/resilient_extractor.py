@@ -1,13 +1,14 @@
 """Resilient data extraction with fallback strategies."""
 
-from typing import List, Dict, Any, Optional, Union
+import logging
+import re
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
+
 from bs4 import BeautifulSoup, Tag
-import re
-import logging
 from lxml import etree
-from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 
@@ -26,31 +27,31 @@ class StrategyType(Enum):
 class ExtractionResult:
     """Result from an extraction attempt."""
 
-    value: Optional[Any] = None
+    value: Any | None = None
     success: bool = False
-    strategy_used: Optional[str] = None
+    strategy_used: str | None = None
     quality_score: float = 0.0
     partial: bool = False
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ExtractedData:
     """Container for extracted data with metadata."""
 
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
     quality_score: float = 0.0
-    strategies_used: Dict[str, str] = field(default_factory=dict)
+    strategies_used: dict[str, str] = field(default_factory=dict)
     partial_extraction: bool = False
-    missing_fields: List[str] = field(default_factory=list)
-    extraction_errors: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    missing_fields: list[str] = field(default_factory=list)
+    extraction_errors: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class ExtractionStrategy(ABC):
     """Base class for extraction strategies."""
 
-    def __init__(self, selector: str, attribute: Optional[str] = None):
+    def __init__(self, selector: str, attribute: str | None = None):
         """Initialize extraction strategy.
 
         Args:
@@ -70,9 +71,8 @@ class ExtractionStrategy(ABC):
         Returns:
             ExtractionResult with extracted data
         """
-        pass
 
-    def _get_text_or_attribute(self, element: Tag) -> Optional[str]:
+    def _get_text_or_attribute(self, element: Tag) -> str | None:
         """Get text or attribute from element."""
         if not element:
             return None
@@ -92,9 +92,12 @@ class CSSStrategy(ExtractionStrategy):
         try:
             elements = soup.select(self.selector)
             if not elements:
-                return ExtractionResult(success=False, errors=[f"No elements found for selector: {self.selector}"])
+                return ExtractionResult(
+                    success=False,
+                    errors=[f"No elements found for selector: {self.selector}"],
+                )
 
-            value: Optional[Union[str, List[Optional[str]]]]
+            value: str | list[str | None] | None
             if len(elements) == 1:
                 value = self._get_text_or_attribute(elements[0])
             else:
@@ -102,7 +105,7 @@ class CSSStrategy(ExtractionStrategy):
 
             return ExtractionResult(value=value, success=True, strategy_used="CSS", quality_score=1.0)
         except Exception as e:
-            return ExtractionResult(success=False, errors=[f"CSS extraction failed: {str(e)}"])
+            return ExtractionResult(success=False, errors=[f"CSS extraction failed: {e!s}"])
 
 
 class XPathStrategy(ExtractionStrategy):
@@ -119,7 +122,10 @@ class XPathStrategy(ExtractionStrategy):
             results = tree.xpath(self.selector)
 
             if not results:
-                return ExtractionResult(success=False, errors=[f"No elements found for XPath: {self.selector}"])
+                return ExtractionResult(
+                    success=False,
+                    errors=[f"No elements found for XPath: {self.selector}"],
+                )
 
             # Process results
             values = []
@@ -135,13 +141,13 @@ class XPathStrategy(ExtractionStrategy):
 
             return ExtractionResult(value=value, success=True, strategy_used="XPath", quality_score=0.95)
         except Exception as e:
-            return ExtractionResult(success=False, errors=[f"XPath extraction failed: {str(e)}"])
+            return ExtractionResult(success=False, errors=[f"XPath extraction failed: {e!s}"])
 
 
 class TextStrategy(ExtractionStrategy):
     """Text-based extraction strategy using string matching."""
 
-    def __init__(self, pattern: str, context: Optional[str] = None):
+    def __init__(self, pattern: str, context: str | None = None):
         """Initialize text strategy.
 
         Args:
@@ -155,7 +161,7 @@ class TextStrategy(ExtractionStrategy):
         """Extract using text search."""
         try:
             # Search in specific context if provided
-            search_area: Union[BeautifulSoup, Tag] = soup
+            search_area: BeautifulSoup | Tag = soup
             if self.context:
                 context_elements = soup.select(self.context) or soup.find_all(class_=self.context)
                 if context_elements and isinstance(context_elements[0], Tag):
@@ -183,10 +189,10 @@ class TextStrategy(ExtractionStrategy):
                 success=True,
                 strategy_used="Text",
                 quality_score=0.7,
-                partial=True if len(values) > 1 else False,
+                partial=len(values) > 1,
             )
         except Exception as e:
-            return ExtractionResult(success=False, errors=[f"Text extraction failed: {str(e)}"])
+            return ExtractionResult(success=False, errors=[f"Text extraction failed: {e!s}"])
 
 
 class RegexStrategy(ExtractionStrategy):
@@ -210,7 +216,10 @@ class RegexStrategy(ExtractionStrategy):
             matches = self.compiled_pattern.findall(text)
 
             if not matches:
-                return ExtractionResult(success=False, errors=[f"No regex matches for pattern: {self.selector}"])
+                return ExtractionResult(
+                    success=False,
+                    errors=[f"No regex matches for pattern: {self.selector}"],
+                )
 
             # Extract specific group if requested
             if self.group > 0 and isinstance(matches[0], tuple):
@@ -220,9 +229,15 @@ class RegexStrategy(ExtractionStrategy):
 
             value = values[0] if len(values) == 1 else values
 
-            return ExtractionResult(value=value, success=True, strategy_used="Regex", quality_score=0.6, partial=True)
+            return ExtractionResult(
+                value=value,
+                success=True,
+                strategy_used="Regex",
+                quality_score=0.6,
+                partial=True,
+            )
         except Exception as e:
-            return ExtractionResult(success=False, errors=[f"Regex extraction failed: {str(e)}"])
+            return ExtractionResult(success=False, errors=[f"Regex extraction failed: {e!s}"])
 
 
 class ResilientExtractor:
@@ -237,7 +252,10 @@ class ResilientExtractor:
         self.quality_threshold = default_quality_threshold
 
     def extract_with_fallback(
-        self, soup: BeautifulSoup, strategies: List[ExtractionStrategy], field_name: Optional[str] = None
+        self,
+        soup: BeautifulSoup,
+        strategies: list[ExtractionStrategy],
+        field_name: str | None = None,
     ) -> ExtractedData:
         """Extract data using multiple strategies with fallback.
 
@@ -290,7 +308,7 @@ class ResilientExtractor:
         return extracted_data
 
     def extract_multiple_fields(
-        self, soup: BeautifulSoup, field_strategies: Dict[str, List[ExtractionStrategy]]
+        self, soup: BeautifulSoup, field_strategies: dict[str, list[ExtractionStrategy]]
     ) -> ExtractedData:
         """Extract multiple fields with their respective strategies.
 
@@ -358,7 +376,7 @@ class ResilientExtractor:
 
         return min(1.0, final_score)
 
-    def create_default_strategies(self, field_type: str) -> List[ExtractionStrategy]:
+    def create_default_strategies(self, field_type: str) -> list[ExtractionStrategy]:
         """Create default extraction strategies for common field types.
 
         Args:
@@ -392,7 +410,11 @@ class ResilientExtractor:
                 RegexStrategy(r"https?://[^\s]+"),
             ]
         elif field_type == "text":
-            strategies = [CSSStrategy("p"), CSSStrategy(".content"), XPathStrategy("//p/text()")]
+            strategies = [
+                CSSStrategy("p"),
+                CSSStrategy(".content"),
+                XPathStrategy("//p/text()"),
+            ]
         else:
             # Generic strategies
             strategies = [

@@ -35,7 +35,10 @@ class TestStreamingEndpoints:
         client = TestClient(app)
         recording_id = "test-recording-456"
 
-        response = client.get(f"/v1/streaming/audio/{recording_id}", params={"start_byte": 0, "end_byte": 1024})
+        response = client.get(
+            f"/v1/streaming/audio/{recording_id}",
+            params={"start_byte": 0, "end_byte": 1024},
+        )
 
         assert response.status_code == status.HTTP_206_PARTIAL_CONTENT
         assert "Accept-Ranges" in response.headers
@@ -46,7 +49,10 @@ class TestStreamingEndpoints:
         recording_id = "test-recording-789"
 
         # SSE endpoints return event stream
-        response = client.get(f"/v1/streaming/events/{recording_id}", headers={"Accept": "text/event-stream"})
+        response = client.get(
+            f"/v1/streaming/events/{recording_id}",
+            headers={"Accept": "text/event-stream"},
+        )
 
         assert response.status_code == status.HTTP_200_OK
         # Note: TestClient doesn't fully support SSE,

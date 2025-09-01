@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from services.tracklist_service.src.api.import_endpoints import router
@@ -19,8 +20,6 @@ from services.tracklist_service.src.models.tracklist import ImportTracklistReque
 @pytest.fixture
 def client():
     """Create test client."""
-    from fastapi import FastAPI
-
     app = FastAPI()
     app.include_router(router)
     return TestClient(app)
@@ -320,6 +319,7 @@ class TestImportEndpoints:
     @patch("services.tracklist_service.src.api.import_endpoints.message_handler")
     def test_import_health_check_degraded(self, mock_message_handler, mock_cache, mock_import_service_class, client):
         """Test health check with service failures."""
+
         # Mock import service as failing
         mock_import_service_class.side_effect = Exception("Service unavailable")
 

@@ -1,18 +1,23 @@
 """Database connection and session management for Tracktion."""
 
+import logging
 import os
 import time
-import logging
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, Callable, Generator, Optional
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import sessionmaker, Session, declarative_base
-from neo4j import GraphDatabase  # type: ignore[import-not-found]
-from neo4j import Driver
 from dotenv import load_dotenv
+from neo4j import (
+    Driver,
+    GraphDatabase,
+)
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
 
 # Load environment variables
 load_dotenv()
@@ -66,9 +71,9 @@ class DatabaseManager:
 
     def __init__(self) -> None:
         """Initialize database connections with retry logic."""
-        self.pg_engine: Optional[Engine] = None
-        self.neo4j_driver: Optional[Driver] = None
-        self.SessionLocal: Optional[sessionmaker[Session]] = None
+        self.pg_engine: Engine | None = None
+        self.neo4j_driver: Driver | None = None
+        self.SessionLocal: sessionmaker[Session] | None = None
         self._initialize_connections()
 
     @retry_on_failure(max_attempts=5, delay=2.0)
@@ -108,6 +113,11 @@ class DatabaseManager:
             if not all([neo4j_uri, neo4j_user, neo4j_password]):
                 raise ValueError("Neo4j connection environment variables not set")
 
+            # After validation, we know these are not None
+            assert neo4j_uri is not None
+            assert neo4j_user is not None
+            assert neo4j_password is not None
+
             self.neo4j_driver = GraphDatabase.driver(
                 neo4j_uri,
                 auth=(neo4j_user, neo4j_password),
@@ -121,7 +131,7 @@ class DatabaseManager:
             logger.info("Neo4j connection established")
 
     @contextmanager
-    def get_db_session(self) -> Generator[Session, None, None]:
+    def get_db_session(self) -> Generator[Session]:
         """Context manager for database sessions.
 
         Yields:

@@ -1,6 +1,8 @@
 """Performance tests for async external service calls."""
 
 import asyncio
+import contextlib
+import random
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -38,7 +40,6 @@ class MockExternalService:
         await asyncio.sleep(self.latency)
 
         # Simulate errors based on error rate
-        import random
 
         if random.random() < self.error_rate:
             self.error_count += 1
@@ -108,14 +109,12 @@ class TestAsyncHTTPClientPerformance:
                 mock_context.__aexit__ = AsyncMock()
                 mock_get.return_value = mock_context
 
-                try:
+                with contextlib.suppress(Exception):
                     await client.request_with_circuit_breaker(
                         service_name="test_service",
                         method="GET",
                         url=f"https://example.com/api/{i}",
-                    )
-                except Exception:
-                    pass  # Some requests may fail due to error rate
+                    )  # Some requests may fail due to error rate
 
             return time.time() - start
 
@@ -345,14 +344,12 @@ class TestCircuitBreakerPerformance:
 
             # Cause circuit to open
             for _ in range(5):
-                try:
+                with contextlib.suppress(Exception):
                     await client.request_with_circuit_breaker(
                         service_name="recovery_test",
                         method="GET",
                         url="https://example.com",
                     )
-                except Exception:
-                    pass
 
             assert breaker.state == "open"
 
@@ -387,6 +384,8 @@ class TestRetryMechanismPerformance:
 
         async def fail_once():
             """Fail on first attempt, track retry delay."""
+            # random imported at top level
+
             if not hasattr(fail_once, "attempt"):
                 fail_once.attempt = 0
             fail_once.attempt += 1
@@ -394,9 +393,8 @@ class TestRetryMechanismPerformance:
             if fail_once.attempt == 1:
                 fail_once.start_time = time.time()
                 raise httpx.NetworkError("First attempt fails")
-            else:
-                retry_delays.append(time.time() - fail_once.start_time)
-                return MagicMock()
+            retry_delays.append(time.time() - fail_once.start_time)
+            return MagicMock()
 
         # Run multiple retries to check jitter distribution
         num_tests = 20

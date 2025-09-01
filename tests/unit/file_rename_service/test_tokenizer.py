@@ -43,7 +43,11 @@ class TestTokenModels:
         """Test coverage ratio calculation."""
         tokens = [
             Token(value="Phish", category=TokenCategory.ARTIST, original_text="Phish"),
-            Token(value="2023-07-14", category=TokenCategory.DATE, original_text="2023-07-14"),
+            Token(
+                value="2023-07-14",
+                category=TokenCategory.DATE,
+                original_text="2023-07-14",
+            ),
         ]
 
         result = TokenizedFilename(

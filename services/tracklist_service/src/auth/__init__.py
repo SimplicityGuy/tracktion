@@ -1,12 +1,12 @@
 """Authentication module for tracklist service."""
 
 from .authentication import AuthenticationManager
-from .models import User, ApiKey, TokenPair, UserTier
+from .models import ApiKey, TokenPair, User, UserTier
 
 __all__ = [
-    "AuthenticationManager",
-    "User",
     "ApiKey",
+    "AuthenticationManager",
     "TokenPair",
+    "User",
     "UserTier",
 ]

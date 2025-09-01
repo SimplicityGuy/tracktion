@@ -5,7 +5,9 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from services.analysis_service.src.file_rename_executor.executor import FileRenameExecutor
+from services.analysis_service.src.file_rename_executor.executor import (
+    FileRenameExecutor,
+)
 
 
 class TestFileRenameExecutorUpdated:
@@ -45,7 +47,10 @@ class TestFileRenameExecutorUpdated:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rename_preconditions.return_value = (True, None)
+        executor.transaction_manager.validate_rename_preconditions.return_value = (
+            True,
+            None,
+        )
 
         # Setup metadata preserver
         metadata = {"tags": {"title": "Test"}}
@@ -83,7 +88,10 @@ class TestFileRenameExecutorUpdated:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rename_preconditions.return_value = (False, "Source file does not exist")
+        executor.transaction_manager.validate_rename_preconditions.return_value = (
+            False,
+            "Source file does not exist",
+        )
 
         result, error = executor.execute_rename(proposal_id)
 
@@ -106,9 +114,15 @@ class TestFileRenameExecutorUpdated:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rename_preconditions.return_value = (True, None)
+        executor.transaction_manager.validate_rename_preconditions.return_value = (
+            True,
+            None,
+        )
 
-        with patch("pathlib.Path.mkdir"), patch("shutil.move", side_effect=OSError("Permission denied")):
+        with (
+            patch("pathlib.Path.mkdir"),
+            patch("shutil.move", side_effect=OSError("Permission denied")),
+        ):
             result, error = executor.execute_rename(proposal_id)
 
             assert result is False
@@ -130,7 +144,10 @@ class TestFileRenameExecutorUpdated:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rename_preconditions.return_value = (True, None)
+        executor.transaction_manager.validate_rename_preconditions.return_value = (
+            True,
+            None,
+        )
 
         with patch("pathlib.Path.mkdir"), patch("shutil.move") as mock_move:
             result, error = executor.execute_rename(proposal_id)
@@ -160,7 +177,10 @@ class TestFileRenameExecutorUpdated:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rename_preconditions.return_value = (True, None)
+        executor.transaction_manager.validate_rename_preconditions.return_value = (
+            True,
+            None,
+        )
 
         # Setup metadata preserver to fail restore
         metadata = {"tags": {"title": "Test"}}
@@ -213,7 +233,10 @@ class TestFileRenameExecutorUpdated:
         context_manager.__enter__.return_value = (session, proposal, recording)
         context_manager.__exit__.return_value = None
         executor.transaction_manager.atomic_rename.return_value = context_manager
-        executor.transaction_manager.validate_rollback_preconditions.return_value = (True, None)
+        executor.transaction_manager.validate_rollback_preconditions.return_value = (
+            True,
+            None,
+        )
 
         # Setup metadata preserver
         metadata = {"tags": {"title": "Test"}}

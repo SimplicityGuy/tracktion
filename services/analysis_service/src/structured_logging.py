@@ -3,13 +3,14 @@
 import json
 import logging
 import os
+import socket
 import sys
 import time
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 # Performance tracking for log operations
-LOG_PERFORMANCE_METRICS: Dict[str, Any] = {
+LOG_PERFORMANCE_METRICS: dict[str, Any] = {
     "total_logs": 0,
     "avg_format_time_ms": 0.0,
 }
@@ -42,8 +43,6 @@ class StructuredFormatter(logging.Formatter):
         # Get hostname once
         self.hostname = ""
         if include_hostname:
-            import socket
-
             try:
                 self.hostname = socket.gethostname()
             except Exception:
@@ -61,8 +60,8 @@ class StructuredFormatter(logging.Formatter):
         start_time = time.perf_counter()
 
         # Base log structure
-        log_data: Dict[str, Any] = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+        log_data: dict[str, Any] = {
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "service": self.service_name,
             "level": record.levelname,
             "logger": record.name,
@@ -140,7 +139,6 @@ class StructuredFormatter(logging.Formatter):
         Args:
             format_time_ms: Time taken to format log in milliseconds
         """
-        global LOG_PERFORMANCE_METRICS
         total = LOG_PERFORMANCE_METRICS["total_logs"]
         avg_time = LOG_PERFORMANCE_METRICS["avg_format_time_ms"]
 
@@ -155,7 +153,7 @@ class StructuredFormatter(logging.Formatter):
 class CorrelationIdFilter(logging.Filter):
     """Filter to add correlation ID to log records."""
 
-    def __init__(self, correlation_id: Optional[str] = None) -> None:
+    def __init__(self, correlation_id: str | None = None) -> None:
         """Initialize the filter.
 
         Args:
@@ -174,7 +172,7 @@ class CorrelationIdFilter(logging.Filter):
             True to allow the record through
         """
         if not hasattr(record, "correlation_id") and self.correlation_id:
-            record.correlation_id = self.correlation_id  # type: ignore[attr-defined]
+            record.correlation_id = self.correlation_id
         return True
 
 
@@ -185,7 +183,7 @@ class PerformanceLogger:
         self,
         logger: logging.Logger,
         operation_name: str,
-        correlation_id: Optional[str] = None,
+        correlation_id: str | None = None,
         log_level: int = logging.INFO,
         threshold_ms: float = 1000.0,
     ) -> None:
@@ -219,7 +217,7 @@ class PerformanceLogger:
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Exit context manager and log timing."""
         elapsed_ms = (time.perf_counter() - self.start_time) * 1000
-        extra: Dict[str, Any] = {
+        extra: dict[str, Any] = {
             "duration_ms": elapsed_ms,
             "operation": self.operation_name,
         }
@@ -251,7 +249,7 @@ class PerformanceLogger:
 def configure_structured_logging(
     service_name: str = "analysis_service",
     log_level: str = "INFO",
-    log_file: Optional[str] = None,
+    log_file: str | None = None,
     include_console: bool = True,
     include_hostname: bool = True,
     include_function: bool = True,
@@ -320,7 +318,7 @@ def configure_structured_logging(
     )
 
 
-def get_performance_metrics() -> Dict[str, Any]:
+def get_performance_metrics() -> dict[str, Any]:
     """Get logging performance metrics.
 
     Returns:

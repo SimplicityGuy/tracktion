@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aio_pika import IncomingMessage
 
-from services.cataloging_service.src.config import Config, DatabaseConfig, RabbitMQConfig, ServiceConfig
+from services.cataloging_service.src.config import (
+    Config,
+    DatabaseConfig,
+    RabbitMQConfig,
+    ServiceConfig,
+)
 from services.cataloging_service.src.message_consumer import CatalogingMessageConsumer
 
 
@@ -40,9 +45,14 @@ def mock_config():
 @pytest.fixture
 def consumer(mock_config):
     """Create cataloging message consumer."""
-    with patch("services.cataloging_service.src.message_consumer.get_config", return_value=mock_config):
-        with patch("services.cataloging_service.src.message_consumer.create_async_engine"):
-            return CatalogingMessageConsumer()
+    with (
+        patch(
+            "services.cataloging_service.src.message_consumer.get_config",
+            return_value=mock_config,
+        ),
+        patch("services.cataloging_service.src.message_consumer.create_async_engine"),
+    ):
+        return CatalogingMessageConsumer()
 
 
 class TestCatalogingMessageConsumer:

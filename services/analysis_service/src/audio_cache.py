@@ -5,13 +5,17 @@ This module provides caching functionality to avoid re-analyzing
 audio files that have already been processed.
 """
 
+import contextlib
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, cast
 
 import redis
+import xxhash
 from redis.exceptions import ConnectionError, RedisError
 
 logger = logging.getLogger(__name__)
@@ -36,7 +40,7 @@ class AudioCache:
         redis_host: str = "localhost",
         redis_port: int = 6379,
         redis_db: int = 0,
-        redis_password: Optional[str] = None,
+        redis_password: str | None = None,
         default_ttl: int = DEFAULT_TTL,
         algorithm_version: str = "1.0",
         use_xxh128: bool = True,
@@ -59,7 +63,7 @@ class AudioCache:
         self.algorithm_version = algorithm_version
         self.default_ttl = default_ttl
         self.use_xxh128 = use_xxh128
-        self.redis_client: Optional[redis.Redis] = None
+        self.redis_client: redis.Redis | None = None
 
         if not self.enabled:
             logger.info("Audio cache disabled")
@@ -79,10 +83,10 @@ class AudioCache:
             self.redis_client.ping()
             logger.info(f"Connected to Redis at {redis_host}:{redis_port}")
         except (ConnectionError, RedisError) as e:
-            logger.error(f"Failed to connect to Redis: {str(e)}")
+            logger.error(f"Failed to connect to Redis: {e!s}")
             self.redis_client = None
 
-    def _generate_file_hash(self, file_path: str) -> Optional[str]:
+    def _generate_file_hash(self, file_path: str) -> str | None:
         """
         Generate hash of file contents for cache key.
 
@@ -96,24 +100,22 @@ class AudioCache:
             if self.use_xxh128:
                 # Use xxHash128 for faster hashing (requires xxhash library)
                 try:
-                    import xxhash
-
-                    hasher = xxhash.xxh128()  # type: ignore[assignment]
+                    hasher = xxhash.xxh128()
                 except ImportError:
                     logger.warning("xxhash not available, falling back to SHA256")
-                    hasher = hashlib.sha256()  # type: ignore[assignment]
+                    hasher = hashlib.sha256()  # Hasher type assignment
             else:
-                hasher = hashlib.sha256()  # type: ignore[assignment]
+                hasher = hashlib.sha256()  # Hasher type assignment
 
             # Read file in chunks to handle large files
-            with open(file_path, "rb") as f:
+            with Path(file_path).open("rb") as f:
                 while chunk := f.read(8192):
                     hasher.update(chunk)
 
-            return hasher.hexdigest()  # type: ignore[no-any-return]
+            return str(hasher.hexdigest())
 
         except Exception as e:
-            logger.error(f"Failed to generate file hash: {str(e)}")
+            logger.error(f"Failed to generate file hash: {e!s}")
             return None
 
     def _build_cache_key(self, prefix: str, file_hash: str) -> str:
@@ -129,7 +131,7 @@ class AudioCache:
         """
         return f"{prefix}:{file_hash}:{self.algorithm_version}"
 
-    def get_bpm_results(self, file_path: str) -> Optional[Dict[str, Any]]:
+    def get_bpm_results(self, file_path: str) -> dict[str, Any] | None:
         """
         Get cached BPM results for a file.
 
@@ -154,16 +156,19 @@ class AudioCache:
                 logger.debug(f"Cache hit for BPM analysis: {cache_key}")
                 # Redis returns str due to decode_responses=True
                 return json.loads(str(cached_data))  # type: ignore[no-any-return]
-            else:
-                logger.debug(f"Cache miss for BPM analysis: {cache_key}")
-                return None
+            logger.debug(f"Cache miss for BPM analysis: {cache_key}")
+            return None
 
         except (RedisError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to retrieve cached BPM results: {str(e)}")
+            logger.error(f"Failed to retrieve cached BPM results: {e!s}")
             return None
 
     def set_bpm_results(
-        self, file_path: str, results: Dict[str, Any], confidence: Optional[float] = None, failed: bool = False
+        self,
+        file_path: str,
+        results: dict[str, Any],
+        confidence: float | None = None,
+        failed: bool = False,
     ) -> bool:
         """
         Cache BPM results for a file.
@@ -197,7 +202,7 @@ class AudioCache:
         # Add metadata
         cache_data = {
             **results,
-            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "cached_at": datetime.now(UTC).isoformat(),
             "algorithm_version": self.algorithm_version,
         }
 
@@ -207,10 +212,10 @@ class AudioCache:
             return True
 
         except (RedisError, TypeError, ValueError) as e:
-            logger.error(f"Failed to cache BPM results: {str(e)}")
+            logger.error(f"Failed to cache BPM results: {e!s}")
             return False
 
-    def get_temporal_results(self, file_path: str) -> Optional[Dict[str, Any]]:
+    def get_temporal_results(self, file_path: str) -> dict[str, Any] | None:
         """
         Get cached temporal analysis results for a file.
 
@@ -234,16 +239,18 @@ class AudioCache:
             if cached_data:
                 logger.debug(f"Cache hit for temporal analysis: {cache_key}")
                 return json.loads(str(cached_data))  # type: ignore[no-any-return]
-            else:
-                logger.debug(f"Cache miss for temporal analysis: {cache_key}")
-                return None
+            logger.debug(f"Cache miss for temporal analysis: {cache_key}")
+            return None
 
         except (RedisError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to retrieve cached temporal results: {str(e)}")
+            logger.error(f"Failed to retrieve cached temporal results: {e!s}")
             return None
 
     def set_temporal_results(
-        self, file_path: str, results: Dict[str, Any], stability_score: Optional[float] = None
+        self,
+        file_path: str,
+        results: dict[str, Any],
+        stability_score: float | None = None,
     ) -> bool:
         """
         Cache temporal analysis results for a file.
@@ -271,7 +278,7 @@ class AudioCache:
         # Add metadata
         cache_data = {
             **results,
-            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "cached_at": datetime.now(UTC).isoformat(),
             "algorithm_version": self.algorithm_version,
         }
 
@@ -281,10 +288,10 @@ class AudioCache:
             return True
 
         except (RedisError, TypeError, ValueError) as e:
-            logger.error(f"Failed to cache temporal results: {str(e)}")
+            logger.error(f"Failed to cache temporal results: {e!s}")
             return False
 
-    def get_key_results(self, file_path: str) -> Optional[Dict[str, Any]]:
+    def get_key_results(self, file_path: str) -> dict[str, Any] | None:
         """
         Get cached key detection results for a file.
 
@@ -308,15 +315,19 @@ class AudioCache:
             if cached_data:
                 logger.debug(f"Cache hit for key analysis: {cache_key}")
                 return json.loads(str(cached_data))  # type: ignore[no-any-return]
-            else:
-                logger.debug(f"Cache miss for key analysis: {cache_key}")
-                return None
-
-        except (RedisError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to retrieve cached key results: {str(e)}")
+            logger.debug(f"Cache miss for key analysis: {cache_key}")
             return None
 
-    def set_key_results(self, file_path: str, results: Dict[str, Any], confidence: Optional[float] = None) -> bool:
+        except (RedisError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to retrieve cached key results: {e!s}")
+            return None
+
+    def set_key_results(
+        self,
+        file_path: str,
+        results: dict[str, Any],
+        confidence: float | None = None,
+    ) -> bool:
         """
         Cache key detection results for a file.
 
@@ -338,15 +349,12 @@ class AudioCache:
         cache_key = self._build_cache_key(self.KEY_PREFIX, file_hash)
 
         # Determine TTL based on confidence
-        if confidence is not None and confidence < 0.6:
-            ttl = self.LOW_CONFIDENCE_TTL
-        else:
-            ttl = self.default_ttl
+        ttl = self.LOW_CONFIDENCE_TTL if confidence is not None and confidence < 0.6 else self.default_ttl
 
         # Add metadata
         cache_data = {
             **results,
-            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "cached_at": datetime.now(UTC).isoformat(),
             "algorithm_version": self.algorithm_version,
         }
 
@@ -356,10 +364,10 @@ class AudioCache:
             return True
 
         except (RedisError, TypeError, ValueError) as e:
-            logger.error(f"Failed to cache key results: {str(e)}")
+            logger.error(f"Failed to cache key results: {e!s}")
             return False
 
-    def get_mood_results(self, file_path: str) -> Optional[Dict[str, Any]]:
+    def get_mood_results(self, file_path: str) -> dict[str, Any] | None:
         """
         Get cached mood analysis results for a file.
 
@@ -383,15 +391,19 @@ class AudioCache:
             if cached_data:
                 logger.debug(f"Cache hit for mood analysis: {cache_key}")
                 return json.loads(str(cached_data))  # type: ignore[no-any-return]
-            else:
-                logger.debug(f"Cache miss for mood analysis: {cache_key}")
-                return None
-
-        except (RedisError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to retrieve cached mood results: {str(e)}")
+            logger.debug(f"Cache miss for mood analysis: {cache_key}")
             return None
 
-    def set_mood_results(self, file_path: str, results: Dict[str, Any], confidence: Optional[float] = None) -> bool:
+        except (RedisError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to retrieve cached mood results: {e!s}")
+            return None
+
+    def set_mood_results(
+        self,
+        file_path: str,
+        results: dict[str, Any],
+        confidence: float | None = None,
+    ) -> bool:
         """
         Cache mood analysis results for a file.
 
@@ -413,15 +425,12 @@ class AudioCache:
         cache_key = self._build_cache_key(self.MOOD_PREFIX, file_hash)
 
         # Determine TTL based on confidence
-        if confidence is not None and confidence < 0.6:
-            ttl = self.LOW_CONFIDENCE_TTL
-        else:
-            ttl = self.default_ttl
+        ttl = self.LOW_CONFIDENCE_TTL if confidence is not None and confidence < 0.6 else self.default_ttl
 
         # Add metadata
         cache_data = {
             **results,
-            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "cached_at": datetime.now(UTC).isoformat(),
             "algorithm_version": self.algorithm_version,
         }
 
@@ -431,7 +440,7 @@ class AudioCache:
             return True
 
         except (RedisError, TypeError, ValueError) as e:
-            logger.error(f"Failed to cache mood results: {str(e)}")
+            logger.error(f"Failed to cache mood results: {e!s}")
             return False
 
     def invalidate_cache(self, file_path: str) -> bool:
@@ -466,7 +475,7 @@ class AudioCache:
             return deleted_count > 0
 
         except RedisError as e:
-            logger.error(f"Failed to invalidate cache: {str(e)}")
+            logger.error(f"Failed to invalidate cache: {e!s}")
             return False
 
     def flush_version_cache(self) -> int:
@@ -487,7 +496,8 @@ class AudioCache:
                 keys = []  # Skip async results
             else:
                 try:
-                    keys = list(keys_result) if keys_result else []  # type: ignore[arg-type]
+                    # Type cast for mypy - synchronous Redis client returns list[str]
+                    keys = cast("list[str]", keys_result) if keys_result else []
                 except TypeError:
                     keys = []
             if keys:
@@ -497,7 +507,8 @@ class AudioCache:
                     count = 0  # Skip async results
                 else:
                     try:
-                        count = int(deleted_count) if deleted_count else 0  # type: ignore[arg-type]
+                        # Type cast for mypy - synchronous Redis client returns int
+                        count = cast("int", deleted_count) if deleted_count is not None else 0
                     except (TypeError, ValueError):
                         count = 0
                 logger.info(f"Flushed {count} cache entries for version {self.algorithm_version}")
@@ -505,10 +516,10 @@ class AudioCache:
             return 0
 
         except RedisError as e:
-            logger.error(f"Failed to flush version cache: {str(e)}")
+            logger.error(f"Failed to flush version cache: {e!s}")
             return 0
 
-    def warm_cache(self, file_paths: list[str], processor: Callable[[str], Dict[str, Any]]) -> int:
+    def warm_cache(self, file_paths: list[str], processor: Callable[[str], dict[str, Any]]) -> int:
         """
         Pre-populate cache with analysis results.
 
@@ -538,12 +549,12 @@ class AudioCache:
                     logger.debug(f"Warmed cache for: {file_path}")
 
             except Exception as e:
-                logger.error(f"Failed to warm cache for {file_path}: {str(e)}")
+                logger.error(f"Failed to warm cache for {file_path}: {e!s}")
 
         logger.info(f"Cache warming complete: {cached_count}/{len(file_paths)} files cached")
         return cached_count
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """
         Get cache statistics.
 
@@ -564,7 +575,8 @@ class AudioCache:
                 bpm_keys = []  # Skip async results
             else:
                 try:
-                    bpm_keys = list(bpm_keys_result) if bpm_keys_result else []  # type: ignore[arg-type]
+                    # Type cast for mypy - synchronous Redis client returns list[str]
+                    bpm_keys = cast("list[str]", bpm_keys_result) if bpm_keys_result else []
                 except TypeError:
                     bpm_keys = []
 
@@ -572,7 +584,8 @@ class AudioCache:
                 temporal_keys = []  # Skip async results
             else:
                 try:
-                    temporal_keys = list(temporal_keys_result) if temporal_keys_result else []  # type: ignore[arg-type]
+                    # Type cast for mypy - synchronous Redis client returns list[str]
+                    temporal_keys = cast("list[str]", temporal_keys_result) if temporal_keys_result else []
                 except TypeError:
                     temporal_keys = []
 
@@ -580,7 +593,8 @@ class AudioCache:
                 key_keys = []  # Skip async results
             else:
                 try:
-                    key_keys = list(key_keys_result) if key_keys_result else []  # type: ignore[arg-type]
+                    # Type cast for mypy - synchronous Redis client returns list[str]
+                    key_keys = cast("list[str]", key_keys_result) if key_keys_result else []
                 except TypeError:
                     key_keys = []
 
@@ -588,7 +602,8 @@ class AudioCache:
                 mood_keys = []  # Skip async results
             else:
                 try:
-                    mood_keys = list(mood_keys_result) if mood_keys_result else []  # type: ignore[arg-type]
+                    # Type cast for mypy - synchronous Redis client returns list[str]
+                    mood_keys = cast("list[str]", mood_keys_result) if mood_keys_result else []
                 except TypeError:
                     mood_keys = []
 
@@ -600,10 +615,9 @@ class AudioCache:
                     size = self.redis_client.memory_usage(key)
                     if size and not hasattr(size, "__await__"):
                         # Ensure size is an integer
-                        try:
-                            total_size += int(size) if size else 0  # type: ignore[arg-type]
-                        except (TypeError, ValueError):
-                            pass  # Skip invalid size values
+                        with contextlib.suppress(TypeError, ValueError):
+                            # Type cast for mypy - synchronous Redis client returns int
+                            total_size += cast("int", size) if size is not None else 0
 
             return {
                 "enabled": True,
@@ -618,5 +632,5 @@ class AudioCache:
             }
 
         except RedisError as e:
-            logger.error(f"Failed to get cache stats: {str(e)}")
+            logger.error(f"Failed to get cache stats: {e!s}")
             return {"enabled": True, "connected": False, "error": str(e)}

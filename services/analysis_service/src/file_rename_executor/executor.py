@@ -3,12 +3,12 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional, Tuple
 from uuid import UUID
 
 from shared.core_types.src.database import DatabaseManager
-from .transaction_manager import TransactionManager
+
 from .metadata_preserver import MetadataPreserver
+from .transaction_manager import TransactionManager
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class FileRenameExecutor:
         self.transaction_manager = TransactionManager(db_manager)
         self.metadata_preserver = MetadataPreserver()
 
-    def execute_rename(self, proposal_id: UUID) -> Tuple[bool, Optional[str]]:
+    def execute_rename(self, proposal_id: UUID) -> tuple[bool, str | None]:
         """Execute a file rename based on an approved proposal.
 
         Args:
@@ -37,7 +37,11 @@ class FileRenameExecutor:
         """
         try:
             # Use transaction manager for atomic rename
-            with self.transaction_manager.atomic_rename(proposal_id) as (session, proposal, recording):
+            with self.transaction_manager.atomic_rename(proposal_id) as (
+                session,
+                proposal,
+                recording,
+            ):
                 # Validate rename preconditions
                 valid, error = self.transaction_manager.validate_rename_preconditions(session, proposal, recording)
                 if not valid:
@@ -61,7 +65,7 @@ class FileRenameExecutor:
                     shutil.move(str(source_path), str(dest_path))
                 except Exception as e:
                     logger.error(f"Failed to rename file: {e}")
-                    raise RuntimeError(f"Failed to rename file: {e}")
+                    raise RuntimeError(f"Failed to rename file: {e}") from e
 
                 # Restore metadata for OGG files
                 if is_ogg and metadata_snapshot:
@@ -89,7 +93,7 @@ class FileRenameExecutor:
             logger.error(f"Error executing rename for proposal {proposal_id}: {e}")
             return False, str(e)
 
-    def rollback_rename(self, proposal_id: UUID) -> Tuple[bool, Optional[str]]:
+    def rollback_rename(self, proposal_id: UUID) -> tuple[bool, str | None]:
         """Rollback a previously executed rename operation.
 
         Args:
@@ -100,7 +104,11 @@ class FileRenameExecutor:
         """
         try:
             # Use transaction manager for atomic rollback
-            with self.transaction_manager.atomic_rename(proposal_id) as (session, proposal, recording):
+            with self.transaction_manager.atomic_rename(proposal_id) as (
+                session,
+                proposal,
+                recording,
+            ):
                 # Validate rollback preconditions
                 valid, error = self.transaction_manager.validate_rollback_preconditions(session, proposal, recording)
                 if not valid:
@@ -124,7 +132,7 @@ class FileRenameExecutor:
                     shutil.move(str(current_path), str(original_path))
                 except Exception as e:
                     logger.error(f"Failed to rollback rename: {e}")
-                    raise RuntimeError(f"Failed to rollback rename: {e}")
+                    raise RuntimeError(f"Failed to rollback rename: {e}") from e
 
                 # Restore metadata for OGG files
                 if is_ogg and metadata_snapshot:
@@ -141,7 +149,10 @@ class FileRenameExecutor:
 
                 # Update database records
                 self.transaction_manager.update_recording_path(
-                    session, recording, proposal.original_path, proposal.original_filename
+                    session,
+                    recording,
+                    proposal.original_path,
+                    proposal.original_filename,
                 )
                 self.transaction_manager.update_proposal_status(session, proposal, "rolled_back")
 

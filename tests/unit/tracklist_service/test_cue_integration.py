@@ -44,9 +44,11 @@ class TestCueFormatMapper:
     def test_unsupported_format_error(self):
         """Test error handling for unsupported formats."""
         # This should not happen in practice but test error handling
-        with patch.dict(CueFormatMapper.FORMAT_MAPPING, {}, clear=True):
-            with pytest.raises(ValueError, match="Unsupported format"):
-                CueFormatMapper.to_cue_handler_format(CueFormat.STANDARD)
+        with (
+            patch.dict(CueFormatMapper.FORMAT_MAPPING, {}, clear=True),
+            pytest.raises(ValueError, match="Unsupported format"),
+        ):
+            CueFormatMapper.to_cue_handler_format(CueFormat.STANDARD)
 
 
 class TestTracklistToCueMapper:
@@ -81,7 +83,12 @@ class TestTracklistToCueMapper:
         ]
 
         return Tracklist(
-            audio_file_id=uuid4(), source="manual", tracks=tracks, confidence_score=0.87, is_draft=True, draft_version=1
+            audio_file_id=uuid4(),
+            source="manual",
+            tracks=tracks,
+            confidence_score=0.87,
+            is_draft=True,
+            draft_version=1,
         )
 
     def test_timedelta_to_milliseconds(self):
@@ -138,8 +145,18 @@ class TestCueIntegrationService:
     def sample_tracklist(self):
         """Create a sample tracklist."""
         tracks = [
-            TrackEntry(position=1, start_time=timedelta(minutes=0), artist="Artist 1", title="Track 1"),
-            TrackEntry(position=2, start_time=timedelta(minutes=4), artist="Artist 2", title="Track 2"),
+            TrackEntry(
+                position=1,
+                start_time=timedelta(minutes=0),
+                artist="Artist 1",
+                title="Track 1",
+            ),
+            TrackEntry(
+                position=2,
+                start_time=timedelta(minutes=4),
+                artist="Artist 2",
+                title="Track 2",
+            ),
         ]
 
         return Tracklist(audio_file_id=uuid4(), source="manual", tracks=tracks)

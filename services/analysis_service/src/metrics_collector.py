@@ -2,7 +2,8 @@
 
 import logging
 import time
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 from prometheus_client import (
     CollectorRegistry,
@@ -19,7 +20,19 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIME_BUCKETS = (0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0)
 
 # Default buckets for file size histogram (in MB)
-DEFAULT_SIZE_BUCKETS = (0.1, 0.5, 1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0)
+DEFAULT_SIZE_BUCKETS = (
+    0.1,
+    0.5,
+    1.0,
+    5.0,
+    10.0,
+    25.0,
+    50.0,
+    100.0,
+    250.0,
+    500.0,
+    1000.0,
+)
 
 
 class MetricsCollector:
@@ -29,8 +42,8 @@ class MetricsCollector:
         self,
         service_name: str = "analysis_service",
         namespace: str = "tracktion",
-        registry: Optional[CollectorRegistry] = None,
-        push_gateway_url: Optional[str] = None,
+        registry: CollectorRegistry | None = None,
+        push_gateway_url: str | None = None,
     ) -> None:
         """Initialize the metrics collector.
 
@@ -188,7 +201,7 @@ class MetricsCollector:
         status: str,
         file_format: str,
         processing_time: float,
-        file_size_mb: Optional[float] = None,
+        file_size_mb: float | None = None,
     ) -> None:
         """Record metrics for a processed file.
 
@@ -333,7 +346,7 @@ class MetricsTimer:
         metrics: MetricsCollector,
         operation: str,
         record_confidence: bool = False,
-        analysis_type: Optional[str] = None,
+        analysis_type: str | None = None,
     ) -> None:
         """Initialize the metrics timer.
 
@@ -349,7 +362,7 @@ class MetricsTimer:
         self.analysis_type = analysis_type
         self.start_time: float = 0
         self.status = "success"
-        self.confidence: Optional[float] = None
+        self.confidence: float | None = None
 
     def __enter__(self) -> "MetricsTimer":
         """Start timing the operation."""
@@ -385,7 +398,7 @@ class MetricsTimer:
 
 def create_metrics_endpoint(
     metrics_collector: MetricsCollector,
-) -> Callable[[], tuple[bytes, int, Dict[str, str]]]:
+) -> Callable[[], tuple[bytes, int, dict[str, str]]]:
     """Create a metrics endpoint handler.
 
     Args:
@@ -395,7 +408,7 @@ def create_metrics_endpoint(
         Handler function that returns metrics response
     """
 
-    def metrics_handler() -> tuple[bytes, int, Dict[str, str]]:
+    def metrics_handler() -> tuple[bytes, int, dict[str, str]]:
         """Handle metrics endpoint request.
 
         Returns:

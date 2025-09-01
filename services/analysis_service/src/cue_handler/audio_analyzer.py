@@ -3,12 +3,25 @@
 Analyzes audio files to extract duration and verify against CUE timing.
 """
 
-from pathlib import Path
-from typing import Optional, Tuple
 import logging
+from pathlib import Path
 
 from .models import CueSheet
-from .validation_rules import ValidationIssue, Severity
+from .validation_rules import Severity, ValidationIssue
+
+try:
+    from mutagen import File
+
+    HAS_MUTAGEN = True
+except ImportError:
+    HAS_MUTAGEN = False
+
+try:
+    from pydub import AudioSegment
+
+    HAS_PYDUB = True
+except ImportError:
+    HAS_PYDUB = False
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +29,7 @@ logger = logging.getLogger(__name__)
 class AudioAnalyzer:
     """Analyzes audio files for CUE validation."""
 
-    def analyze_durations(self, cue_sheet: CueSheet, cue_path: Path) -> Tuple[Optional[float], Optional[float]]:
+    def analyze_durations(self, cue_sheet: CueSheet, cue_path: Path) -> tuple[float | None, float | None]:
         """Analyze and compare audio vs CUE durations.
 
         Args:
@@ -31,7 +44,7 @@ class AudioAnalyzer:
 
         return audio_duration, cue_duration
 
-    def _get_total_audio_duration(self, cue_sheet: CueSheet, cue_path: Path) -> Optional[float]:
+    def _get_total_audio_duration(self, cue_sheet: CueSheet, cue_path: Path) -> float | None:
         """Get total duration of all referenced audio files.
 
         Args:
@@ -64,7 +77,7 @@ class AudioAnalyzer:
 
         return total_duration if total_duration > 0 else None
 
-    def _get_audio_file_duration(self, file_path: str) -> Optional[float]:
+    def _get_audio_file_duration(self, file_path: str) -> float | None:
         """Get audio file duration in milliseconds.
 
         Uses mutagen for metadata extraction, falls back to pydub
@@ -76,42 +89,40 @@ class AudioAnalyzer:
         Returns:
             Duration in milliseconds, or None if cannot determine
         """
-        try:
-            from mutagen import File  # type: ignore[import-not-found]
-
-            audio = File(file_path)
-            if audio and audio.info:
-                return float(audio.info.length) * 1000  # Convert to ms
-        except ImportError:
+        if HAS_MUTAGEN:
+            try:
+                audio = File(file_path)
+                if audio and audio.info:
+                    return float(audio.info.length) * 1000  # Convert to ms
+            except Exception as e:
+                logger.warning(f"mutagen failed for {file_path}: {e}")
+        else:
             logger.warning("mutagen not installed, trying pydub")
-        except Exception as e:
-            logger.warning(f"mutagen failed for {file_path}: {e}")
 
-        try:
-            from pydub import AudioSegment  # type: ignore[import-not-found]
+        if HAS_PYDUB:
+            try:
+                # Determine format from extension
+                ext = Path(file_path).suffix.lower()[1:]  # Remove the dot
+                format_map = {
+                    "wav": "wav",
+                    "mp3": "mp3",
+                    "flac": "flac",
+                    "ogg": "ogg",
+                    "aiff": "aiff",
+                    "aif": "aiff",
+                }
 
-            # Determine format from extension
-            ext = Path(file_path).suffix.lower()[1:]  # Remove the dot
-            format_map = {
-                "wav": "wav",
-                "mp3": "mp3",
-                "flac": "flac",
-                "ogg": "ogg",
-                "aiff": "aiff",
-                "aif": "aiff",
-            }
-
-            audio_format = format_map.get(ext, ext)
-            audio = AudioSegment.from_file(file_path, format=audio_format)
-            return len(audio)  # Already in ms
-        except ImportError:
+                audio_format = format_map.get(ext, ext)
+                audio = AudioSegment.from_file(file_path, format=audio_format)
+                return len(audio)  # Already in ms
+            except Exception as e:
+                logger.warning(f"pydub failed for {file_path}: {e}")
+        else:
             logger.warning("pydub not installed, cannot determine audio duration")
-        except Exception as e:
-            logger.warning(f"pydub failed for {file_path}: {e}")
 
         return None
 
-    def _get_cue_duration(self, cue_sheet: CueSheet) -> Optional[float]:
+    def _get_cue_duration(self, cue_sheet: CueSheet) -> float | None:
         """Get total duration from CUE sheet timing.
 
         Args:
@@ -127,8 +138,7 @@ class AudioAnalyzer:
                 # Find the latest time in this track
                 for idx_time in track.indices.values():
                     time_frames = idx_time.to_frames()
-                    if time_frames > max_time_frames:
-                        max_time_frames = time_frames
+                    max_time_frames = max(max_time_frames, time_frames)
 
                 # Account for postgap
                 if track.postgap:
@@ -137,8 +147,7 @@ class AudioAnalyzer:
                     # Find INDEX 01 to add postgap to
                     if 1 in track.indices:
                         postgap_end = track.indices[1].to_frames() + postgap_frames
-                        if postgap_end > max_time_frames:
-                            max_time_frames = postgap_end
+                        max_time_frames = max(max_time_frames, postgap_end)
 
         if max_time_frames > 0:
             # Convert frames to milliseconds (75 frames per second)
@@ -183,7 +192,10 @@ class AudioAnalyzer:
                                         severity=Severity.ERROR,
                                         line_number=0,  # Audio validation doesn't have line numbers
                                         category="Audio Bounds",
-                                        message=f"Track {track.number:02d} INDEX {idx_num:02d} at {idx_time} exceeds audio duration ({audio_duration / 1000:.1f}s)",
+                                        message=(
+                                            f"Track {track.number:02d} INDEX {idx_num:02d} at {idx_time} exceeds "
+                                            f"audio duration ({audio_duration / 1000:.1f}s)"
+                                        ),
                                         suggestion="Adjust track timing to fit within audio file duration",
                                     )
                                 )

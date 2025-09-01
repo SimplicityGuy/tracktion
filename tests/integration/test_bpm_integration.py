@@ -16,7 +16,10 @@ from services.analysis_service.src.audio_cache import AudioCache
 from services.analysis_service.src.bpm_detector import BPMDetector
 from services.analysis_service.src.config import get_config
 from services.analysis_service.src.message_consumer import MessageConsumer
-from services.analysis_service.src.performance import PerformanceOptimizer
+from services.analysis_service.src.performance import (
+    MemoryManager,
+    PerformanceOptimizer,
+)
 from services.analysis_service.src.storage_handler import StorageHandler
 from services.analysis_service.src.temporal_analyzer import TemporalAnalyzer
 
@@ -74,12 +77,24 @@ class TestBPMPipelineIntegration:
     def test_bpm_detection_accuracy(self, bpm_detector, test_audio_dir):
         """Test BPM detection accuracy on known test files."""
         test_cases = [
-            ("test_60bpm_click.wav", [60.0, 120.0], 5.0),  # Expected BPM alternatives, tolerance
-            ("test_85bpm_hiphop.wav", [85.0, 170.0], 5.0),  # Common to detect double-time
+            (
+                "test_60bpm_click.wav",
+                [60.0, 120.0],
+                5.0,
+            ),  # Expected BPM alternatives, tolerance
+            (
+                "test_85bpm_hiphop.wav",
+                [85.0, 170.0],
+                5.0,
+            ),  # Common to detect double-time
             ("test_120bpm_rock.wav", [120.0, 60.0], 5.0),
             ("test_128bpm_electronic.wav", [128.0, 64.0], 5.0),
             ("test_140bpm_dnb.wav", [140.0, 70.0], 5.0),
-            ("test_175bpm_fast.wav", [175.0, 87.5], 10.0),  # Higher tolerance for fast BPM
+            (
+                "test_175bpm_fast.wav",
+                [175.0, 87.5],
+                10.0,
+            ),  # Higher tolerance for fast BPM
         ]
 
         for filename, expected_bpms, tolerance in test_cases:
@@ -133,7 +148,10 @@ class TestBPMPipelineIntegration:
                 assert result["confidence"] >= 0.0, f"Invalid confidence for {case_type}"
                 # Flag for manual review is more important than confidence threshold
                 if "needs_review" in result:
-                    assert result["needs_review"] in [True, False], f"Invalid needs_review flag for {case_type}"
+                    assert result["needs_review"] in [
+                        True,
+                        False,
+                    ], f"Invalid needs_review flag for {case_type}"
 
     def test_variable_tempo_detection(self, temporal_analyzer, test_audio_dir):
         """Test temporal analysis on variable tempo track."""
@@ -313,8 +331,6 @@ class TestBPMPipelineIntegration:
 
     def test_memory_usage_tracking(self, test_audio_dir):
         """Test memory usage tracking during processing."""
-        from services.analysis_service.src.performance import MemoryManager
-
         config = get_config()
         # Set a higher memory limit for testing to avoid failures
         config.performance.memory_limit_mb = 2000

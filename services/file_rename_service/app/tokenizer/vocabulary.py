@@ -4,7 +4,7 @@ Vocabulary management for dynamic token discovery and tracking.
 
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .models import Token, TokenCategory
@@ -36,9 +36,8 @@ class VocabularyManager:
             # Update existing token
             existing = self.vocabulary[key][token.category]
             existing.frequency += 1
-            existing.last_seen = datetime.now()
-            if token.confidence > existing.confidence:
-                existing.confidence = token.confidence
+            existing.last_seen = datetime.now(tz=UTC)
+            existing.confidence = max(existing.confidence, token.confidence)
         else:
             # Add new token (but store with lowercase value for consistency)
             token_copy = Token(
@@ -133,10 +132,12 @@ class VocabularyManager:
                         frequent_tokens.append(token)
         else:
             # Get frequent tokens across all categories
-            for value_dict in self.vocabulary.values():
-                for token in value_dict.values():
-                    if token.frequency >= min_frequency:
-                        frequent_tokens.append(token)
+            frequent_tokens.extend(
+                token
+                for value_dict in self.vocabulary.values()
+                for token in value_dict.values()
+                if token.frequency >= min_frequency
+            )
 
         # Sort by frequency (descending)
         return sorted(frequent_tokens, key=lambda t: t.frequency, reverse=True)
@@ -221,7 +222,7 @@ class VocabularyManager:
 
         # Save to file
         self.vocabulary_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.vocabulary_path, "w") as f:
+        with Path(self.vocabulary_path).open("w") as f:
             json.dump(vocab_data, f, indent=2)
 
     def load_vocabulary(self) -> None:
@@ -230,7 +231,7 @@ class VocabularyManager:
             return
 
         try:
-            with open(self.vocabulary_path) as f:
+            with self.vocabulary_path.open() as f:
                 vocab_data = json.load(f)
 
             # Convert from serialized format
@@ -253,6 +254,6 @@ class VocabularyManager:
 
     def merge_vocabulary(self, other: "VocabularyManager") -> None:
         """Merge another vocabulary into this one."""
-        for _, categories in other.vocabulary.items():
-            for _, token in categories.items():
+        for categories in other.vocabulary.values():
+            for token in categories.values():
                 self.add_token(token)

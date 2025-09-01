@@ -6,26 +6,26 @@ using PostgreSQL as the backend database.
 """
 
 import logging
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator, Optional
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
-from ..config import get_config
-from ..models.tracklist import Base
+from src.config import get_config
+from src.models.tracklist import Base
 
 logger = logging.getLogger(__name__)
 
 # Global variables for connection
-engine: Optional[Engine] = None
-SessionLocal: Optional[sessionmaker[Session]] = None
+engine: Engine | None = None
+SessionLocal: sessionmaker[Session] | None = None
 
 
 def init_database() -> None:
     """Initialize database connection and create tables."""
-    global engine, SessionLocal
+    global engine, SessionLocal  # noqa: PLW0603 - Global pattern necessary for database lifecycle management across app
 
     config = get_config()
 
@@ -52,7 +52,7 @@ def init_database() -> None:
     logger.info("Database initialized successfully")
 
 
-def get_db_session() -> Generator[Session, None, None]:
+def get_db_session() -> Generator[Session]:
     """
     Get database session for dependency injection.
 
@@ -73,7 +73,7 @@ def get_db_session() -> Generator[Session, None, None]:
 
 
 @contextmanager
-def get_db_context() -> Generator[Session, None, None]:
+def get_db_context() -> Generator[Session]:
     """
     Get database session as context manager.
 
@@ -98,7 +98,7 @@ def get_db_context() -> Generator[Session, None, None]:
 
 def close_database() -> None:
     """Close database connections."""
-    global engine
+    global engine  # noqa: PLW0602 - Global access necessary for proper database connection cleanup
     if engine:
         engine.dispose()
         logger.info("Database connections closed")

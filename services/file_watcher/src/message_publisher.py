@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,43 +12,43 @@ import structlog
 logger = structlog.get_logger()
 
 
+@dataclass
+class RabbitMQConfig:
+    """Configuration for RabbitMQ connection."""
+
+    host: str = "localhost"
+    port: int = 5672
+    username: str = "guest"
+    password: str = "guest"
+    exchange: str = "file_events"
+    routing_key: str = "file.discovered"
+
+
 class MessagePublisher:
     """Publishes file discovery messages to RabbitMQ."""
 
     def __init__(
         self,
-        host: str = "localhost",
-        port: int = 5672,
-        username: str = "guest",
-        password: str = "guest",
-        exchange: str = "file_events",
-        routing_key: str = "file.discovered",
+        config: RabbitMQConfig | None = None,
         instance_id: str | None = None,
         watched_directory: str | None = None,
     ) -> None:
         """Initialize the message publisher.
 
         Args:
-            host: RabbitMQ host
-            port: RabbitMQ port
-            username: RabbitMQ username
-            password: RabbitMQ password
-            exchange: Exchange name for publishing
-            routing_key: Routing key for messages
+            config: RabbitMQ configuration object
             instance_id: Unique identifier for this file watcher instance
             watched_directory: Directory being watched by this instance
+
         """
-        self.host = host
-        self.port = port
-        self.exchange = exchange
-        self.routing_key = routing_key
+        self.config = config or RabbitMQConfig()
         self.instance_id = instance_id or "default"
         self.watched_directory = watched_directory or "/data/music"
         self.connection: pika.BlockingConnection | None = None
         self.channel: pika.channel.Channel | None = None
 
         # Setup credentials
-        self.credentials = pika.PlainCredentials(username, password)
+        self.credentials = pika.PlainCredentials(self.config.username, self.config.password)
 
         # Include instance ID in connection name for RabbitMQ management visibility
         client_properties = {
@@ -57,8 +58,8 @@ class MessagePublisher:
         }
 
         self.connection_params = pika.ConnectionParameters(
-            host=self.host,
-            port=self.port,
+            host=self.config.host,
+            port=self.config.port,
             credentials=self.credentials,
             heartbeat=30,
             blocked_connection_timeout=300,
@@ -72,11 +73,21 @@ class MessagePublisher:
             self.channel = self.connection.channel()
 
             # Declare exchange (idempotent operation)
-            self.channel.exchange_declare(exchange=self.exchange, exchange_type="topic", durable=True)
+            self.channel.exchange_declare(exchange=self.config.exchange, exchange_type="topic", durable=True)
 
-            logger.info("Connected to RabbitMQ", host=self.host, port=self.port, exchange=self.exchange)
+            logger.info(
+                "Connected to RabbitMQ",
+                host=self.config.host,
+                port=self.config.port,
+                exchange=self.config.exchange,
+            )
         except Exception as e:
-            logger.error("Failed to connect to RabbitMQ", host=self.host, port=self.port, error=str(e))
+            logger.error(
+                "Failed to connect to RabbitMQ",
+                host=self.config.host,
+                port=self.config.port,
+                error=str(e),
+            )
             raise
 
     def disconnect(self) -> None:
@@ -96,6 +107,7 @@ class MessagePublisher:
 
         Returns:
             True if message was published successfully
+
         """
         if not self.channel or (self.connection and self.connection.is_closed):
             logger.warning("Not connected to RabbitMQ, attempting to reconnect")
@@ -131,8 +143,8 @@ class MessagePublisher:
         try:
             assert self.channel is not None  # For mypy
             self.channel.basic_publish(
-                exchange=self.exchange,
-                routing_key=self.routing_key,
+                exchange=self.config.exchange,
+                routing_key=self.config.routing_key,
                 body=json.dumps(message),
                 properties=pika.BasicProperties(
                     delivery_mode=2,  # Persistent message
@@ -145,7 +157,7 @@ class MessagePublisher:
                 "File discovery event published",
                 correlation_id=correlation_id,
                 file_path=file_info.get("path"),
-                routing_key=self.routing_key,
+                routing_key=self.config.routing_key,
             )
 
             return True
@@ -167,42 +179,23 @@ class MessagePublisher:
 
         Returns:
             File type category string
+
         """
         ext = extension.lower()
         if ext in [".mp3"]:
             return "mp3"
-        elif ext in [".flac"]:
+        if ext in [".flac"]:
             return "flac"
-        elif ext in [".wav", ".wave"]:
+        if ext in [".wav", ".wave"]:
             return "wav"
-        elif ext in [".m4a", ".mp4", ".m4b", ".m4p", ".m4v", ".m4r"]:
+        if ext in [".m4a", ".mp4", ".m4b", ".m4p", ".m4v", ".m4r"]:
             return "mp4"
-        elif ext in [".ogg", ".oga"]:
+        if ext in [".ogg", ".oga"]:
             return "ogg"
-        else:
-            return "unknown"
+        return "unknown"
 
-    def publish_file_event(self, file_info: dict[str, str], event_type: str) -> bool:
-        """Publish a file event with specific event type.
-
-        Args:
-            file_info: Dictionary containing file information
-            event_type: Type of event (created, modified, deleted, moved, renamed)
-
-        Returns:
-            True if message was published successfully
-        """
-        if not self.channel or (self.connection and self.connection.is_closed):
-            logger.warning("Not connected to RabbitMQ, attempting to reconnect")
-            try:
-                self.connect()
-            except Exception:
-                return False
-
-        # Generate correlation ID for tracing
-        correlation_id = str(uuid.uuid4())
-
-        # Build message payload according to spec format
+    def _build_message_payload(self, file_info: dict[str, str], event_type: str, correlation_id: str) -> dict[str, Any]:
+        """Build the message payload for file events."""
         message = {
             "correlation_id": correlation_id,
             "timestamp": datetime.now(UTC).isoformat(),
@@ -233,13 +226,39 @@ class MessagePublisher:
         if file_info.get("extension", "").lower() in [".ogg", ".oga"]:
             message["format_family"] = "ogg_vorbis"
 
+        return message
+
+    def publish_file_event(self, file_info: dict[str, str], event_type: str) -> bool:
+        """Publish a file event with specific event type.
+
+        Args:
+            file_info: Dictionary containing file information
+            event_type: Type of event (created, modified, deleted, moved, renamed)
+
+        Returns:
+            True if message was published successfully
+
+        """
+        if not self.channel or (self.connection and self.connection.is_closed):
+            logger.warning("Not connected to RabbitMQ, attempting to reconnect")
+            try:
+                self.connect()
+            except Exception:
+                return False
+
+        # Generate correlation ID for tracing
+        correlation_id = str(uuid.uuid4())
+
+        # Build message payload
+        message = self._build_message_payload(file_info, event_type, correlation_id)
+
         # Determine routing key based on event type
         routing_key = f"file.{event_type}"
 
         try:
             assert self.channel is not None  # For mypy
             self.channel.basic_publish(
-                exchange=self.exchange,
+                exchange=self.config.exchange,
                 routing_key=routing_key,
                 body=json.dumps(message),
                 properties=pika.BasicProperties(

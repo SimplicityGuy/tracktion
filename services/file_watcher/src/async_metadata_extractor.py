@@ -5,10 +5,10 @@ import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import structlog
-from mutagen import File  # type: ignore
+from mutagen import File
 
 logger = structlog.get_logger()
 
@@ -16,13 +16,24 @@ logger = structlog.get_logger()
 class AsyncMetadataExtractor:
     """Async metadata extraction for audio files."""
 
-    SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".wma", ".aac", ".opus", ".oga"}
+    SUPPORTED_EXTENSIONS: ClassVar[set[str]] = {
+        ".mp3",
+        ".wav",
+        ".flac",
+        ".ogg",
+        ".m4a",
+        ".wma",
+        ".aac",
+        ".opus",
+        ".oga",
+    }
 
     def __init__(self, max_workers: int = 4) -> None:
         """Initialize async metadata extractor.
 
         Args:
             max_workers: Maximum number of threads for CPU-bound operations
+
         """
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self._cache: dict[str, dict[str, Any]] = {}
@@ -35,6 +46,7 @@ class AsyncMetadataExtractor:
 
         Returns:
             Dictionary containing metadata
+
         """
         # Check cache first
         cache_key = await self._get_cache_key(file_path)
@@ -60,10 +72,11 @@ class AsyncMetadataExtractor:
 
         Returns:
             Dictionary containing metadata
+
         """
         try:
             # Get basic file info
-            file_stat = os.stat(file_path)
+            file_stat = Path(file_path).stat()
             metadata = {
                 "file_path": file_path,
                 "file_name": Path(file_path).name,
@@ -82,7 +95,7 @@ class AsyncMetadataExtractor:
                         "sample_rate": getattr(audio_file.info, "sample_rate", None),
                         "channels": getattr(audio_file.info, "channels", None),
                         "format": audio_file.mime[0] if audio_file.mime else None,
-                    }
+                    },
                 )
 
                 # Extract tags
@@ -117,6 +130,7 @@ class AsyncMetadataExtractor:
 
         Returns:
             Cache key string
+
         """
         try:
             # Use file path and modification time for cache key
@@ -135,6 +149,7 @@ class AsyncMetadataExtractor:
 
         Returns:
             Dictionary mapping file paths to metadata
+
         """
         tasks = [self.extract_metadata(path) for path in file_paths]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -162,6 +177,7 @@ class AsyncMetadataExtractor:
 
         Returns:
             Number of items in cache
+
         """
         return len(self._cache)
 
@@ -194,6 +210,7 @@ class AsyncMetadataProgressTracker:
 
         Args:
             total: Total number of files in batch
+
         """
         async with self._lock:
             self.total_files = total
@@ -206,6 +223,7 @@ class AsyncMetadataProgressTracker:
 
         Args:
             success: Whether the file was processed successfully
+
         """
         async with self._lock:
             self.processed_files += 1
@@ -228,6 +246,7 @@ class AsyncMetadataProgressTracker:
 
         Returns:
             Dictionary with progress information
+
         """
         async with self._lock:
             return {

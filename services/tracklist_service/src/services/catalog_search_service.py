@@ -6,15 +6,15 @@ with fuzzy matching and confidence scoring.
 """
 
 import logging
-from typing import Any, List, Optional, Tuple
-from uuid import UUID
 from difflib import SequenceMatcher
+from typing import Any
+from uuid import UUID
 
-from sqlalchemy import func, or_, and_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from shared.core_types.src.models import Recording, Metadata
-from ..models.tracklist import TrackEntry
+from shared.core_types.src.models import Metadata, Recording
+from src.models.tracklist import TrackEntry
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +33,11 @@ class CatalogSearchService:
 
     def search_catalog(
         self,
-        query: Optional[str] = None,
-        artist: Optional[str] = None,
-        title: Optional[str] = None,
+        query: str | None = None,
+        artist: str | None = None,
+        title: str | None = None,
         limit: int = 10,
-    ) -> List[Tuple[Recording, float]]:
+    ) -> list[tuple[Recording, float]]:
         """
         Search the catalog for matching tracks.
 
@@ -121,7 +121,7 @@ class CatalogSearchService:
         self,
         track: TrackEntry,
         threshold: float = 0.7,
-    ) -> Optional[Tuple[UUID, float]]:
+    ) -> tuple[UUID, float] | None:
         """
         Find the best catalog match for a track entry.
 
@@ -153,9 +153,9 @@ class CatalogSearchService:
 
     def fuzzy_match_tracks(
         self,
-        tracks: List[TrackEntry],
+        tracks: list[TrackEntry],
         threshold: float = 0.7,
-    ) -> List[TrackEntry]:
+    ) -> list[TrackEntry]:
         """
         Match multiple tracks to catalog with fuzzy matching.
 
@@ -192,9 +192,9 @@ class CatalogSearchService:
     def _calculate_confidence(
         self,
         metadata: dict[str, Any],
-        query: Optional[str] = None,
-        artist: Optional[str] = None,
-        title: Optional[str] = None,
+        query: str | None = None,
+        artist: str | None = None,
+        title: str | None = None,
     ) -> float:
         """
         Calculate confidence score for a search result.
@@ -249,9 +249,7 @@ class CatalogSearchService:
             return 0.0
 
         # Sum scores but cap at 1.0
-        confidence = min(sum(scores), 1.0)
-
-        return confidence
+        return min(sum(scores), 1.0)
 
     def _fuzzy_match(self, search_term: str, target: str) -> float:
         """

@@ -1,8 +1,8 @@
 """Format mappings and conversion rules for different CUE formats."""
 
-from typing import Dict, List, Any, Tuple, cast
-from .generator import CueFormat
+from typing import Any, cast
 
+from .generator import CueFormat
 
 # Format capability matrix
 FORMAT_CAPABILITIES = {
@@ -136,7 +136,11 @@ CONVERSION_RULES = {
         "generate_nfo": True,
         "encoding": "UTF-8",
         "preserve_all_rem": True,
-        "add_rem_fields": ["DISCNUMBER", "REPLAYGAIN_TRACK_GAIN", "REPLAYGAIN_ALBUM_GAIN"],
+        "add_rem_fields": [
+            "DISCNUMBER",
+            "REPLAYGAIN_TRACK_GAIN",
+            "REPLAYGAIN_ALBUM_GAIN",
+        ],
     },
     # CDJ to Standard
     ("cdj", "standard"): {
@@ -204,7 +208,7 @@ CONVERSION_RULES = {
 
 
 # Lossy conversion warnings
-LOSSY_CONVERSIONS: Dict[Tuple[str, str], List[str]] = {
+LOSSY_CONVERSIONS: dict[tuple[str, str], list[str]] = {
     ("standard", "cdj"): [
         "PREGAP/POSTGAP commands will be removed",
         "Multi-file references will be consolidated",
@@ -405,7 +409,7 @@ def get_format_from_string(format_str: str) -> CueFormat:
     return format_map[format_str]
 
 
-def get_format_capabilities(format_type: CueFormat) -> Dict[str, Any]:
+def get_format_capabilities(format_type: CueFormat) -> dict[str, Any]:
     """Get capabilities for a specific format.
 
     Args:
@@ -414,10 +418,10 @@ def get_format_capabilities(format_type: CueFormat) -> Dict[str, Any]:
     Returns:
         Dictionary of format capabilities
     """
-    return cast(Dict[str, Any], FORMAT_CAPABILITIES.get(format_type, {}))
+    return cast("dict[str, Any]", FORMAT_CAPABILITIES.get(format_type, {}))
 
 
-def get_conversion_rules(source: CueFormat, target: CueFormat) -> Dict[str, Any]:
+def get_conversion_rules(source: CueFormat, target: CueFormat) -> dict[str, Any]:
     """Get conversion rules between two formats.
 
     Args:
@@ -428,10 +432,10 @@ def get_conversion_rules(source: CueFormat, target: CueFormat) -> Dict[str, Any]
         Dictionary of conversion rules
     """
     key = (source.value, target.value)
-    return cast(Dict[str, Any], CONVERSION_RULES.get(key, {}))
+    return cast("dict[str, Any]", CONVERSION_RULES.get(key, {}))
 
 
-def get_lossy_warnings(source: CueFormat, target: CueFormat) -> List[str]:
+def get_lossy_warnings(source: CueFormat, target: CueFormat) -> list[str]:
     """Get warnings about lossy conversions.
 
     Args:

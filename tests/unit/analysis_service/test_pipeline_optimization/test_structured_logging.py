@@ -3,10 +3,12 @@
 import json
 import logging
 import os
+import sys
 import tempfile
 import time
 import unittest
 from io import StringIO
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from services.analysis_service.src.structured_logging import (
@@ -81,8 +83,6 @@ class TestStructuredFormatter(unittest.TestCase):
         try:
             raise ValueError("Test error")
         except ValueError:
-            import sys
-
             record = logging.LogRecord(
                 name="test_logger",
                 level=logging.ERROR,
@@ -345,7 +345,8 @@ class TestConfigureStructuredLogging(unittest.TestCase):
             logger.info("Info message")
 
             # Read log file
-            with open(log_file) as f:
+            log_path = Path(log_file)
+            with log_path.open() as f:
                 lines = f.readlines()
 
             # Should have at least the configuration log and our test logs
@@ -357,7 +358,7 @@ class TestConfigureStructuredLogging(unittest.TestCase):
 
         finally:
             # Clean up
-            os.unlink(log_file)
+            Path(log_file).unlink()
 
     def test_log_level_configuration(self) -> None:
         """Test log level configuration."""
@@ -383,24 +384,27 @@ class TestConfigureStructuredLogging(unittest.TestCase):
 
     def test_env_variable_override(self) -> None:
         """Test that LOG_LEVEL environment variable overrides parameter."""
-        with patch.dict(os.environ, {"LOG_LEVEL": "ERROR"}):
-            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
-                configure_structured_logging(
-                    service_name="test_service",
-                    log_level="DEBUG",  # This should be overridden
-                    include_console=True,
-                )
+        with (
+            patch.dict(os.environ, {"LOG_LEVEL": "ERROR"}),
+            patch("sys.stdout", new_callable=StringIO) as mock_stdout,
+        ):
+            configure_structured_logging(
+                service_name="test_service",
+                log_level="DEBUG",  # This should be overridden
+                include_console=True,
+            )
 
-                logger = logging.getLogger("test")
-                logger.warning("Warning message")  # Should not appear
-                logger.error("Error message")  # Should appear
+            logger = logging.getLogger("test")
+            logger.warning("Warning message")  # Should not appear
+            logger.error("Error message")  # Should appear
 
-                output = mock_stdout.getvalue()
-                self.assertNotIn("Warning message", output)
-                self.assertIn("Error message", output)
+            output = mock_stdout.getvalue()
+            self.assertNotIn("Warning message", output)
+            self.assertIn("Error message", output)
 
     def test_library_log_levels(self) -> None:
         """Test that noisy library loggers are quieted."""
+
         configure_structured_logging(
             service_name="test_service",
             log_level="DEBUG",

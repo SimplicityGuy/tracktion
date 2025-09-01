@@ -3,10 +3,11 @@
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from types import TracebackType
-from typing import Any, Callable, Dict, Literal, Optional, TypeVar
+from typing import Any, Literal, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +38,12 @@ class CircuitBreakerConfig:
     expected_exceptions: tuple = (Exception,)
 
     # Optional fallback function
-    fallback: Optional[Callable[[], Any]] = None
+    fallback: Callable[[], Any] | None = None
 
     # Monitoring hooks
-    on_open: Optional[Callable[[str], None]] = None
-    on_close: Optional[Callable[[str], None]] = None
-    on_half_open: Optional[Callable[[str], None]] = None
+    on_open: Callable[[str], None] | None = None
+    on_close: Callable[[str], None] | None = None
+    on_half_open: Callable[[str], None] | None = None
 
 
 @dataclass
@@ -54,8 +55,8 @@ class CircuitBreakerStats:
     failed_calls: int = 0
     rejected_calls: int = 0
     fallback_calls: int = 0
-    last_failure_time: Optional[float] = None
-    last_success_time: Optional[float] = None
+    last_failure_time: float | None = None
+    last_success_time: float | None = None
     consecutive_failures: int = 0
     consecutive_successes: int = 0
     state_changes: list = field(default_factory=list)
@@ -67,8 +68,8 @@ class CircuitBreaker:
     def __init__(
         self,
         name: str,
-        config: Optional[CircuitBreakerConfig] = None,
-        metrics_collector: Optional[Any] = None,
+        config: CircuitBreakerConfig | None = None,
+        metrics_collector: Any | None = None,
     ) -> None:
         """Initialize the circuit breaker.
 
@@ -87,7 +88,7 @@ class CircuitBreaker:
 
         # Failure tracking
         self._failure_times: list[float] = []
-        self._last_open_time: Optional[float] = None
+        self._last_open_time: float | None = None
         self._half_open_successes = 0
 
         # Statistics
@@ -99,10 +100,13 @@ class CircuitBreaker:
     def state(self) -> CircuitState:
         """Get current circuit state, checking for automatic transitions."""
         with self._lock:
-            if self._state == CircuitState.OPEN:
+            if (
+                self._state == CircuitState.OPEN
+                and self._last_open_time
+                and (time.time() - self._last_open_time >= self.config.timeout)
+            ):
                 # Check if we should transition to half-open
-                if self._last_open_time and (time.time() - self._last_open_time >= self.config.timeout):
-                    self._transition_to_half_open()
+                self._transition_to_half_open()
 
             return self._state
 
@@ -295,7 +299,10 @@ class CircuitBreaker:
 
         except Exception as e:
             # Unexpected exceptions don't affect circuit state
-            logger.error(f"Unexpected exception in circuit breaker '{self.name}': {e}", exc_info=True)
+            logger.error(
+                f"Unexpected exception in circuit breaker '{self.name}': {e}",
+                exc_info=True,
+            )
             raise
 
     def reset(self) -> None:
@@ -309,7 +316,7 @@ class CircuitBreaker:
 
             logger.info(f"Circuit breaker '{self.name}' manually reset to CLOSED")
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get circuit breaker statistics.
 
         Returns:
@@ -343,9 +350,9 @@ class CircuitBreaker:
 
     def __exit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> Literal[False]:
         """Context manager exit.
 
@@ -362,12 +369,10 @@ class CircuitBreaker:
 class CircuitOpenError(Exception):
     """Exception raised when circuit breaker is open."""
 
-    pass
-
 
 def circuit_breaker(
-    name: Optional[str] = None,
-    config: Optional[CircuitBreakerConfig] = None,
+    name: str | None = None,
+    config: CircuitBreakerConfig | None = None,
 ) -> Callable:
     """Decorator for applying circuit breaker to functions.
 

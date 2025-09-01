@@ -9,7 +9,7 @@ Create Date: 2025-08-19
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from alembic import op  # type: ignore[attr-defined]
+from alembic import op  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
 
 # revision identifiers, used by Alembic.
 revision = "003"
@@ -32,8 +32,18 @@ def upgrade() -> None:
         sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
         sa.Column("conflicts", postgresql.ARRAY(sa.Text), nullable=True),
         sa.Column("warnings", postgresql.ARRAY(sa.Text), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.current_timestamp(),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.current_timestamp(),
+        ),
         sa.ForeignKeyConstraint(
             ["recording_id"],
             ["recordings.id"],
@@ -44,7 +54,11 @@ def upgrade() -> None:
     # Create indexes for better query performance
     op.create_index("ix_rename_proposals_recording_id", "rename_proposals", ["recording_id"])
     op.create_index("ix_rename_proposals_status", "rename_proposals", ["status"])
-    op.create_index("ix_rename_proposals_full_proposed_path", "rename_proposals", ["full_proposed_path"])
+    op.create_index(
+        "ix_rename_proposals_full_proposed_path",
+        "rename_proposals",
+        ["full_proposed_path"],
+    )
     op.create_index("ix_rename_proposals_created_at", "rename_proposals", ["created_at"])
 
 

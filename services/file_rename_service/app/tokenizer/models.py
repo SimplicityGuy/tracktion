@@ -3,7 +3,7 @@ Data models for the tokenizer module.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 
@@ -40,7 +40,7 @@ class Token:
     def update_frequency(self) -> None:
         """Increment frequency and update last seen timestamp."""
         self.frequency += 1
-        self.last_seen = datetime.now()
+        self.last_seen = datetime.now(tz=UTC)
 
 
 @dataclass

@@ -5,23 +5,20 @@ Extends the async base scraper to parse complete tracklist pages including
 tracks, timestamps, transitions, and metadata with circuit breaker support.
 """
 
+import asyncio
+import contextlib
 import hashlib
 import re
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any, Union
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlparse
 
 import structlog
-from bs4 import BeautifulSoup, Tag, PageElement  # type: ignore[attr-defined]
+from bs4 import BeautifulSoup, PageElement, Tag
+from dateutil import parser  # type: ignore[import-untyped]  # dateutil lacks complete type stubs
 
-from ..models.tracklist_models import (
-    CuePoint,
-    Track,
-    Tracklist,
-    TracklistMetadata,
-    Transition,
-    TransitionType,
-)
+from src.models.tracklist import CuePoint, Track, Tracklist, TracklistMetadata, Transition, TransitionType
+
 from .async_base_scraper import AsyncScraperBase
 
 logger = structlog.get_logger(__name__)
@@ -86,7 +83,7 @@ class AsyncTracklistScraper(AsyncScraperBase):
                 transitions=transitions,
                 metadata=metadata,
                 source_html_hash=html_hash,
-                scraped_at=datetime.now(timezone.utc),
+                scraped_at=datetime.now(UTC),
             )
 
             logger.info(
@@ -125,7 +122,6 @@ class AsyncTracklistScraper(AsyncScraperBase):
         Raises:
             httpx.HTTPError: If any scraping fails
         """
-        import asyncio
 
         semaphore = asyncio.Semaphore(max_concurrent)
 
@@ -160,7 +156,7 @@ class AsyncTracklistScraper(AsyncScraperBase):
             # Try multiple selectors
             dj_elem = soup.find("span", class_="djName") or soup.find("h1", class_="djName")
             if dj_elem:
-                return dj_elem.get_text(strip=True)
+                return str(dj_elem.get_text(strip=True))
 
             # Fallback to title parsing
             title_elem = soup.find("title")
@@ -176,7 +172,7 @@ class AsyncTracklistScraper(AsyncScraperBase):
             logger.warning(f"Failed to extract DJ name: {e}")
             return "Unknown DJ"
 
-    def _extract_event_info(self, soup: BeautifulSoup) -> Dict[str, Any]:
+    def _extract_event_info(self, soup: BeautifulSoup) -> dict[str, Any]:
         """Extract event information from the page."""
         info = {"name": "", "date": None, "venue": ""}
 
@@ -191,12 +187,8 @@ class AsyncTracklistScraper(AsyncScraperBase):
             if date_elem:
                 date_text = date_elem.get_text(strip=True)
                 # Try to parse the date
-                try:
-                    from dateutil import parser  # type: ignore[import-untyped]
-
-                    info["date"] = parser.parse(date_text).date()
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    info["date"] = parser.parse(date_text).date().isoformat()
 
             # Event venue
             venue_elem = soup.find("span", class_="eventVenue") or soup.find("span", class_="venue")
@@ -208,7 +200,7 @@ class AsyncTracklistScraper(AsyncScraperBase):
 
         return info
 
-    def _extract_tracks(self, soup: BeautifulSoup) -> List[Track]:
+    def _extract_tracks(self, soup: BeautifulSoup) -> list[Track]:
         """Extract tracks from the tracklist."""
         tracks = []
 
@@ -226,7 +218,7 @@ class AsyncTracklistScraper(AsyncScraperBase):
 
         return tracks
 
-    def _parse_track(self, container: Union[Tag, PageElement], position: int) -> Optional[Track]:
+    def _parse_track(self, container: Tag | PageElement, position: int) -> Track | None:
         """Parse a single track from its container."""
         try:
             # Ensure container is a Tag
@@ -288,7 +280,7 @@ class AsyncTracklistScraper(AsyncScraperBase):
             logger.warning(f"Failed to parse track at position {position}: {e}")
             return None
 
-    def _parse_time_to_cue(self, time_str: str, track_number: int) -> Optional[CuePoint]:
+    def _parse_time_to_cue(self, time_str: str, track_number: int) -> CuePoint | None:
         """Parse time string to CuePoint."""
         try:
             # Parse time format (HH:MM:SS or MM:SS)
@@ -308,7 +300,7 @@ class AsyncTracklistScraper(AsyncScraperBase):
         except Exception:
             return None
 
-    def _extract_transitions(self, soup: BeautifulSoup, tracks: List[Track]) -> List[Transition]:
+    def _extract_transitions(self, soup: BeautifulSoup, tracks: list[Track]) -> list[Transition]:
         """Extract transition information between tracks."""
         transitions = []
 

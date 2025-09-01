@@ -1,24 +1,26 @@
 """API endpoints for tracklist synchronization operations."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.tracklist_service.src.services.sync_service import (
-    SynchronizationService,
-    SyncFrequency,
-    SyncSource,
-)
-from services.tracklist_service.src.services.version_service import VersionService
+from services.tracklist_service.src.models.synchronization import SyncEvent
+from services.tracklist_service.src.services.audit_service import AuditService
 from services.tracklist_service.src.services.conflict_resolution_service import (
     ConflictResolutionService,
     ResolutionStrategy,
 )
-from services.tracklist_service.src.services.audit_service import AuditService
+from services.tracklist_service.src.services.sync_service import (
+    SyncFrequency,
+    SynchronizationService,
+    SyncSource,
+)
+from services.tracklist_service.src.services.version_service import VersionService
 
 
 # Note: get_db function missing - adding placeholder for mypy
@@ -42,12 +44,12 @@ class SyncRequest(BaseModel):
 class SyncConfigUpdate(BaseModel):
     """Request model for updating sync configuration."""
 
-    sync_enabled: Optional[bool] = Field(None, description="Enable/disable sync")
-    sync_frequency: Optional[str] = Field(None, description="Sync frequency")
-    sync_source: Optional[str] = Field(None, description="Default sync source")
-    auto_accept_threshold: Optional[float] = Field(None, ge=0.0, le=1.0, description="Auto-accept threshold")
-    auto_resolve_conflicts: Optional[bool] = Field(None, description="Auto-resolve conflicts")
-    conflict_resolution: Optional[str] = Field(None, description="Conflict resolution strategy")
+    sync_enabled: bool | None = Field(None, description="Enable/disable sync")
+    sync_frequency: str | None = Field(None, description="Sync frequency")
+    sync_source: str | None = Field(None, description="Default sync source")
+    auto_accept_threshold: float | None = Field(None, ge=0.0, le=1.0, description="Auto-accept threshold")
+    auto_resolve_conflicts: bool | None = Field(None, description="Auto-resolve conflicts")
+    conflict_resolution: str | None = Field(None, description="Conflict resolution strategy")
 
 
 class ConflictResolution(BaseModel):
@@ -55,15 +57,15 @@ class ConflictResolution(BaseModel):
 
     conflict_id: str = Field(..., description="ID of the conflict")
     strategy: str = Field(..., description="Resolution strategy to apply")
-    proposed_data: Optional[Dict[str, Any]] = Field(None, description="Data for proposed strategy")
-    manual_data: Optional[Dict[str, Any]] = Field(None, description="Data for manual edit")
-    merge_data: Optional[Dict[str, Any]] = Field(None, description="Data for merge strategy")
+    proposed_data: dict[str, Any] | None = Field(None, description="Data for proposed strategy")
+    manual_data: dict[str, Any] | None = Field(None, description="Data for manual edit")
+    merge_data: dict[str, Any] | None = Field(None, description="Data for merge strategy")
 
 
 class ConflictResolutionRequest(BaseModel):
     """Request model for resolving multiple conflicts."""
 
-    resolutions: List[ConflictResolution] = Field(..., description="List of conflict resolutions")
+    resolutions: list[ConflictResolution] = Field(..., description="List of conflict resolutions")
 
 
 class VersionRollbackRequest(BaseModel):
@@ -78,8 +80,8 @@ class VersionRollbackRequest(BaseModel):
 async def trigger_sync(
     tracklist_id: UUID,
     request: SyncRequest,
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    db: AsyncSession,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Trigger synchronization for a tracklist.
 
     Args:
@@ -96,11 +98,11 @@ async def trigger_sync(
         # Parse source
         try:
             source = SyncSource(request.source)
-        except ValueError:
+        except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid sync source: {request.source}",
-            )
+            ) from e
 
         result = await sync_service.trigger_manual_sync(
             tracklist_id=tracklist_id,
@@ -124,14 +126,14 @@ async def trigger_sync(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.get("/{tracklist_id}/sync/status")
 async def get_sync_status(
     tracklist_id: UUID,
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    db: AsyncSession,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Get current synchronization status for a tracklist.
 
     Args:
@@ -150,15 +152,15 @@ async def get_sync_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.put("/{tracklist_id}/sync/config")
 async def update_sync_config(
     tracklist_id: UUID,
     request: SyncConfigUpdate,
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    db: AsyncSession,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Update synchronization configuration for a tracklist.
 
     Args:
@@ -176,21 +178,21 @@ async def update_sync_config(
         if request.sync_frequency:
             try:
                 SyncFrequency(request.sync_frequency)
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid sync frequency: {request.sync_frequency}",
-                )
+                ) from e
 
         # Validate source if provided
         if request.sync_source:
             try:
                 SyncSource(request.sync_source)
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid sync source: {request.sync_source}",
-                )
+                ) from e
 
         config_updates = request.dict(exclude_unset=True)
 
@@ -214,16 +216,16 @@ async def update_sync_config(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.post("/{tracklist_id}/sync/schedule")
 async def schedule_sync(
     tracklist_id: UUID,
-    frequency: str = Query(..., description="Sync frequency"),
-    source: str = Query(default="all", description="Sync source"),
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    frequency: str,
+    db: AsyncSession,  # Will be injected via Depends in route
+    source: str = "all",
+) -> dict[str, Any]:
     """Schedule automatic synchronization for a tracklist.
 
     Args:
@@ -241,20 +243,20 @@ async def schedule_sync(
         # Parse frequency
         try:
             freq_enum = SyncFrequency(frequency)
-        except ValueError:
+        except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid frequency: {frequency}",
-            )
+            ) from e
 
         # Parse source
         try:
             source_enum = SyncSource(source)
-        except ValueError:
+        except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid source: {source}",
-            )
+            ) from e
 
         return await sync_service.schedule_sync(
             tracklist_id=tracklist_id,
@@ -269,14 +271,14 @@ async def schedule_sync(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.delete("/{tracklist_id}/sync/schedule")
 async def cancel_scheduled_sync(
     tracklist_id: UUID,
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    db: AsyncSession,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Cancel scheduled synchronization for a tracklist.
 
     Args:
@@ -295,17 +297,17 @@ async def cancel_scheduled_sync(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 # Version History Endpoints
 @router.get("/{tracklist_id}/versions")
 async def get_version_history(
     tracklist_id: UUID,
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    db: AsyncSession,  # Will be injected via Depends in route
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, Any]:
     """Get version history for a tracklist.
 
     Args:
@@ -348,15 +350,15 @@ async def get_version_history(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.get("/{tracklist_id}/versions/{version_id}")
 async def get_version_details(
     tracklist_id: UUID,
     version_id: UUID,
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    db: AsyncSession,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Get details of a specific version.
 
     Args:
@@ -399,7 +401,7 @@ async def get_version_details(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.post("/{tracklist_id}/versions/{version_id}/rollback")
@@ -407,8 +409,8 @@ async def rollback_to_version(
     tracklist_id: UUID,
     version_id: UUID,
     request: VersionRollbackRequest,
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    db: AsyncSession,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Rollback tracklist to a specific version.
 
     Args:
@@ -459,16 +461,16 @@ async def rollback_to_version(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.get("/{tracklist_id}/versions/compare")
 async def compare_versions(
     tracklist_id: UUID,
-    version1: UUID = Query(..., description="First version ID"),
-    version2: UUID = Query(..., description="Second version ID"),
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    version1: UUID,
+    version2: UUID,
+    db: AsyncSession,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Compare two versions of a tracklist.
 
     Args:
@@ -526,15 +528,15 @@ async def compare_versions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 # Conflict Resolution Endpoints
 @router.get("/{tracklist_id}/conflicts")
 async def get_pending_conflicts(
     tracklist_id: UUID,
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    db: AsyncSession,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Get pending conflicts for a tracklist.
 
     Args:
@@ -546,8 +548,6 @@ async def get_pending_conflicts(
     """
     try:
         # Get sync events with conflicts
-        from sqlalchemy import select
-        from services.tracklist_service.src.models.synchronization import SyncEvent
 
         query = (
             select(SyncEvent)
@@ -561,17 +561,16 @@ async def get_pending_conflicts(
         result = await db.execute(query)
         events = result.scalars().all()
 
-        conflicts = []
-        for event in events:
-            if event.conflict_data:
-                conflicts.append(
-                    {
-                        "event_id": str(event.id),
-                        "created_at": event.created_at.isoformat(),
-                        "source": event.source,
-                        "conflicts": event.conflict_data.get("conflicts", []),
-                    }
-                )
+        conflicts = [
+            {
+                "event_id": str(event.id),
+                "created_at": event.created_at.isoformat(),
+                "source": event.source,
+                "conflicts": event.conflict_data.get("conflicts", []),
+            }
+            for event in events
+            if event.conflict_data
+        ]
 
         return {
             "tracklist_id": str(tracklist_id),
@@ -583,15 +582,15 @@ async def get_pending_conflicts(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.post("/{tracklist_id}/conflicts/resolve")
 async def resolve_conflicts(
     tracklist_id: UUID,
     request: ConflictResolutionRequest,
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    db: AsyncSession,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Resolve conflicts for a tracklist.
 
     Args:
@@ -609,11 +608,11 @@ async def resolve_conflicts(
         for resolution in request.resolutions:
             try:
                 ResolutionStrategy(resolution.strategy)
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid resolution strategy: {resolution.strategy}",
-                )
+                ) from e
 
         # Apply resolutions
         success, error = await conflict_service.resolve_conflicts(
@@ -641,18 +640,18 @@ async def resolve_conflicts(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 # Audit Trail Endpoint
 @router.get("/{tracklist_id}/audit")
 async def get_audit_trail(
     tracklist_id: UUID,
-    limit: int = Query(default=50, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    action: Optional[str] = Query(None, description="Filter by action"),
-    db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+    db: AsyncSession,  # Will be injected via Depends in route
+    limit: int = 50,
+    offset: int = 0,
+    action: str | None = None,
+) -> dict[str, Any]:
     """Get audit trail for a tracklist.
 
     Args:
@@ -698,4 +697,4 @@ async def get_audit_trail(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e

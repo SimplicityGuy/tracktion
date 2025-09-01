@@ -1,11 +1,12 @@
 """Query interface for retrieving analysis results."""
 
+import contextlib
 import json
 import logging
-from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional, Any, Union
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -18,21 +19,21 @@ class AnalysisResult:
     file_path: str
 
     # BPM Analysis
-    bpm_data: Optional[Dict[str, Any]] = None
-    temporal_data: Optional[Dict[str, Any]] = None
+    bpm_data: dict[str, Any] | None = None
+    temporal_data: dict[str, Any] | None = None
 
     # Key Detection
-    key_data: Optional[Dict[str, Any]] = None
+    key_data: dict[str, Any] | None = None
 
     # Mood Analysis
-    mood_data: Optional[Dict[str, Any]] = None
+    mood_data: dict[str, Any] | None = None
 
     # Metadata
-    analysis_timestamp: Optional[datetime] = None
+    analysis_timestamp: datetime | None = None
     from_cache: bool = False
     confidence_threshold: float = 0.6
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         data = asdict(self)
         data["recording_id"] = str(self.recording_id)
@@ -64,7 +65,7 @@ class AnalysisResult:
         return needs_review
 
     @property
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         """Get a summary of key analysis results."""
         summary = {
             "recording_id": str(self.recording_id),
@@ -114,8 +115,11 @@ class AnalysisQuery:
         self.cache = cache
 
     def get_analysis_result(
-        self, recording_id: Union[str, UUID], include_cached: bool = True, confidence_threshold: float = 0.6
-    ) -> Optional[AnalysisResult]:
+        self,
+        recording_id: str | UUID,
+        include_cached: bool = True,
+        confidence_threshold: float = 0.6,
+    ) -> AnalysisResult | None:
         """Get complete analysis results for a recording.
 
         Args:
@@ -148,7 +152,7 @@ class AnalysisQuery:
 
         return result if result.file_path else None
 
-    def _get_metadata_from_storage(self, recording_id: UUID) -> Optional[Dict[str, str]]:
+    def _get_metadata_from_storage(self, recording_id: UUID) -> dict[str, str] | None:
         """Get all metadata for a recording from storage.
 
         Args:
@@ -181,7 +185,7 @@ class AnalysisQuery:
             return None
 
     def _parse_metadata_to_result(
-        self, recording_id: UUID, metadata: Dict[str, str], confidence_threshold: float
+        self, recording_id: UUID, metadata: dict[str, str], confidence_threshold: float
     ) -> AnalysisResult:
         """Parse stored metadata into AnalysisResult.
 
@@ -199,7 +203,15 @@ class AnalysisQuery:
             confidence_threshold=confidence_threshold,
         )
 
-        # Parse BPM data
+        self._parse_bpm_data(metadata, result)
+        self._parse_temporal_data(metadata, result)
+        self._parse_key_data(metadata, result)
+        self._parse_mood_data(metadata, result)
+
+        return result
+
+    def _parse_bpm_data(self, metadata: dict[str, str], result: AnalysisResult) -> None:
+        """Parse BPM data from metadata."""
         if "bpm_average" in metadata:
             result.bpm_data = {
                 "bpm": float(metadata.get("bpm_average", 0)),
@@ -208,15 +220,17 @@ class AnalysisQuery:
                 "status": metadata.get("bpm_status", ""),
             }
 
-        # Parse temporal data
+    def _parse_temporal_data(self, metadata: dict[str, str], result: AnalysisResult) -> None:
+        """Parse temporal data from metadata."""
         if "bpm_stability" in metadata:
             result.temporal_data = {
                 "stability_score": float(metadata.get("bpm_stability", 0)),
-                "start_bpm": float(metadata.get("bpm_start", 0)) if "bpm_start" in metadata else None,
-                "end_bpm": float(metadata.get("bpm_end", 0)) if "bpm_end" in metadata else None,
+                "start_bpm": (float(metadata.get("bpm_start", 0)) if "bpm_start" in metadata else None),
+                "end_bpm": (float(metadata.get("bpm_end", 0)) if "bpm_end" in metadata else None),
             }
 
-        # Parse key data
+    def _parse_key_data(self, metadata: dict[str, str], result: AnalysisResult) -> None:
+        """Parse key data from metadata."""
         if "musical_key" in metadata:
             result.key_data = {
                 "key": metadata.get("musical_key", ""),
@@ -231,7 +245,8 @@ class AnalysisQuery:
                     "scale": metadata.get("key_alternative_scale", ""),
                 }
 
-        # Parse mood data
+    def _parse_mood_data(self, metadata: dict[str, str], result: AnalysisResult) -> None:
+        """Parse mood data from metadata."""
         if "genre_primary" in metadata:
             mood_data = {
                 "primary_genre": metadata.get("genre_primary", ""),
@@ -256,10 +271,8 @@ class AnalysisQuery:
                 if key.startswith("mood_") and not key.endswith("_status"):
                     mood_name = key.replace("mood_", "")
                     if mood_name not in ["confidence", "needs_review", "error"]:
-                        try:
+                        with contextlib.suppress(ValueError):
                             mood_data["mood_scores"][mood_name] = float(value)  # type: ignore[index]
-                        except ValueError:
-                            pass
 
             # Add other attributes
             mood_data["danceability"] = float(metadata.get("danceability", 0))
@@ -272,18 +285,16 @@ class AnalysisQuery:
 
             result.mood_data = mood_data
 
-        return result
-
     def query_by_criteria(
         self,
-        bpm_range: Optional[tuple[float, float]] = None,
-        key: Optional[str] = None,
-        genre: Optional[str] = None,
-        danceability_min: Optional[float] = None,
-        energy_min: Optional[float] = None,
-        valence_range: Optional[tuple[float, float]] = None,
+        bpm_range: tuple[float, float] | None = None,
+        key: str | None = None,
+        genre: str | None = None,
+        danceability_min: float | None = None,
+        energy_min: float | None = None,
+        valence_range: tuple[float, float] | None = None,
         limit: int = 100,
-    ) -> List[AnalysisResult]:
+    ) -> list[AnalysisResult]:
         """Query recordings by analysis criteria.
 
         Args:
@@ -298,7 +309,7 @@ class AnalysisQuery:
         Returns:
             List of matching AnalysisResult objects
         """
-        results: List[AnalysisResult] = []
+        results: list[AnalysisResult] = []
 
         # This would require complex database queries
         # For now, this is a placeholder for the interface
@@ -310,8 +321,8 @@ class AnalysisQuery:
         return results
 
     def get_compatible_recordings(
-        self, recording_id: Union[str, UUID], compatibility_type: str = "harmonic"
-    ) -> List[Dict[str, Any]]:
+        self, recording_id: str | UUID, compatibility_type: str = "harmonic"
+    ) -> list[dict[str, Any]]:
         """Find recordings compatible with the given recording.
 
         Args:
@@ -324,7 +335,7 @@ class AnalysisQuery:
         if isinstance(recording_id, str):
             recording_id = UUID(recording_id)
 
-        compatible: List[Dict[str, Any]] = []
+        compatible: list[dict[str, Any]] = []
 
         # Get the source recording's analysis
         source = self.get_analysis_result(recording_id)
@@ -348,8 +359,11 @@ class AnalysisQuery:
 
 
 def create_analysis_message(
-    recording_id: str, file_path: str, analysis_type: str = "full", priority: str = "normal"
-) -> Dict[str, Any]:
+    recording_id: str,
+    file_path: str,
+    analysis_type: str = "full",
+    priority: str = "normal",
+) -> dict[str, Any]:
     """Create a message for analysis queue.
 
     Args:
@@ -366,12 +380,12 @@ def create_analysis_message(
         "file_path": file_path,
         "analysis_type": analysis_type,
         "priority": priority,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "version": "1.0",
     }
 
 
-def parse_analysis_message(message: Union[str, bytes, Dict]) -> Dict[str, Any]:
+def parse_analysis_message(message: str | bytes | dict) -> dict[str, Any]:
     """Parse an analysis message.
 
     Args:
@@ -397,5 +411,4 @@ def parse_analysis_message(message: Union[str, bytes, Dict]) -> Dict[str, Any]:
         message.setdefault("analysis_type", "full")
         message.setdefault("priority", "normal")
         return message
-    else:
-        raise ValueError("Message must be a dictionary after parsing")
+    raise ValueError("Message must be a dictionary after parsing")

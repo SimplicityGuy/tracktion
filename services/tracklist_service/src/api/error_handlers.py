@@ -4,25 +4,26 @@ This module provides error handling middleware for converting
 custom exceptions to appropriate HTTP responses.
 """
 
+import logging
 from typing import Any
 
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ..exceptions import (
-    TracklistServiceError,
+from src.exceptions import (
+    AudioFileError,
+    ConcurrentEditError,
+    CueGenerationError,
+    DatabaseError,
     DraftNotFoundError,
     DuplicatePositionError,
     InvalidTrackPositionError,
     PublishValidationError,
-    TimingError,
-    ValidationError,
-    AudioFileError,
-    CueGenerationError,
-    ConcurrentEditError,
-    DatabaseError,
     ServiceUnavailableError,
+    TimingError,
+    TracklistServiceError,
+    ValidationError,
 )
 
 
@@ -84,7 +85,7 @@ def register_exception_handlers(app: Any) -> None:
     app.add_exception_handler(TracklistServiceError, tracklist_exception_handler)
 
     # Also handle standard HTTP exceptions
-    @app.exception_handler(StarletteHTTPException)  # type: ignore[misc]
+    @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
@@ -97,10 +98,8 @@ def register_exception_handlers(app: Any) -> None:
         )
 
     # Handle general exceptions
-    @app.exception_handler(Exception)  # type: ignore[misc]
+    @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        import logging
-
         logger = logging.getLogger(__name__)
         logger.error(f"Unhandled exception: {exc}", exc_info=True)
 

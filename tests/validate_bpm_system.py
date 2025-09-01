@@ -10,6 +10,12 @@ import sys
 import time
 from pathlib import Path
 
+from services.analysis_service.src.audio_cache import AudioCache
+from services.analysis_service.src.bpm_detector import BPMDetector
+from services.analysis_service.src.config import get_config
+from services.analysis_service.src.performance import MemoryManager, PerformanceMonitor
+from services.analysis_service.src.temporal_analyzer import TemporalAnalyzer
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -20,9 +26,6 @@ def test_bpm_detector():
     print("🎵 Testing BPM Detector...")
 
     try:
-        from services.analysis_service.src.bpm_detector import BPMDetector
-        from services.analysis_service.src.config import get_config
-
         # Initialize detector
         config = get_config()
         detector = BPMDetector(config.bpm)
@@ -78,9 +81,8 @@ def test_bpm_detector():
         if successful > 0:
             print("✅ BPM Detector working correctly")
             return True
-        else:
-            print("❌ BPM Detector failed all tests")
-            return False
+        print("❌ BPM Detector failed all tests")
+        return False
 
     except ImportError as e:
         print(f"❌ Import error: {e}")
@@ -96,9 +98,6 @@ def test_temporal_analyzer():
     print("⏰ Testing Temporal Analyzer...")
 
     try:
-        from services.analysis_service.src.config import get_config
-        from services.analysis_service.src.temporal_analyzer import TemporalAnalyzer
-
         # Initialize analyzer
         config = get_config()
         analyzer = TemporalAnalyzer(config.temporal)
@@ -115,7 +114,12 @@ def test_temporal_analyzer():
         result = analyzer.analyze_temporal_bpm(str(test_file))
 
         # Validate result structure
-        required_keys = ["average_bpm", "stability_score", "is_variable_tempo", "tempo_changes"]
+        required_keys = [
+            "average_bpm",
+            "stability_score",
+            "is_variable_tempo",
+            "tempo_changes",
+        ]
         for key in required_keys:
             assert key in result, f"Missing key: {key}"
 
@@ -145,8 +149,6 @@ def test_configuration_system():
     print("⚙️  Testing Configuration System...")
 
     try:
-        from services.analysis_service.src.config import get_config
-
         # Test default configuration
         config = get_config()
 
@@ -186,9 +188,6 @@ def test_audio_cache():
     print("💾 Testing Audio Cache...")
 
     try:
-        from services.analysis_service.src.audio_cache import AudioCache
-        from services.analysis_service.src.config import get_config
-
         config = get_config()
 
         # Test with cache disabled (no Redis dependency)
@@ -223,9 +222,6 @@ def test_performance_monitoring():
     print("📊 Testing Performance Monitoring...")
 
     try:
-        from services.analysis_service.src.config import get_config
-        from services.analysis_service.src.performance import MemoryManager, PerformanceMonitor
-
         # Test performance monitor
         monitor = PerformanceMonitor()
 
@@ -287,9 +283,8 @@ def generate_test_report(results: dict[str, bool]) -> bool:
         print("\n🎉 All system validation tests passed!")
         print("🎵 BPM detection system is ready for production")
         return True
-    else:
-        print(f"\n⚠️  {failed_tests} test(s) failed. Please review the issues above.")
-        return False
+    print(f"\n⚠️  {failed_tests} test(s) failed. Please review the issues above.")
+    return False
 
 
 def main():
@@ -316,12 +311,11 @@ def main():
         print("   - Deploy to staging environment")
         print("   - Monitor performance in production")
         return 0
-    else:
-        print("\n💡 Troubleshooting:")
-        print("   - Check error messages above")
-        print("   - Verify dependencies are installed")
-        print("   - Review configuration settings")
-        return 1
+    print("\n💡 Troubleshooting:")
+    print("   - Check error messages above")
+    print("   - Verify dependencies are installed")
+    print("   - Review configuration settings")
+    return 1
 
 
 if __name__ == "__main__":

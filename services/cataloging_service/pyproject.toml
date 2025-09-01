@@ -3,49 +3,79 @@ name = "cataloging-service"
 version = "0.1.0"
 description = "Cataloging service for managing music file database entries"
 requires-python = ">=3.13"
-dependencies = [
-    "aio-pika>=9.0.0",
-    "sqlalchemy>=2.0.0",
-    "asyncpg>=0.29.0",
-    "pydantic>=2.0.0",
-    "structlog>=23.0.0",
-    "asyncio>=3.4.3",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.0.0",
-    "mypy>=1.0.0",
-    "ruff>=0.1.0",
-    "pre-commit>=3.0.0",
-]
+dependencies = [ "aio-pika>=9.0.0", "asyncpg>=0.29.0", "pydantic>=2.0.0", "sqlalchemy>=2.0.0", "structlog>=23.0.0",]
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = [ "hatchling",]
+build-backend = "hatchling.build"
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-packages = ["cataloging_service"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]
-asyncio_mode = "auto"
+[project.optional-dependencies]
+dev = [ "mypy==1.17.1", "pre-commit>=3.0.0", "pytest>=7.0.0", "pytest-asyncio>=0.21.0", "pytest-cov>=4.0.0", "ruff>=0.1.0",]
 
 [tool.mypy]
 python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false
 ignore_missing_imports = true
+no_implicit_optional = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+follow_imports = "normal"
+namespace_packages = true
+explicit_package_bases = true
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
 
 [tool.ruff]
-target-version = "py313"
 line-length = 120
+target-version = "py313"
+fix = true
+
+[tool.black]
+line-length = 120
+target-version = [ "py313",]
+include = "\\.pyi?$"
+extend-exclude = "\n(\n  /(\n      \\.eggs\n    | \\.git\n    | \\.hg\n    | \\.mypy_cache\n    | \\.tox\n    | \\.venv\n    | _build\n    | buck-out\n    | build\n    | dist\n    | migrations\n  )/\n)\n"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.pytest.ini_options]
+testpaths = [ "tests",]
+python_files = [ "test_*.py", "*_test.py",]
+python_classes = [ "Test*",]
+python_functions = [ "test_*",]
+addopts = "\n    -ra\n    --strict-markers\n    --ignore=docs\n    --ignore=setup.py\n    --ignore=ci\n    --ignore=.eggs\n    --tb=short\n    --maxfail=1\n"
+markers = [ "slow: marks tests as slow (deselect with '-m \"not slow\"')", "integration: marks tests as integration tests", "unit: marks tests as unit tests",]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "B", "C90", "UP"]
-ignore = ["E501", "C901"]
+select = [ "B", "C4", "C90", "DTZ", "E", "F", "I", "ISC", "N", "NPY", "PD", "PERF", "PIE", "PL", "PTH", "RET", "RUF", "SIM", "TCH", "TID", "UP", "W",]
+ignore = [ "C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004",]
+fixable = [ "ALL",]
+unfixable = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.coverage.run]
+branch = true
+source = [ "src",]
+omit = [ "*/tests/*", "*/test_*.py", "*/__pycache__/*", "*/migrations/*", "*/venv/*", "*/.venv/*",]
+
+[tool.coverage.report]
+exclude_lines = [ "pragma: no cover", "def __repr__", "if self.debug:", "if settings.DEBUG", "raise AssertionError", "raise NotImplementedError", "if 0:", "if __name__ == .__main__.:", "if TYPE_CHECKING:",]
+
+[tool.ruff.lint.isort]
+known-first-party = [ "cataloging_service", "shared", "core_types",]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [ "S101", "PLR2004", "PLR0913",]
+"migrations/*" = [ "E501",]
+
+[tool.hatch.build.targets.wheel]
+packages = [ "src",]

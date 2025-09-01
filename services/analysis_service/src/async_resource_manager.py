@@ -6,13 +6,15 @@ analysis limits, memory monitoring, task queuing, and prioritization.
 """
 
 import asyncio
+import contextlib
 import heapq
 import logging
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 import psutil
 
@@ -36,9 +38,9 @@ class QueuedTask:
     timestamp: float
     task_id: str
     func: Callable
-    args: Tuple = field(default_factory=tuple)
-    kwargs: Dict = field(default_factory=dict)
-    future: Optional[asyncio.Future] = None
+    args: tuple = field(default_factory=tuple)
+    kwargs: dict = field(default_factory=dict)
+    future: asyncio.Future | None = None
 
     def __lt__(self, other: "QueuedTask") -> bool:
         """Compare tasks for priority queue ordering."""
@@ -53,7 +55,7 @@ class QueuedTask:
 class ResourceLimits:
     """Resource limits configuration."""
 
-    max_concurrent_analyses: Optional[int] = None  # None = CPU count * 2
+    max_concurrent_analyses: int | None = None  # None = CPU count * 2
     max_memory_mb: int = 4096  # Maximum total memory usage
     max_memory_per_task_mb: int = 100  # Maximum memory per task
     max_queue_size: int = 1000  # Maximum pending tasks
@@ -67,7 +69,7 @@ class AsyncResourceManager:
     Manages resources for async audio processing with limits and monitoring.
     """
 
-    def __init__(self, limits: Optional[ResourceLimits] = None):
+    def __init__(self, limits: ResourceLimits | None = None):
         """
         Initialize the resource manager.
 
@@ -84,17 +86,20 @@ class AsyncResourceManager:
         self.analysis_semaphore = asyncio.Semaphore(max_concurrent)
 
         # Priority queue for pending tasks
-        self.task_queue: List[QueuedTask] = []
+        self.task_queue: list[QueuedTask] = []
         self.queue_lock = asyncio.Lock()
 
         # Active task tracking
-        self.active_tasks: Dict[str, asyncio.Task] = {}
-        self.task_start_times: Dict[str, float] = {}
-        self.task_memory_usage: Dict[str, float] = {}
+        self.active_tasks: dict[str, asyncio.Task] = {}
+        self.task_start_times: dict[str, float] = {}
+        self.task_memory_usage: dict[str, float] = {}
+
+        # Background task tracking to prevent garbage collection
+        self.background_tasks: set[asyncio.Task[Any]] = set()
 
         # Resource monitoring
         self.process = psutil.Process()
-        self.system_monitor_task: Optional[asyncio.Task] = None
+        self.system_monitor_task: asyncio.Task | None = None
         self.monitoring = False
 
         # Statistics
@@ -128,18 +133,16 @@ class AsyncResourceManager:
         self.monitoring = False
         if self.system_monitor_task:
             self.system_monitor_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.system_monitor_task
-            except asyncio.CancelledError:
-                pass
         logger.info("Resource monitoring stopped")
 
     async def acquire_resources(
         self,
         task_id: str,
-        estimated_memory_mb: Optional[float] = None,
+        estimated_memory_mb: float | None = None,
         priority: TaskPriority = TaskPriority.NORMAL,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> bool:
         """
         Acquire resources for a task.
@@ -176,7 +179,7 @@ class AsyncResourceManager:
             logger.debug(f"Resources acquired for task {task_id}")
             return True
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Resource acquisition timeout for task {task_id}")
             return False
 
@@ -207,8 +210,8 @@ class AsyncResourceManager:
         self,
         task_id: str,
         func: Callable,
-        args: Tuple = (),
-        kwargs: Optional[Dict] = None,
+        args: tuple = (),
+        kwargs: dict | None = None,
         priority: TaskPriority = TaskPriority.NORMAL,
     ) -> asyncio.Future:
         """
@@ -252,7 +255,9 @@ class AsyncResourceManager:
             logger.debug(f"Task {task_id} queued with priority {priority.name}, queue size: {len(self.task_queue)}")
 
         # Try to process queue immediately
-        asyncio.create_task(self._process_queue())
+        process_task = asyncio.create_task(self._process_queue())
+        self.background_tasks.add(process_task)
+        process_task.add_done_callback(self.background_tasks.discard)
 
         return future
 
@@ -275,7 +280,9 @@ class AsyncResourceManager:
                     break
 
                 # Execute task
-                asyncio.create_task(self._execute_queued_task(task))
+                execution_task = asyncio.create_task(self._execute_queued_task(task))
+                self.background_tasks.add(execution_task)
+                execution_task.add_done_callback(self.background_tasks.discard)
 
     async def _execute_queued_task(self, task: QueuedTask) -> None:
         """
@@ -305,10 +312,10 @@ class AsyncResourceManager:
                 )
                 if task.future is not None:
                     task.future.set_result(result)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if task.future is not None:
                     task.future.set_exception(
-                        asyncio.TimeoutError(f"Task {task.task_id} timed out after {self.limits.task_timeout_seconds}s")
+                        TimeoutError(f"Task {task.task_id} timed out after {self.limits.task_timeout_seconds}s")
                     )
             except Exception as e:
                 if task.future is not None:
@@ -332,10 +339,9 @@ class AsyncResourceManager:
         """
         if asyncio.iscoroutinefunction(func):
             return await func(*args, **kwargs)
-        else:
-            # Run in executor if not async
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, func, *args, **kwargs)
+        # Run in executor if not async
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, func, *args, **kwargs)
 
     async def _check_resource_availability(self, required_memory_mb: float) -> bool:
         """
@@ -407,10 +413,10 @@ class AsyncResourceManager:
                 await asyncio.sleep(interval)
 
             except Exception as e:
-                logger.error(f"Error monitoring resources: {str(e)}")
+                logger.error(f"Error monitoring resources: {e!s}")
                 await asyncio.sleep(interval)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get resource manager statistics.
 
@@ -431,7 +437,7 @@ class AsyncResourceManager:
             "semaphore_available": self.analysis_semaphore._value,
         }
 
-    async def wait_for_capacity(self, timeout: Optional[float] = None) -> bool:
+    async def wait_for_capacity(self, timeout: float | None = None) -> bool:
         """
         Wait for capacity to become available.
 
@@ -445,7 +451,7 @@ class AsyncResourceManager:
             await asyncio.wait_for(self.analysis_semaphore.acquire(), timeout=timeout)
             self.analysis_semaphore.release()
             return True
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return False
 
     async def shutdown(self) -> None:

@@ -2,13 +2,16 @@
 
 import asyncio
 import json
-from datetime import datetime, UTC, timedelta
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from services.tracklist_service.src.monitoring.alert_manager import AlertManager, AlertSeverity
-from services.tracklist_service.src.monitoring.structure_monitor import StructureMonitor
 from services.tracklist_service.src.cache.fallback_cache import FallbackCache
+from services.tracklist_service.src.monitoring.alert_manager import (
+    AlertManager,
+    AlertSeverity,
+)
+from services.tracklist_service.src.monitoring.structure_monitor import StructureMonitor
 
 
 @dataclass
@@ -16,13 +19,13 @@ class SystemMetrics:
     """System performance metrics."""
 
     timestamp: datetime
-    parser_health: Dict[str, Any]
-    cache_stats: Dict[str, Any]
-    alert_summary: Dict[str, int]
-    recent_alerts: List[Dict[str, Any]]
-    structure_changes: List[Dict[str, Any]]
+    parser_health: dict[str, Any]
+    cache_stats: dict[str, Any]
+    alert_summary: dict[str, int]
+    recent_alerts: list[dict[str, Any]]
+    structure_changes: list[dict[str, Any]]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         data = asdict(self)
         data["timestamp"] = self.timestamp.isoformat()
@@ -48,10 +51,10 @@ class MonitoringDashboard:
         self.alert_manager = alert_manager
         self.structure_monitor = structure_monitor
         self.fallback_cache = fallback_cache
-        self._metrics_history: List[SystemMetrics] = []
+        self._metrics_history: list[SystemMetrics] = []
         self._max_history = 1000  # Keep last 1000 metric snapshots
 
-    async def get_system_metrics(self, page_types: Optional[List[str]] = None) -> SystemMetrics:
+    async def get_system_metrics(self, page_types: list[str] | None = None) -> SystemMetrics:
         """Get comprehensive system metrics.
 
         Args:
@@ -116,7 +119,7 @@ class MonitoringDashboard:
 
         return metrics
 
-    def _get_alert_summary(self) -> Dict[str, int]:
+    def _get_alert_summary(self) -> dict[str, int]:
         """Get alert summary by severity."""
         summary = {severity.value: 0 for severity in AlertSeverity}
 
@@ -130,7 +133,7 @@ class MonitoringDashboard:
 
         return summary
 
-    async def _get_recent_structure_changes(self) -> List[Dict[str, Any]]:
+    async def _get_recent_structure_changes(self) -> list[dict[str, Any]]:
         """Get recent structure changes."""
         # This would integrate with structure monitor's change history
         # For now, return mock data
@@ -145,7 +148,7 @@ class MonitoringDashboard:
             },
         ]
 
-    async def get_health_status(self) -> Dict[str, Any]:
+    async def get_health_status(self) -> dict[str, Any]:
         """Get overall system health status.
 
         Returns:
@@ -206,7 +209,7 @@ class MonitoringDashboard:
             },
         }
 
-    async def get_performance_trends(self, hours: int = 24) -> Dict[str, Any]:
+    async def get_performance_trends(self, hours: int = 24) -> dict[str, Any]:
         """Get performance trends over time.
 
         Args:
@@ -224,7 +227,7 @@ class MonitoringDashboard:
             return {"error": "No metrics data available"}
 
         # Calculate trends
-        trends: Dict[str, Any] = {
+        trends: dict[str, Any] = {
             "timespan_hours": hours,
             "data_points": len(recent_metrics),
             "parser_success_rates": {},
@@ -246,7 +249,7 @@ class MonitoringDashboard:
 
         return trends
 
-    async def get_active_issues(self) -> List[Dict[str, Any]]:
+    async def get_active_issues(self) -> list[dict[str, Any]]:
         """Get list of active issues requiring attention.
 
         Returns:
@@ -261,7 +264,7 @@ class MonitoringDashboard:
                 issues.append(
                     {
                         "type": "parser_health",
-                        "priority": "high" if health.get("success_rate", 0) < 0.5 else "medium",
+                        "priority": ("high" if health.get("success_rate", 0) < 0.5 else "medium"),
                         "title": f"Parser health degraded: {page_type}",
                         "description": f"Success rate: {health.get('success_rate', 0):.1%}",
                         "recommendations": [
@@ -314,8 +317,8 @@ class MonitoringDashboard:
         active_alerts = await self.alert_manager.get_active_alerts()
         critical_active = [a for a in active_alerts if a.severity == AlertSeverity.CRITICAL]
 
-        for alert in critical_active:
-            issues.append(
+        issues.extend(
+            [
                 {
                     "type": "critical_alert",
                     "priority": "critical",
@@ -329,7 +332,9 @@ class MonitoringDashboard:
                     ],
                     "alert_id": str(alert.timestamp.timestamp()),
                 }
-            )
+                for alert in critical_active
+            ]
+        )
 
         # Sort by priority
         priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -350,19 +355,22 @@ class MonitoringDashboard:
 
         if format.lower() == "json":
             return json.dumps(metrics.to_dict(), indent=2)
-        elif format.lower() == "csv":
+        if format.lower() == "csv":
             # Simple CSV export for key metrics
+            healthy_parsers = sum(1 for h in metrics.parser_health.values() if h.get("healthy", False))
+            total_parsers = len(metrics.parser_health)
+            health_ratio = healthy_parsers / total_parsers
+
             lines = [
                 "timestamp,parser_health_overall,cache_hit_rate,total_alerts,critical_alerts",
                 f"{metrics.timestamp.isoformat()},"
-                f"{sum(1 for h in metrics.parser_health.values() if h.get('healthy', False)) / len(metrics.parser_health)},"
+                f"{health_ratio},"
                 f"{metrics.cache_stats.get('hit_rate', 0.0)},"
                 f"{sum(metrics.alert_summary.values())},"
                 f"{metrics.alert_summary.get('critical', 0)}",
             ]
             return "\n".join(lines)
-        else:
-            raise ValueError(f"Unsupported format: {format}")
+        raise ValueError(f"Unsupported format: {format}")
 
     async def start_monitoring(self, interval: int = 60) -> None:
         """Start continuous monitoring with specified interval.
@@ -376,7 +384,7 @@ class MonitoringDashboard:
             try:
                 health = await self.get_health_status()
                 print(
-                    f"[{datetime.now().isoformat()}] System status: {health['status']} "
+                    f"[{datetime.now(UTC).isoformat()}] System status: {health['status']} "
                     f"(score: {health['health_score']:.2f})"
                 )
 

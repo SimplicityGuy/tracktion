@@ -1,6 +1,6 @@
 """Unit tests for synchronization models."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from services.tracklist_service.src.models.synchronization import (
@@ -48,7 +48,7 @@ class TestTracklistVersion:
             id=uuid4(),
             tracklist_id=uuid4(),
             version_number=2,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             created_by="system",
             change_type="import_update",
             change_summary="Updated from 1001tracklists",
@@ -106,7 +106,7 @@ class TestSyncConfiguration:
 
     def test_sync_config_to_dict(self):
         """Test converting sync configuration to dictionary."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         next_sync = now + timedelta(hours=1)
         config = SyncConfiguration(
             id=uuid4(),
@@ -164,7 +164,7 @@ class TestSyncEvent:
             event_type="conflict",
             source="manual",
             status="completed",
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(UTC),
             conflict_data={
                 "field": "track_title",
                 "current": "Original Mix",
@@ -189,7 +189,7 @@ class TestSyncEvent:
             event_type="update",
             source="auto",
             status="processing",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
 
         result = event.to_dict()
@@ -236,7 +236,7 @@ class TestAuditLog:
             entity_type="cue_file",
             entity_id=uuid4(),
             action="created",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             actor="system",
             changes={"new_file": "tracklist.cue"},
         )

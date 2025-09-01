@@ -2,14 +2,14 @@
 
 import json
 import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import redis.asyncio as redis
 from redis.asyncio import Redis
 from redis.asyncio.lock import Lock
-from redis.exceptions import RedisError, LockError
+from redis.exceptions import LockError, RedisError
 
 from services.tracklist_service.src.config import get_config
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class SyncCacheService:
     """Service for caching synchronization state and managing distributed locks."""
 
-    def __init__(self, redis_client: Optional[Redis[str]] = None):
+    def __init__(self, redis_client: Redis | None = None):
         """Initialize sync cache service.
 
         Args:
@@ -81,8 +81,8 @@ class SyncCacheService:
     async def cache_sync_state(
         self,
         tracklist_id: UUID,
-        state: Dict[str, Any],
-        ttl: Optional[int] = None,
+        state: dict[str, Any],
+        ttl: int | None = None,
     ) -> bool:
         """Cache synchronization state for a tracklist.
 
@@ -101,7 +101,7 @@ class SyncCacheService:
             key = f"{self.SYNC_STATE_PREFIX}{tracklist_id}"
 
             # Add timestamp
-            state["cached_at"] = datetime.utcnow().isoformat()
+            state["cached_at"] = datetime.now(UTC).isoformat()
 
             # Serialize and store
             await self.redis_client.setex(
@@ -120,7 +120,7 @@ class SyncCacheService:
     async def get_sync_state(
         self,
         tracklist_id: UUID,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get cached synchronization state.
 
         Args:
@@ -177,10 +177,10 @@ class SyncCacheService:
     async def acquire_sync_lock(
         self,
         tracklist_id: UUID,
-        timeout: Optional[int] = None,
+        timeout: int | None = None,
         blocking: bool = True,
-        blocking_timeout: Optional[int] = None,
-    ) -> Optional[Lock]:
+        blocking_timeout: int | None = None,
+    ) -> Lock | None:
         """Acquire a distributed lock for synchronization.
 
         Args:
@@ -208,9 +208,8 @@ class SyncCacheService:
             if await lock.acquire():
                 logger.debug(f"Acquired sync lock for tracklist {tracklist_id}")
                 return lock
-            else:
-                logger.warning(f"Failed to acquire sync lock for tracklist {tracklist_id}")
-                return None
+            logger.warning(f"Failed to acquire sync lock for tracklist {tracklist_id}")
+            return None
 
         except LockError as e:
             logger.error(f"Lock error: {e}")
@@ -265,8 +264,8 @@ class SyncCacheService:
     async def cache_conflicts(
         self,
         tracklist_id: UUID,
-        conflicts: List[Dict[str, Any]],
-        ttl: Optional[int] = None,
+        conflicts: list[dict[str, Any]],
+        ttl: int | None = None,
     ) -> bool:
         """Cache detected conflicts.
 
@@ -287,7 +286,7 @@ class SyncCacheService:
             data = {
                 "conflicts": conflicts,
                 "count": len(conflicts),
-                "cached_at": datetime.utcnow().isoformat(),
+                "cached_at": datetime.now(UTC).isoformat(),
             }
 
             await self.redis_client.setex(
@@ -306,7 +305,7 @@ class SyncCacheService:
     async def get_cached_conflicts(
         self,
         tracklist_id: UUID,
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> list[dict[str, Any]] | None:
         """Get cached conflicts.
 
         Args:
@@ -336,8 +335,8 @@ class SyncCacheService:
     async def cache_version_info(
         self,
         version_id: UUID,
-        version_data: Dict[str, Any],
-        ttl: Optional[int] = None,
+        version_data: dict[str, Any],
+        ttl: int | None = None,
     ) -> bool:
         """Cache version information.
 
@@ -355,7 +354,7 @@ class SyncCacheService:
         try:
             key = f"{self.VERSION_PREFIX}{version_id}"
 
-            version_data["cached_at"] = datetime.utcnow().isoformat()
+            version_data["cached_at"] = datetime.now(UTC).isoformat()
 
             await self.redis_client.setex(
                 key,
@@ -373,7 +372,7 @@ class SyncCacheService:
     async def get_cached_version(
         self,
         version_id: UUID,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get cached version information.
 
         Args:
@@ -402,7 +401,7 @@ class SyncCacheService:
     async def cache_batch_progress(
         self,
         batch_id: UUID,
-        progress: Dict[str, Any],
+        progress: dict[str, Any],
         ttl: int = 3600,
     ) -> bool:
         """Cache batch operation progress.
@@ -421,7 +420,7 @@ class SyncCacheService:
         try:
             key = f"{self.BATCH_PREFIX}{batch_id}"
 
-            progress["updated_at"] = datetime.utcnow().isoformat()
+            progress["updated_at"] = datetime.now(UTC).isoformat()
 
             await self.redis_client.setex(
                 key,
@@ -438,7 +437,7 @@ class SyncCacheService:
     async def get_batch_progress(
         self,
         batch_id: UUID,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get cached batch operation progress.
 
         Args:
@@ -486,7 +485,7 @@ class SyncCacheService:
         try:
             # Use sorted set for time-series metrics
             key = f"{self.METRICS_PREFIX}{tracklist_id}:{metric_type}"
-            timestamp = datetime.utcnow().timestamp()
+            timestamp = datetime.now(UTC).timestamp()
 
             # Store as sorted set with timestamp as score
             await self.redis_client.zadd(
@@ -508,7 +507,7 @@ class SyncCacheService:
         tracklist_id: UUID,
         metric_type: str,
         hours: int = 24,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get synchronization metrics.
 
         Args:
@@ -526,7 +525,7 @@ class SyncCacheService:
             key = f"{self.METRICS_PREFIX}{tracklist_id}:{metric_type}"
 
             # Calculate time range
-            end_time = datetime.utcnow().timestamp()
+            end_time = datetime.now(UTC).timestamp()
             start_time = end_time - (hours * 3600)
 
             # Get metrics in time range
@@ -586,7 +585,7 @@ class SyncCacheService:
             return 0
 
     # Cache Monitoring
-    async def get_cache_stats(self) -> Dict[str, Any]:
+    async def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics.
 
         Returns:

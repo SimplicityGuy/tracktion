@@ -3,13 +3,18 @@
 import shutil
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
 from services.analysis_service.src.cue_handler.backup import BackupManager
 from services.analysis_service.src.cue_handler.editor import CueEditor
-from services.analysis_service.src.cue_handler.models import CueSheet, CueTime, Track
+from services.analysis_service.src.cue_handler.models import (
+    CueSheet,
+    CueTime,
+    FileReference,
+    Track,
+)
 
 
 class TestCueEditor:
@@ -23,8 +28,6 @@ class TestCueEditor:
     @pytest.fixture
     def sample_cue_sheet(self):
         """Create sample CueSheet for testing."""
-        from services.analysis_service.src.cue_handler.models import FileReference
-
         cue_sheet = CueSheet()
         cue_sheet.title = "Test Album"
         cue_sheet.performer = "Test Artist"
@@ -101,27 +104,29 @@ class TestCueEditor:
         mock_file = MagicMock()
         mock_open.return_value.__enter__.return_value = mock_file
 
-        with patch.object(editor.generator, "generate") as mock_generate:
+        with (
+            patch.object(editor.generator, "generate") as mock_generate,
+            patch.object(editor.backup_manager, "create_backup") as mock_backup,
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "mkdir"),
+        ):
             mock_generate.return_value = "Generated CUE content"
-            with patch.object(editor.backup_manager, "create_backup") as mock_backup:
-                with patch.object(Path, "exists", return_value=True):
-                    with patch.object(Path, "mkdir"):
-                        result = editor.save_cue_file()
+            result = editor.save_cue_file()
 
-                        assert result == Path("/test/original.cue")
-                        assert editor.dirty is False
-                        mock_backup.assert_called_once()
-                        # Now check that generate was called with CueDisc and list[CueFile]
-                        assert mock_generate.called
-                        call_args = mock_generate.call_args[0]
-                        assert len(call_args) == 2
-                        # First arg should be CueDisc
-                        assert hasattr(call_args[0], "title")
-                        assert call_args[0].title == "Test Album"
-                        # Second arg should be list of CueFile
-                        assert isinstance(call_args[1], list)
-                        assert len(call_args[1]) == 1
-                        mock_file.write.assert_called_once_with("Generated CUE content")
+            assert result == Path("/test/original.cue")
+            assert editor.dirty is False
+            mock_backup.assert_called_once()
+            # Now check that generate was called with CueDisc and list[CueFile]
+            assert mock_generate.called
+            call_args = mock_generate.call_args[0]
+            assert len(call_args) == 2
+            # First arg should be CueDisc
+            assert hasattr(call_args[0], "title")
+            assert call_args[0].title == "Test Album"
+            # Second arg should be list of CueFile
+            assert isinstance(call_args[1], list)
+            assert len(call_args[1]) == 1
+            mock_file.write.assert_called_once_with("Generated CUE content")
 
     def test_preserve_format(self, editor):
         """Test preserving original format."""
@@ -337,14 +342,12 @@ class TestCueEditor:
         content = 'REM GENERATOR "Traktor Pro"\nTITLE "Test Album"\n  TRACK 01 AUDIO\n    TITLE "Track One"\n'
 
         # Mock file reading
-        from unittest.mock import MagicMock, mock_open, patch
 
         mock_file = mock_open(read_data=content)
 
-        with patch("builtins.open", mock_file):
-            with patch.object(editor.parser, "parse") as mock_parse:
-                mock_parse.return_value = MagicMock()
-                editor.load_cue_file("/test/file.cue")
+        with patch("builtins.open", mock_file), patch.object(editor.parser, "parse") as mock_parse:
+            mock_parse.return_value = MagicMock()
+            editor.load_cue_file("/test/file.cue")
 
         # Check format detection (2 spaces detected, but divided by 2 = 1 space)
         assert editor._format_style["indent"] == " "
@@ -352,10 +355,6 @@ class TestCueEditor:
 
     def test_backup_disabled(self):
         """Test disabling automatic backups."""
-        import tempfile
-        from pathlib import Path
-
-        from services.analysis_service.src.cue_handler.backup import BackupManager
 
         backup_manager = BackupManager(enabled=False)
 
@@ -382,7 +381,6 @@ class TestCueEditor:
 
     def test_validate_file_transitions(self, editor):
         """Test file transition validation."""
-        from services.analysis_service.src.cue_handler.models import FileReference, Track
 
         editor.cue_sheet = MagicMock()
 
@@ -401,7 +399,6 @@ class TestCueEditor:
 
     def test_consolidate_to_single_file(self, editor):
         """Test consolidating multi-file CUE to single file."""
-        from services.analysis_service.src.cue_handler.models import CueSheet, FileReference, Track
 
         # Create multi-file CUE
         cue_sheet = CueSheet()
@@ -432,8 +429,16 @@ class TestCueEditor:
 
         tracklist_data = {
             "tracks": [
-                {"title": "New Track 1", "artist": "Artist A", "start_time": "00:00:00"},
-                {"title": "New Track 2", "artist": "Artist B", "start_time": "03:00:00"},
+                {
+                    "title": "New Track 1",
+                    "artist": "Artist A",
+                    "start_time": "00:00:00",
+                },
+                {
+                    "title": "New Track 2",
+                    "artist": "Artist B",
+                    "start_time": "03:00:00",
+                },
             ]
         }
 
@@ -463,8 +468,17 @@ class TestCueEditor:
         editor.cue_sheet = sample_cue_sheet
 
         operations = [
-            {"type": "add_track", "title": "New Track", "performer": "New Artist", "start_time": "05:00:00"},
-            {"type": "update_metadata", "track_number": 1, "metadata": {"title": "Updated Track 1"}},
+            {
+                "type": "add_track",
+                "title": "New Track",
+                "performer": "New Artist",
+                "start_time": "05:00:00",
+            },
+            {
+                "type": "update_metadata",
+                "track_number": 1,
+                "metadata": {"title": "Updated Track 1"},
+            },
             {"type": "remove_track", "track_number": 2},
         ]
 
@@ -716,14 +730,11 @@ FILE "audio.wav" WAVE
     PERFORMER "Artist"
     INDEX 01 00:00:00"""
 
-        from unittest.mock import MagicMock, mock_open, patch
-
         mock_file = mock_open(read_data=content)
 
-        with patch("builtins.open", mock_file):
-            with patch.object(editor.parser, "parse") as mock_parse:
-                mock_parse.return_value = MagicMock()
-                editor.load_cue_file("/test/file.cue")
+        with patch("builtins.open", mock_file), patch.object(editor.parser, "parse") as mock_parse:
+            mock_parse.return_value = MagicMock()
+            editor.load_cue_file("/test/file.cue")
 
         # Check that command order was detected
         assert "REM" in editor._format_style.get("command_order", [])
@@ -878,6 +889,7 @@ class TestBackupManager:
 
     def test_cleanup_old_backups(self, backup_manager, temp_dir):
         """Test cleaning up old backups."""
+
         test_file = temp_dir / "test.cue"
         test_file.write_text("Content")
 

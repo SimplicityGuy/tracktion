@@ -2,6 +2,8 @@
 Unit tests for the circuit breaker pattern implementation.
 """
 
+import contextlib
+import threading
 import time
 from unittest.mock import Mock
 
@@ -329,9 +331,8 @@ class TestCircuitBreaker:
 
     def test_context_manager_failure(self) -> None:
         """Test circuit breaker as context manager with failure."""
-        with pytest.raises(ValueError):
-            with self.breaker:
-                raise ValueError("Test failure")
+        with pytest.raises(ValueError), self.breaker:
+            raise ValueError("Test failure")
 
         assert self.breaker.stats.successful_calls == 0
         assert self.breaker.stats.failed_calls == 1
@@ -340,9 +341,8 @@ class TestCircuitBreaker:
         """Test context manager with unexpected exception."""
         self.breaker.config.expected_exceptions = (ValueError,)
 
-        with pytest.raises(TypeError):
-            with self.breaker:
-                raise TypeError("Unexpected")
+        with pytest.raises(TypeError), self.breaker:
+            raise TypeError("Unexpected")
 
         # Unexpected exception shouldn't count as failure
         assert self.breaker.stats.failed_calls == 0
@@ -552,7 +552,6 @@ class TestCircuitBreakerIntegration:
 
     def test_concurrent_access(self) -> None:
         """Test circuit breaker with concurrent access."""
-        import threading
 
         config = CircuitBreakerConfig(
             failure_threshold=10,
@@ -566,10 +565,8 @@ class TestCircuitBreakerIntegration:
                     raise ValueError("Test")
                 return "success"
 
-            try:
+            with contextlib.suppress(ValueError, CircuitOpenError):
                 breaker.call(test_func)
-            except (ValueError, CircuitOpenError):
-                pass
 
         # Create threads for concurrent access
         threads = []

@@ -10,7 +10,9 @@ from services.analysis_service.src.file_rename_proposal.message_interface import
     MessageTypes,
     RenameProposalMessageInterface,
 )
-from services.analysis_service.src.file_rename_proposal.proposal_generator import RenameProposal
+from services.analysis_service.src.file_rename_proposal.proposal_generator import (
+    RenameProposal,
+)
 
 
 class TestMessageInterface:
@@ -107,7 +109,11 @@ class TestMessageInterface:
         mock_proposal.created_at = datetime.now(UTC)
         mock_services["proposal_repo"].create.return_value = mock_proposal
 
-        message = {"type": MessageTypes.GENERATE_PROPOSAL, "request_id": request_id, "recording_id": str(recording_id)}
+        message = {
+            "type": MessageTypes.GENERATE_PROPOSAL,
+            "request_id": request_id,
+            "recording_id": str(recording_id),
+        }
 
         response = interface.process_message(message)
 
@@ -125,7 +131,11 @@ class TestMessageInterface:
         recording_id = uuid4()
         mock_services["recording_repo"].get_by_id.return_value = None
 
-        message = {"type": MessageTypes.GENERATE_PROPOSAL, "request_id": "test", "recording_id": str(recording_id)}
+        message = {
+            "type": MessageTypes.GENERATE_PROPOSAL,
+            "request_id": "test",
+            "recording_id": str(recording_id),
+        }
 
         response = interface.process_message(message)
 
@@ -140,7 +150,11 @@ class TestMessageInterface:
         mock_services["recording_repo"].get_by_id.return_value = mock_recording
         mock_services["proposal_generator"].generate_proposal.side_effect = Exception("Generation failed")
 
-        message = {"type": MessageTypes.GENERATE_PROPOSAL, "request_id": "test", "recording_id": str(recording_id)}
+        message = {
+            "type": MessageTypes.GENERATE_PROPOSAL,
+            "request_id": "test",
+            "recording_id": str(recording_id),
+        }
 
         response = interface.process_message(message)
 
@@ -229,7 +243,11 @@ class TestMessageInterface:
 
         mock_services["proposal_repo"].get.return_value = mock_proposal
 
-        message = {"type": MessageTypes.GET_PROPOSAL, "request_id": "test", "proposal_id": str(proposal_id)}
+        message = {
+            "type": MessageTypes.GET_PROPOSAL,
+            "request_id": "test",
+            "proposal_id": str(proposal_id),
+        }
 
         response = interface.process_message(message)
 
@@ -282,7 +300,11 @@ class TestMessageInterface:
         proposal_id = uuid4()
         mock_services["proposal_repo"].get.return_value = None
 
-        message = {"type": MessageTypes.GET_PROPOSAL, "request_id": "test", "proposal_id": str(proposal_id)}
+        message = {
+            "type": MessageTypes.GET_PROPOSAL,
+            "request_id": "test",
+            "proposal_id": str(proposal_id),
+        }
 
         response = interface.process_message(message)
 
@@ -352,7 +374,11 @@ class TestMessageInterface:
 
         mock_services["batch_processor"].get_job_status.return_value = mock_status
 
-        message = {"type": MessageTypes.GET_BATCH_STATUS, "request_id": "test", "job_id": job_id}
+        message = {
+            "type": MessageTypes.GET_BATCH_STATUS,
+            "request_id": "test",
+            "job_id": job_id,
+        }
 
         response = interface.process_message(message)
 
@@ -363,7 +389,10 @@ class TestMessageInterface:
 
     def test_get_batch_status_all_jobs(self, interface, mock_services):
         """Test getting all active job statuses."""
-        mock_jobs = [{"job_id": "job1", "status": "running"}, {"job_id": "job2", "status": "completed"}]
+        mock_jobs = [
+            {"job_id": "job1", "status": "running"},
+            {"job_id": "job2", "status": "completed"},
+        ]
 
         mock_services["batch_processor"].list_active_jobs.return_value = mock_jobs
 
@@ -382,7 +411,11 @@ class TestMessageInterface:
         job_id = "batch_123"
         mock_services["batch_processor"].cancel_job.return_value = True
 
-        message = {"type": MessageTypes.CANCEL_BATCH, "request_id": "test", "job_id": job_id}
+        message = {
+            "type": MessageTypes.CANCEL_BATCH,
+            "request_id": "test",
+            "job_id": job_id,
+        }
 
         response = interface.process_message(message)
 
@@ -397,7 +430,11 @@ class TestMessageInterface:
         job_id = "batch_123"
         mock_services["batch_processor"].cancel_job.return_value = False
 
-        message = {"type": MessageTypes.CANCEL_BATCH, "request_id": "test", "job_id": job_id}
+        message = {
+            "type": MessageTypes.CANCEL_BATCH,
+            "request_id": "test",
+            "job_id": job_id,
+        }
 
         response = interface.process_message(message)
 
@@ -428,7 +465,11 @@ class TestMessageInterface:
         """Test cleaning up old proposals."""
         mock_services["proposal_repo"].cleanup_old_proposals.return_value = 25
 
-        message = {"type": MessageTypes.CLEANUP_OLD_PROPOSALS, "request_id": "test", "days": 60}
+        message = {
+            "type": MessageTypes.CLEANUP_OLD_PROPOSALS,
+            "request_id": "test",
+            "days": 60,
+        }
 
         response = interface.process_message(message)
 

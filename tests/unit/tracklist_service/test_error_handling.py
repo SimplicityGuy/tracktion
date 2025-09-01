@@ -10,6 +10,8 @@ from uuid import uuid4
 
 import pytest
 
+from services.tracklist_service.src.cache.redis_cache import RedisCache
+from services.tracklist_service.src.database.database import get_db_context
 from services.tracklist_service.src.exceptions import (
     AudioFileError,
     ConcurrentEditError,
@@ -241,7 +243,6 @@ class TestErrorRecovery:
     @pytest.mark.asyncio
     async def test_graceful_degradation_cache_failure(self):
         """Test graceful degradation when cache fails."""
-        from services.tracklist_service.src.cache.redis_cache import RedisCache
 
         # Mock cache that fails
         cache = RedisCache()
@@ -268,7 +269,6 @@ class TestErrorRecovery:
     @pytest.mark.asyncio
     async def test_database_connection_recovery(self):
         """Test database connection recovery."""
-        from services.tracklist_service.src.database.database import get_db_context
 
         # This would test actual database recovery in a full integration test
         # For unit test, we just verify the context manager exists
@@ -287,7 +287,6 @@ class TestStructuredLogging:
     @patch("services.tracklist_service.src.api.import_endpoints.logger")
     def test_structured_log_format(self, mock_logger):
         """Test that logs include structured data."""
-        from services.tracklist_service.src.exceptions import ImportError
 
         # Create an error that would be logged
         error = ImportError("Test import failed", url="https://1001tracklists.com/test", tracklist_id="test-123")
@@ -413,6 +412,7 @@ class TestManualTracklistExceptions:
 
     def test_timing_error_with_overlap(self):
         """Test timing error for track overlap."""
+
         error = TimingError(
             message="Tracks overlap by 15 seconds",
             track_position=5,

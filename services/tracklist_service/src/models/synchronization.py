@@ -1,11 +1,21 @@
 """Synchronization models for tracklist version management and sync operations."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
 from services.tracklist_service.src.models.tracklist import Base
@@ -19,7 +29,7 @@ class TracklistVersion(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     tracklist_id = Column(PG_UUID(as_uuid=True), ForeignKey("tracklists.id"), nullable=False)
     version_number = Column(Integer, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     created_by = Column(String(255))  # User or system identifier
     change_type = Column(String(50), nullable=False)  # manual_edit, import_update, auto_sync
     change_summary = Column(Text, nullable=False)
@@ -30,7 +40,7 @@ class TracklistVersion(Base):
     # Relationships
     tracklist = relationship("TracklistDB", back_populates="versions")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert version to dictionary."""
         return {
             "id": str(self.id),
@@ -64,7 +74,7 @@ class SyncConfiguration(Base):
     # Relationships
     tracklist = relationship("TracklistDB", back_populates="sync_configuration")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert sync configuration to dictionary."""
         return {
             "id": str(self.id),
@@ -74,8 +84,8 @@ class SyncConfiguration(Base):
             "sync_frequency": self.sync_frequency,
             "auto_accept_threshold": self.auto_accept_threshold,
             "conflict_resolution": self.conflict_resolution,
-            "last_sync_at": self.last_sync_at.isoformat() if self.last_sync_at else None,
-            "next_sync_at": self.next_sync_at.isoformat() if self.next_sync_at else None,
+            "last_sync_at": (self.last_sync_at.isoformat() if self.last_sync_at else None),
+            "next_sync_at": (self.next_sync_at.isoformat() if self.next_sync_at else None),
         }
 
 
@@ -89,7 +99,7 @@ class SyncEvent(Base):
     event_type = Column(String(20), nullable=False)  # check, update, conflict, resolved
     source = Column(String(50), nullable=False)  # 1001tracklists, manual, auto
     status = Column(String(20), nullable=False)  # pending, processing, completed, failed
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     completed_at = Column(DateTime)
     changes = Column(JSONB)  # Detailed change information
     conflict_data = Column(JSONB)  # Conflict details if any
@@ -98,7 +108,7 @@ class SyncEvent(Base):
     # Relationships
     tracklist = relationship("TracklistDB", back_populates="sync_events")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert sync event to dictionary."""
         return {
             "id": str(self.id),
@@ -107,7 +117,7 @@ class SyncEvent(Base):
             "source": self.source,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (self.completed_at.isoformat() if self.completed_at else None),
             "changes": self.changes,
             "conflict_data": self.conflict_data,
             "resolution": self.resolution,
@@ -123,12 +133,12 @@ class AuditLog(Base):
     entity_type = Column(String(50), nullable=False)  # tracklist, cue_file
     entity_id = Column(PG_UUID(as_uuid=True), nullable=False)
     action = Column(String(50), nullable=False)  # created, updated, deleted, synced
-    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    timestamp = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     actor = Column(String(255), nullable=False)  # User or system identifier
     changes = Column(JSONB, nullable=False)  # Detailed change data
     audit_metadata = Column(JSONB, default=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert audit log to dictionary."""
         return {
             "id": str(self.id),

@@ -14,6 +14,7 @@ from services.tracklist_service.src.monitoring.alert_manager import (
     AlertSeverity,
     HealthStatus,
 )
+from services.tracklist_service.src.monitoring.structure_monitor import StructureMonitor
 
 
 class TestAlert:
@@ -268,7 +269,7 @@ class TestAlertManager:
             "failures:pattern:tracklist": failure_pattern,
             "metrics:rate:tracklist:current": "0",
             "metrics:rate:tracklist:average": "0",
-        }.get(key, None)
+        }.get(key)
 
         anomalies = await alert_manager._detect_anomalies("tracklist")
 
@@ -310,7 +311,6 @@ class TestAlertManager:
     @pytest.mark.asyncio
     async def test_start_monitoring(self, alert_manager):
         """Test starting monitoring."""
-        from services.tracklist_service.src.monitoring.structure_monitor import StructureMonitor
 
         structure_monitor = StructureMonitor()
 
@@ -476,8 +476,8 @@ class TestAlertChannels:
     @pytest.mark.asyncio
     async def test_store_alert_history_no_redis(self, alert_manager):
         """Test storing alert history without Redis."""
+
         alert_manager.redis_client = None
 
         # Should not raise error (method doesn't exist, simulating no-op)
         # The actual implementation stores in memory when Redis is None
-        pass

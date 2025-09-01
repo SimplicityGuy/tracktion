@@ -2,11 +2,17 @@
 
 import asyncio
 import logging
-from datetime import datetime, UTC
-from typing import List, Dict, Any, Optional
+from datetime import UTC, datetime, timedelta
 from enum import Enum
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 from services.tracklist_service.src.queue.batch_queue import BatchJobQueue
@@ -36,14 +42,14 @@ class BatchTemplate(str, Enum):
 class BatchRequest(BaseModel):
     """Request model for batch processing."""
 
-    urls: List[HttpUrl] = Field(..., min_length=1, max_length=1000)
+    urls: list[HttpUrl] = Field(..., min_length=1, max_length=1000)
     priority: BatchPriority = BatchPriority.NORMAL
-    user_id: Optional[str] = None
-    template: Optional[BatchTemplate] = None
-    options: Optional[Dict[str, Any]] = None
+    user_id: str | None = None
+    template: BatchTemplate | None = None
+    options: dict[str, Any] | None = None
 
     @field_validator("urls")
-    def validate_urls(cls, v: List[HttpUrl]) -> List[HttpUrl]:
+    def validate_urls(self, v: list[HttpUrl]) -> list[HttpUrl]:
         """Validate URLs are from supported domains."""
         supported_domains = ["1001tracklists.com", "www.1001tracklists.com"]
         for url in v:
@@ -59,7 +65,7 @@ class BatchResponse(BaseModel):
     total_jobs: int
     priority: str
     status: str
-    estimated_completion: Optional[datetime] = None
+    estimated_completion: datetime | None = None
     message: str = "Batch successfully queued"
 
 
@@ -69,11 +75,11 @@ class BatchStatus(BaseModel):
     batch_id: str
     status: str
     total_jobs: int
-    jobs_status: Dict[str, int]
+    jobs_status: dict[str, int]
     progress_percentage: float
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-    error: Optional[str] = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    error: str | None = None
 
 
 class BatchAction(str, Enum):
@@ -87,22 +93,22 @@ class BatchAction(str, Enum):
 class BatchScheduleRequest(BaseModel):
     """Request model for scheduling batch jobs."""
 
-    urls: List[HttpUrl] = Field(..., min_length=1, max_length=1000)
+    urls: list[HttpUrl] = Field(..., min_length=1, max_length=1000)
     cron_expression: str = Field(..., description="Cron expression for scheduling")
-    user_id: Optional[str] = None
-    name: Optional[str] = None
+    user_id: str | None = None
+    name: str | None = None
 
 
-# Global queue instance (would be dependency injected in production)
-batch_queue: Optional[BatchJobQueue] = None
+# Module-level queue instance (would be dependency injected in production)
+_batch_queue: BatchJobQueue | None = None
 
 
 def get_batch_queue() -> BatchJobQueue:
     """Get or create batch queue instance."""
-    global batch_queue
-    if batch_queue is None:
-        batch_queue = BatchJobQueue()
-    return batch_queue
+    global _batch_queue  # noqa: PLW0603 - Module-level singleton pattern for API endpoints
+    if _batch_queue is None:
+        _batch_queue = BatchJobQueue()
+    return _batch_queue
 
 
 @router.post("/batch", response_model=BatchResponse)
@@ -152,7 +158,7 @@ async def create_batch(
 
     except Exception as e:
         logger.error(f"Failed to create batch: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/batch/{batch_id}/status", response_model=BatchStatus)
@@ -186,11 +192,11 @@ async def get_batch_status(batch_id: str) -> BatchStatus:
         raise
     except Exception as e:
         logger.error(f"Failed to get batch status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/batch/{batch_id}/{action}")
-async def control_batch(batch_id: str, action: BatchAction) -> Dict[str, Any]:
+async def control_batch(batch_id: str, action: BatchAction) -> dict[str, Any]:
     """Control a running batch job (pause/resume/cancel).
 
     Args:
@@ -209,11 +215,11 @@ async def control_batch(batch_id: str, action: BatchAction) -> Dict[str, Any]:
                 raise HTTPException(status_code=404, detail="Batch not found")
             return {"status": "success", "message": f"Batch {batch_id} cancelled"}
 
-        elif action == BatchAction.PAUSE:
+        if action == BatchAction.PAUSE:
             # Implementation would pause job processing
             return {"status": "success", "message": f"Batch {batch_id} paused"}
 
-        elif action == BatchAction.RESUME:
+        if action == BatchAction.RESUME:
             # Implementation would resume job processing
             return {"status": "success", "message": f"Batch {batch_id} resumed"}
 
@@ -221,11 +227,11 @@ async def control_batch(batch_id: str, action: BatchAction) -> Dict[str, Any]:
         raise
     except Exception as e:
         logger.error(f"Failed to {action} batch: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/batch/{batch_id}/cancel")
-async def cancel_batch(batch_id: str) -> Dict[str, Any]:
+async def cancel_batch(batch_id: str) -> dict[str, Any]:
     """Cancel a running batch job.
 
     Args:
@@ -238,8 +244,8 @@ async def cancel_batch(batch_id: str) -> Dict[str, Any]:
     return dict(result)
 
 
-@router.post("/batch/schedule", response_model=Dict[str, str])
-async def schedule_batch(request: BatchScheduleRequest) -> Dict[str, str]:
+@router.post("/batch/schedule", response_model=dict[str, str])
+async def schedule_batch(request: BatchScheduleRequest) -> dict[str, str]:
     """Schedule a batch for recurring execution.
 
     Args:
@@ -268,10 +274,10 @@ async def schedule_batch(request: BatchScheduleRequest) -> Dict[str, str]:
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Failed to schedule batch: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.websocket("/batch/{batch_id}/progress")
@@ -325,10 +331,10 @@ async def progress_websocket(websocket: WebSocket, batch_id: str) -> None:
 
 
 def apply_template(
-    urls: List[str],
+    urls: list[str],
     template: BatchTemplate,
-    options: Optional[Dict[str, Any]] = None,
-) -> List[str]:
+    options: dict[str, Any] | None = None,
+) -> list[str]:
     """Apply a template to batch URLs.
 
     Args:
@@ -365,6 +371,5 @@ def calculate_estimated_completion(
     }
 
     total_seconds = job_count * seconds_per_job[priority]
-    from datetime import timedelta
 
     return datetime.now(UTC).replace(microsecond=0) + timedelta(seconds=total_seconds)

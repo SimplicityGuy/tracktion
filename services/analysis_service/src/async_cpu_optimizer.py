@@ -6,16 +6,23 @@ CPU affinity management, and FFT optimization for parallel execution.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import psutil
 
 logger = logging.getLogger(__name__)
+
+# Constants for CPU optimization
+MAX_PROFILE_HISTORY = 100
+MAX_THREAD_ADJUSTMENT_HISTORY = 50
+MAX_TASK_TIME_HISTORY = 1000
+PROFILE_SAMPLE_SIZE = 10
 
 
 @dataclass
@@ -24,7 +31,7 @@ class CPUProfile:
 
     timestamp: float
     overall_percent: float
-    per_core_percent: List[float]
+    per_core_percent: list[float]
     process_percent: float
     thread_count: int
     task_count: int
@@ -56,8 +63,8 @@ class AsyncCPUOptimizer:
 
     def __init__(
         self,
-        config: Optional[OptimizationConfig] = None,
-        cpu_count: Optional[int] = None,
+        config: OptimizationConfig | None = None,
+        cpu_count: int | None = None,
     ):
         """
         Initialize the CPU optimizer.
@@ -70,22 +77,22 @@ class AsyncCPUOptimizer:
         self.cpu_count = cpu_count or os.cpu_count() or 4
 
         # Profiling data
-        self.profiles: List[CPUProfile] = []
-        self.profiling_task: Optional[asyncio.Task] = None
+        self.profiles: list[CPUProfile] = []
+        self.profiling_task: asyncio.Task | None = None
         self.start_time = time.time()
 
         # Thread pool sizing
         self.current_thread_count = self.cpu_count * 2
         self.optimal_thread_count = self.current_thread_count
-        self.thread_adjustment_history: List[Tuple[float, int, int]] = []
+        self.thread_adjustment_history: list[tuple[float, int, int]] = []
 
         # Process and system monitoring
         self.process = psutil.Process()
         self.last_profile_time = 0.0
 
         # Task performance tracking
-        self.task_times: List[float] = []
-        self.task_start_times: Dict[str, float] = {}
+        self.task_times: list[float] = []
+        self.task_start_times: dict[str, float] = {}
 
         logger.info(
             f"AsyncCPUOptimizer initialized with {self.cpu_count} cores, initial threads: {self.current_thread_count}"
@@ -106,10 +113,8 @@ class AsyncCPUOptimizer:
         """Stop CPU profiling."""
         if self.profiling_task:
             self.profiling_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.profiling_task
-            except asyncio.CancelledError:
-                pass
             self.profiling_task = None
         logger.info("CPU profiling stopped")
 
@@ -122,15 +127,15 @@ class AsyncCPUOptimizer:
                 self.profiles.append(profile)
 
                 # Limit profile history
-                if len(self.profiles) > 100:
-                    self.profiles = self.profiles[-100:]
+                if len(self.profiles) > MAX_PROFILE_HISTORY:
+                    self.profiles = self.profiles[-MAX_PROFILE_HISTORY:]
 
                 # Analyze and optimize if past warmup period
                 if time.time() - self.start_time > self.config.warmup_period_seconds:
                     await self._analyze_and_optimize(profile)
 
             except Exception as e:
-                logger.error(f"Error in profiling loop: {str(e)}")
+                logger.error(f"Error in profiling loop: {e!s}")
 
     async def _collect_profile(self) -> CPUProfile:
         """
@@ -202,10 +207,7 @@ class AsyncCPUOptimizer:
         task_efficiency = min(1.0, task_count / thread_count)
 
         # Calculate process efficiency (process CPU vs overall)
-        if overall_cpu > 0:
-            process_efficiency = min(1.0, process_cpu / overall_cpu)
-        else:
-            process_efficiency = 0.0
+        process_efficiency = min(1.0, process_cpu / overall_cpu) if overall_cpu > 0 else 0.0
 
         # Weighted average
         efficiency = util_efficiency * 0.4 + task_efficiency * 0.3 + process_efficiency * 0.3
@@ -264,8 +266,8 @@ class AsyncCPUOptimizer:
             self.optimal_thread_count = new_thread_count
 
             # Limit history
-            if len(self.thread_adjustment_history) > 50:
-                self.thread_adjustment_history = self.thread_adjustment_history[-50:]
+            if len(self.thread_adjustment_history) > MAX_THREAD_ADJUSTMENT_HISTORY:
+                self.thread_adjustment_history = self.thread_adjustment_history[-MAX_THREAD_ADJUSTMENT_HISTORY:]
 
     def record_task_start(self, task_id: str) -> None:
         """
@@ -289,8 +291,8 @@ class AsyncCPUOptimizer:
             del self.task_start_times[task_id]
 
             # Limit history
-            if len(self.task_times) > 1000:
-                self.task_times = self.task_times[-1000:]
+            if len(self.task_times) > MAX_TASK_TIME_HISTORY:
+                self.task_times = self.task_times[-MAX_TASK_TIME_HISTORY:]
 
     def get_optimal_thread_count(self) -> int:
         """
@@ -301,7 +303,7 @@ class AsyncCPUOptimizer:
         """
         return self.optimal_thread_count
 
-    def get_recent_profiles(self, count: int = 10) -> List[CPUProfile]:
+    def get_recent_profiles(self, count: int = 10) -> list[CPUProfile]:
         """
         Get recent CPU profiles.
 
@@ -313,16 +315,24 @@ class AsyncCPUOptimizer:
         """
         return self.profiles[-count:] if self.profiles else []
 
-    def get_optimization_stats(self) -> Dict[str, Any]:
+    def get_optimization_stats(self) -> dict[str, Any]:
         """
         Get optimization statistics.
 
         Returns:
             Dictionary with optimization stats
         """
-        avg_cpu = sum(p.overall_percent for p in self.profiles[-10:]) / 10 if len(self.profiles) >= 10 else 0.0
+        avg_cpu = (
+            sum(p.overall_percent for p in self.profiles[-PROFILE_SAMPLE_SIZE:]) / PROFILE_SAMPLE_SIZE
+            if len(self.profiles) >= PROFILE_SAMPLE_SIZE
+            else 0.0
+        )
 
-        avg_efficiency = sum(p.efficiency_score for p in self.profiles[-10:]) / 10 if len(self.profiles) >= 10 else 0.0
+        avg_efficiency = (
+            sum(p.efficiency_score for p in self.profiles[-PROFILE_SAMPLE_SIZE:]) / PROFILE_SAMPLE_SIZE
+            if len(self.profiles) >= PROFILE_SAMPLE_SIZE
+            else 0.0
+        )
 
         return {
             "current_threads": self.current_thread_count,
@@ -332,7 +342,7 @@ class AsyncCPUOptimizer:
             "avg_efficiency": avg_efficiency,
             "profile_count": len(self.profiles),
             "adjustment_count": len(self.thread_adjustment_history),
-            "avg_task_time": sum(self.task_times) / len(self.task_times) if self.task_times else 0.0,
+            "avg_task_time": (sum(self.task_times) / len(self.task_times) if self.task_times else 0.0),
         }
 
 
@@ -341,7 +351,7 @@ class ParallelFFTOptimizer:
     Optimized FFT operations for parallel execution.
     """
 
-    def __init__(self, cpu_count: Optional[int] = None):
+    def __init__(self, cpu_count: int | None = None):
         """
         Initialize FFT optimizer.
 
@@ -352,7 +362,7 @@ class ParallelFFTOptimizer:
 
         # Pre-compute common FFT sizes
         self.common_fft_sizes = [512, 1024, 2048, 4096, 8192]
-        self.fft_plans: Dict[int, Any] = {}
+        self.fft_plans: dict[int, Any] = {}
 
         logger.info(f"ParallelFFTOptimizer initialized with {self.cpu_count} cores")
 
@@ -360,9 +370,9 @@ class ParallelFFTOptimizer:
         self,
         audio_data: np.ndarray,
         fft_size: int = 2048,
-        hop_size: Optional[int] = None,
+        hop_size: int | None = None,
         window: str = "hann",
-        n_parallel: Optional[int] = None,
+        n_parallel: int | None = None,
     ) -> np.ndarray:
         """
         Compute Short-Time Fourier Transform in parallel.
@@ -399,8 +409,7 @@ class ParallelFFTOptimizer:
         results = await asyncio.gather(*tasks)
 
         # Combine results
-        combined = np.concatenate(results, axis=0)
-        return combined  # type: ignore[no-any-return]
+        return np.concatenate(results, axis=0)
 
     async def _compute_stft_chunk(
         self,
@@ -486,7 +495,7 @@ class ParallelFFTOptimizer:
 
         return int(fft_size)
 
-    async def benchmark_fft_performance(self, test_duration_seconds: float = 1.0) -> Dict[str, float]:
+    async def benchmark_fft_performance(self, test_duration_seconds: float = 1.0) -> dict[str, float]:
         """
         Benchmark FFT performance with different configurations.
 
@@ -497,7 +506,7 @@ class ParallelFFTOptimizer:
             Performance metrics
         """
         sample_rate = 44100
-        test_audio = np.random.randn(int(sample_rate * test_duration_seconds))
+        test_audio = np.random.default_rng().standard_normal(int(sample_rate * test_duration_seconds))
         results = {}
 
         for fft_size in self.common_fft_sizes:

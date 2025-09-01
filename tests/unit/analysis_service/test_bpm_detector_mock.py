@@ -5,7 +5,6 @@ Tests BPM detection accuracy, confidence scoring, and error handling
 using mocked Essentia functions for reliable test results.
 """
 
-import os
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -22,14 +21,16 @@ class TestBPMDetectorMocked:
     def setup_method(self):
         """Set up test fixtures."""
         # Mock Essentia extractors
-        with patch("services.analysis_service.src.bpm_detector.es.RhythmExtractor2013") as mock_rhythm:
-            with patch("services.analysis_service.src.bpm_detector.es.PercivalBpmEstimator") as mock_percival:
-                self.mock_rhythm_instance = Mock()
-                self.mock_percival_instance = Mock()
-                mock_rhythm.return_value = self.mock_rhythm_instance
-                mock_percival.return_value = self.mock_percival_instance
+        with (
+            patch("services.analysis_service.src.bpm_detector.es.RhythmExtractor2013") as mock_rhythm,
+            patch("services.analysis_service.src.bpm_detector.es.PercivalBpmEstimator") as mock_percival,
+        ):
+            self.mock_rhythm_instance = Mock()
+            self.mock_percival_instance = Mock()
+            mock_rhythm.return_value = self.mock_rhythm_instance
+            mock_percival.return_value = self.mock_percival_instance
 
-                self.detector = BPMDetector(confidence_threshold=0.7, agreement_tolerance=5.0)
+            self.detector = BPMDetector(confidence_threshold=0.7, agreement_tolerance=5.0)
 
     @patch("services.analysis_service.src.bpm_detector.es.MonoLoader")
     def test_detect_bpm_high_confidence(self, mock_loader):
@@ -57,7 +58,7 @@ class TestBPMDetectorMocked:
         try:
             result = self.detector.detect_bpm(tmp_path)
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
         # Verify results
         assert result["bpm"] == 128.0
@@ -80,7 +81,13 @@ class TestBPMDetectorMocked:
         # Setup rhythm extractor with low confidence
         mock_beats = np.array([0.5, 1.0, 1.5, 2.0])
         mock_intervals = np.array([0.5, 0.5, 0.5])
-        self.mock_rhythm_instance.return_value = (120.0, mock_beats, 0.6, np.array([]), mock_intervals)
+        self.mock_rhythm_instance.return_value = (
+            120.0,
+            mock_beats,
+            0.6,
+            np.array([]),
+            mock_intervals,
+        )
 
         # Setup Percival with similar BPM (within tolerance)
         self.mock_percival_instance.return_value = 122.0
@@ -91,7 +98,7 @@ class TestBPMDetectorMocked:
         try:
             result = self.detector.detect_bpm(tmp_path)
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
         assert result["bpm"] == 120.0
         assert abs(result["confidence"] - 0.9) < 0.01  # Boosted due to agreement (with float tolerance)
@@ -112,7 +119,13 @@ class TestBPMDetectorMocked:
         # Setup rhythm extractor with low confidence and stable tempo
         mock_beats = np.array([0.5, 1.0, 1.5, 2.0])
         mock_intervals = np.array([0.5, 0.5, 0.5])  # Stable intervals
-        self.mock_rhythm_instance.return_value = (120.0, mock_beats, 0.6, np.array([]), mock_intervals)
+        self.mock_rhythm_instance.return_value = (
+            120.0,
+            mock_beats,
+            0.6,
+            np.array([]),
+            mock_intervals,
+        )
 
         # Setup Percival with very different BPM
         self.mock_percival_instance.return_value = 140.0  # Outside tolerance
@@ -123,7 +136,7 @@ class TestBPMDetectorMocked:
         try:
             result = self.detector.detect_bpm(tmp_path)
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
         # Should keep primary due to stable tempo
         assert result["bpm"] == 120.0
@@ -141,7 +154,13 @@ class TestBPMDetectorMocked:
         # Setup rhythm extractor with low confidence and unstable tempo
         mock_beats = np.array([0.5, 1.1, 1.5, 2.3])  # Irregular beats
         mock_intervals = np.array([0.6, 0.4, 0.8])  # Highly variable intervals
-        self.mock_rhythm_instance.return_value = (120.0, mock_beats, 0.6, np.array([]), mock_intervals)
+        self.mock_rhythm_instance.return_value = (
+            120.0,
+            mock_beats,
+            0.6,
+            np.array([]),
+            mock_intervals,
+        )
 
         # Setup Percival with different BPM
         self.mock_percival_instance.return_value = 130.0
@@ -152,7 +171,7 @@ class TestBPMDetectorMocked:
         try:
             result = self.detector.detect_bpm(tmp_path)
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
         # Should use fallback due to unstable primary
         assert result["bpm"] == 130.0
@@ -177,7 +196,7 @@ class TestBPMDetectorMocked:
             with pytest.raises(RuntimeError, match="Loaded audio is empty"):
                 self.detector.detect_bpm(tmp_path)
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
     @patch("services.analysis_service.src.bpm_detector.es.MonoLoader")
     def test_detect_bpm_processing_error(self, mock_loader):
@@ -192,7 +211,7 @@ class TestBPMDetectorMocked:
             with pytest.raises(RuntimeError, match="BPM detection failed"):
                 self.detector.detect_bpm(tmp_path)
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
     def test_is_tempo_stable(self):
         """Test tempo stability calculation."""
@@ -221,7 +240,13 @@ class TestBPMDetectorMocked:
 
         mock_beats = np.array([0.5, 1.0, 1.5])
         mock_intervals = np.array([0.5, 0.5])
-        self.mock_rhythm_instance.return_value = (128.0, mock_beats, 0.85, np.array([]), mock_intervals)
+        self.mock_rhythm_instance.return_value = (
+            128.0,
+            mock_beats,
+            0.85,
+            np.array([]),
+            mock_intervals,
+        )
 
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
             tmp_path = tmp.name
@@ -229,7 +254,7 @@ class TestBPMDetectorMocked:
         try:
             result = self.detector.detect_bpm_with_confidence(tmp_path)
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
         # Should return simplified format
         assert "bpm" in result
@@ -279,7 +304,7 @@ class TestBPMDetectorMocked:
         try:
             result = self.detector.detect_bpm(tmp_path)
         finally:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
 
         # Confidence should be normalized to 0-1 range
         assert 0.0 <= result["confidence"] <= 1.0

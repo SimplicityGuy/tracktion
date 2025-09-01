@@ -19,20 +19,22 @@ class TestStorageHandlerBPM:
     def setup_method(self):
         """Set up test fixtures."""
         # Mock environment variables
-        with patch.dict(
-            "os.environ",
-            {
-                "NEO4J_URI": "bolt://localhost:7687",
-                "NEO4J_USER": "neo4j",
-                "NEO4J_PASSWORD": "password",
-            },
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "NEO4J_URI": "bolt://localhost:7687",
+                    "NEO4J_USER": "neo4j",
+                    "NEO4J_PASSWORD": "password",
+                },
+            ),
+            patch("services.analysis_service.src.storage_handler.get_db_session"),
+            patch("services.analysis_service.src.storage_handler.RecordingRepository"),
+            patch("services.analysis_service.src.storage_handler.MetadataRepository"),
+            patch("services.analysis_service.src.storage_handler.Neo4jRepository"),
         ):
             # Mock repository initialization
-            with patch("services.analysis_service.src.storage_handler.get_db_session"):
-                with patch("services.analysis_service.src.storage_handler.RecordingRepository"):
-                    with patch("services.analysis_service.src.storage_handler.MetadataRepository"):
-                        with patch("services.analysis_service.src.storage_handler.Neo4jRepository"):
-                            self.handler = StorageHandler()
+            self.handler = StorageHandler()
 
         # Mock repositories
         self.handler.recording_repo = MagicMock()
@@ -137,14 +139,16 @@ class TestStorageHandlerBPM:
         bpm_data = {"bpm": 128.0, "confidence": 0.9}
 
         # Mock storage failure
-        with patch.object(self.handler, "store_metadata", side_effect=StorageError("Database error")):
-            with pytest.raises(StorageError, match="Failed to store BPM data"):
-                self.handler.store_bpm_data(
-                    self.recording_id,
-                    bpm_data,
-                    None,
-                    self.correlation_id,
-                )
+        with (
+            patch.object(self.handler, "store_metadata", side_effect=StorageError("Database error")),
+            pytest.raises(StorageError, match="Failed to store BPM data"),
+        ):
+            self.handler.store_bpm_data(
+                self.recording_id,
+                bpm_data,
+                None,
+                self.correlation_id,
+            )
 
     def test_create_bpm_relationships(self):
         """Test creation of BPM relationships in Neo4j."""
@@ -246,7 +250,11 @@ class TestStorageHandlerBPM:
             MagicMock(key="bpm_average", value="invalid"),  # Invalid value
         ]
 
-        self.handler.metadata_repo.get_by_recording.side_effect = [mock_metadata_1, mock_metadata_2, mock_metadata_3]
+        self.handler.metadata_repo.get_by_recording.side_effect = [
+            mock_metadata_1,
+            mock_metadata_2,
+            mock_metadata_3,
+        ]
 
         recording_ids = [uuid4(), uuid4(), uuid4()]
         stats = self.handler.get_bpm_statistics(recording_ids)
@@ -343,4 +351,3 @@ class TestStorageHandlerBPMIntegration:
     def test_full_bpm_storage_flow(self):
         """Test complete BPM storage flow with real databases."""
         # This would test with actual PostgreSQL and Neo4j connections
-        pass

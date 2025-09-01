@@ -6,7 +6,9 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from services.analysis_service.src.file_rename_executor.transaction_manager import TransactionManager
+from services.analysis_service.src.file_rename_executor.transaction_manager import (
+    TransactionManager,
+)
 from shared.core_types.src.models import Recording, RenameProposal
 
 
@@ -50,7 +52,10 @@ class TestTransactionManager:
         recording.file_path = "/tmp/old.ogg"
         recording.file_name = "old.ogg"
 
-        session.query.return_value.filter_by.return_value.first.side_effect = [proposal, recording]
+        session.query.return_value.filter_by.return_value.first.side_effect = [
+            proposal,
+            recording,
+        ]
 
         # Use the atomic rename context manager
         with transaction_manager.atomic_rename(proposal_id) as (sess, prop, rec):
@@ -86,16 +91,18 @@ class TestTransactionManager:
         recording.file_path = "/tmp/old.ogg"
         recording.file_name = "old.ogg"
 
-        session.query.return_value.filter_by.return_value.first.side_effect = [proposal, recording]
+        session.query.return_value.filter_by.return_value.first.side_effect = [
+            proposal,
+            recording,
+        ]
 
         # Use the atomic rename context manager with simulated failure
-        with pytest.raises(RuntimeError):
-            with transaction_manager.atomic_rename(proposal_id) as (sess, prop, rec):
-                # Simulate rename failure
-                rec.file_path = "/tmp/new.ogg"
-                rec.file_name = "new.ogg"
-                prop.status = "applied"
-                raise RuntimeError("Rename failed")
+        with pytest.raises(RuntimeError), transaction_manager.atomic_rename(proposal_id) as (sess, prop, rec):
+            # Simulate rename failure
+            rec.file_path = "/tmp/new.ogg"
+            rec.file_name = "new.ogg"
+            prop.status = "applied"
+            raise RuntimeError("Rename failed")
 
         # Verify rollback was called (may be called twice due to nested exception handling)
         assert session.rollback.called
@@ -114,9 +121,8 @@ class TestTransactionManager:
 
         session.query.return_value.filter_by.return_value.first.return_value = None
 
-        with pytest.raises(ValueError) as exc_info:
-            with transaction_manager.atomic_rename(proposal_id):
-                pass
+        with pytest.raises(ValueError) as exc_info, transaction_manager.atomic_rename(proposal_id):
+            pass
 
         assert f"Proposal {proposal_id} not found" in str(exc_info.value)
 
@@ -130,11 +136,13 @@ class TestTransactionManager:
         proposal.id = proposal_id
         proposal.recording_id = recording_id
 
-        session.query.return_value.filter_by.return_value.first.side_effect = [proposal, None]
+        session.query.return_value.filter_by.return_value.first.side_effect = [
+            proposal,
+            None,
+        ]
 
-        with pytest.raises(ValueError) as exc_info:
-            with transaction_manager.atomic_rename(proposal_id):
-                pass
+        with pytest.raises(ValueError) as exc_info, transaction_manager.atomic_rename(proposal_id):
+            pass
 
         assert f"Recording {recording_id} not found" in str(exc_info.value)
 
@@ -298,8 +306,7 @@ class TestTransactionManager:
         # Simulate database error
         session.query.side_effect = SQLAlchemyError("Database error")
 
-        with pytest.raises(SQLAlchemyError):
-            with transaction_manager.atomic_rename(proposal_id):
-                pass
+        with pytest.raises(SQLAlchemyError), transaction_manager.atomic_rename(proposal_id):
+            pass
 
         session.rollback.assert_called()

@@ -6,7 +6,9 @@ from uuid import uuid4
 import pytest
 
 from services.tracklist_service.src.models.tracklist import TrackEntry
-from services.tracklist_service.src.services.catalog_search_service import CatalogSearchService
+from services.tracklist_service.src.services.catalog_search_service import (
+    CatalogSearchService,
+)
 from shared.core_types.src.models import Metadata, Recording
 
 

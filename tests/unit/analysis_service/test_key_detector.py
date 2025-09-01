@@ -116,9 +116,14 @@ class TestKeyDetector:
 
     def test_detect_key_essentia_not_installed(self, key_detector):
         """Test handling when Essentia is not installed."""
-        with patch.dict("sys.modules", {"essentia.standard": None}):
-            with patch("builtins.__import__", side_effect=ImportError("No module named essentia")):
-                result = key_detector.detect_key("test.mp3")
+        with (
+            patch.dict("sys.modules", {"essentia.standard": None}),
+            patch(
+                "builtins.__import__",
+                side_effect=ImportError("No module named essentia"),
+            ),
+        ):
+            result = key_detector.detect_key("test.mp3")
 
         assert result is None
 

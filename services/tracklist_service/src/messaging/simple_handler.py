@@ -6,7 +6,7 @@ Provides basic publish functionality for tracklist messages.
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class MessageHandler:
         # For now, this is a stub implementation
         self.connected = False
 
-    async def publish(self, routing_key: str, message: Dict[str, Any]) -> bool:
+    async def publish(self, routing_key: str, message: dict[str, Any]) -> bool:
         """
         Publish a message to the queue.
 

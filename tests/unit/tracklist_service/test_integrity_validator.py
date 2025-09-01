@@ -100,7 +100,11 @@ class TestIntegrityValidator:
         mock_result = [
             ("metadata_recording_id_fkey", "metadata", "c"),  # CASCADE
             ("tracklists_recording_id_fkey", "tracklists", "c"),  # CASCADE
-            ("rename_proposals_recording_id_fkey", "rename_proposals", "a"),  # NO ACTION
+            (
+                "rename_proposals_recording_id_fkey",
+                "rename_proposals",
+                "a",
+            ),  # NO ACTION
         ]
         mock_session.execute.return_value = mock_result
 
@@ -110,7 +114,11 @@ class TestIntegrityValidator:
         assert len(result) == 3
         assert result[0] == ("metadata_recording_id_fkey", "metadata", True)
         assert result[1] == ("tracklists_recording_id_fkey", "tracklists", True)
-        assert result[2] == ("rename_proposals_recording_id_fkey", "rename_proposals", False)
+        assert result[2] == (
+            "rename_proposals_recording_id_fkey",
+            "rename_proposals",
+            False,
+        )
 
         # Verify warning for non-CASCADE constraint
         mock_logger.warning.assert_called_once()
@@ -147,7 +155,11 @@ class TestIntegrityValidator:
         assert len(result) == 3
         assert result[0] == ("idx_metadata_recording_id", "metadata", True)
         assert result[1] == ("idx_tracklists_recording_id", "tracklists", True)
-        assert result[2] == ("idx_rename_proposals_recording_id", "rename_proposals", False)
+        assert result[2] == (
+            "idx_rename_proposals_recording_id",
+            "rename_proposals",
+            False,
+        )
 
         # Verify warning for missing index
         mock_logger.warning.assert_called_once()
@@ -156,7 +168,11 @@ class TestIntegrityValidator:
         """Test full validation when everything is valid."""
         # Mock all validation methods to return valid results
         with patch.object(validator, "check_orphaned_records") as mock_check:
-            mock_check.return_value = {"metadata": 0, "tracklists": 0, "rename_proposals": 0}
+            mock_check.return_value = {
+                "metadata": 0,
+                "tracklists": 0,
+                "rename_proposals": 0,
+            }
 
             with patch.object(validator, "validate_foreign_keys") as mock_fk:
                 mock_fk.return_value = [
@@ -177,13 +193,21 @@ class TestIntegrityValidator:
                         result = validator.run_full_validation()
 
         assert result["is_valid"] is True
-        assert result["orphaned_records"] == {"metadata": 0, "tracklists": 0, "rename_proposals": 0}
+        assert result["orphaned_records"] == {
+            "metadata": 0,
+            "tracklists": 0,
+            "rename_proposals": 0,
+        }
 
     def test_run_full_validation_with_issues(self, validator, mock_session):
         """Test full validation when issues are found."""
         # Mock validation methods to return issues
         with patch.object(validator, "check_orphaned_records") as mock_check:
-            mock_check.return_value = {"metadata": 5, "tracklists": 0, "rename_proposals": 0}
+            mock_check.return_value = {
+                "metadata": 5,
+                "tracklists": 0,
+                "rename_proposals": 0,
+            }
 
             with patch.object(validator, "validate_foreign_keys") as mock_fk:
                 mock_fk.return_value = [

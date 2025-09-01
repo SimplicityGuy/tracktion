@@ -5,21 +5,35 @@ manual tracklists including track CRUD operations and draft management.
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
+from services.tracklist_service.src.messaging.cue_generation_handler import (
+    CueGenerationMessageHandler,
+)
+from services.tracklist_service.src.messaging.rabbitmq_client import (
+    RabbitMQClient,
+    RabbitMQConfig,
+)
 from services.tracklist_service.src.models.cue_file import CueFormat
-from services.tracklist_service.src.services.catalog_search_service import CatalogSearchService
-from services.tracklist_service.src.services.cue_integration import CueIntegrationService
+from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist, TracklistDB
+from services.tracklist_service.src.services.catalog_search_service import (
+    CatalogSearchService,
+)
+from services.tracklist_service.src.services.cue_generation_service import (
+    CueGenerationService,
+)
+from services.tracklist_service.src.services.cue_integration import (
+    CueIntegrationService,
+)
 from services.tracklist_service.src.services.draft_service import DraftService
+from services.tracklist_service.src.services.storage_service import StorageService
 from services.tracklist_service.src.services.timing_service import TimingService
 from services.tracklist_service.src.utils.time_utils import parse_time_string
-from shared.core_types.src.database import get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +45,14 @@ class CreateManualTracklistRequest(BaseModel):
     """Request model for creating manual tracklist."""
 
     audio_file_id: UUID = Field(description="ID of the audio file")
-    tracks: Optional[List[TrackEntry]] = Field(None, description="Initial list of tracks")
+    tracks: list[TrackEntry] | None = Field(None, description="Initial list of tracks")
     is_draft: bool = Field(default=True, description="Whether to save as draft")
 
 
 class UpdateTracklistRequest(BaseModel):
     """Request model for updating a tracklist."""
 
-    tracks: List[TrackEntry] = Field(description="Updated list of tracks")
+    tracks: list[TrackEntry] = Field(description="Updated list of tracks")
     is_draft: bool = Field(default=True, description="Whether to keep as draft")
 
 
@@ -49,27 +63,27 @@ class AddTrackRequest(BaseModel):
     artist: str = Field(description="Artist name(s)")
     title: str = Field(description="Track title")
     start_time: str = Field(description="Start time in HH:MM:SS format")
-    end_time: Optional[str] = Field(None, description="End time in HH:MM:SS format")
-    remix: Optional[str] = Field(None, description="Remix or edit information")
-    label: Optional[str] = Field(None, description="Record label")
+    end_time: str | None = Field(None, description="End time in HH:MM:SS format")
+    remix: str | None = Field(None, description="Remix or edit information")
+    label: str | None = Field(None, description="Record label")
 
 
 class UpdateTrackRequest(BaseModel):
     """Request model for updating a track."""
 
-    artist: Optional[str] = Field(None, description="Artist name(s)")
-    title: Optional[str] = Field(None, description="Track title")
-    start_time: Optional[str] = Field(None, description="Start time in HH:MM:SS format")
-    end_time: Optional[str] = Field(None, description="End time in HH:MM:SS format")
-    remix: Optional[str] = Field(None, description="Remix or edit information")
-    label: Optional[str] = Field(None, description="Record label")
+    artist: str | None = Field(None, description="Artist name(s)")
+    title: str | None = Field(None, description="Track title")
+    start_time: str | None = Field(None, description="Start time in HH:MM:SS format")
+    end_time: str | None = Field(None, description="End time in HH:MM:SS format")
+    remix: str | None = Field(None, description="Remix or edit information")
+    label: str | None = Field(None, description="Record label")
 
 
 class UpdateTrackTimingRequest(BaseModel):
     """Request model for updating track timing."""
 
     start_time: str = Field(description="Start time in HH:MM:SS format")
-    end_time: Optional[str] = Field(None, description="End time in HH:MM:SS format")
+    end_time: str | None = Field(None, description="End time in HH:MM:SS format")
 
 
 # Note: parse_time_string function has been moved to utils.time_utils module
@@ -79,7 +93,7 @@ class UpdateTrackTimingRequest(BaseModel):
 @router.post("/manual", response_model=Tracklist, status_code=status.HTTP_201_CREATED)
 def create_manual_tracklist(
     request: CreateManualTracklistRequest,
-    db: Session = Depends(get_db_session),
+    db: Session,  # Will be injected via Depends in route
 ) -> Tracklist:
     """Create a new manual tracklist.
 
@@ -110,7 +124,7 @@ def create_manual_tracklist(
 def update_tracklist(
     tracklist_id: UUID,
     request: UpdateTracklistRequest,
-    db: Session = Depends(get_db_session),
+    db: Session,  # Will be injected via Depends in route
 ) -> Tracklist:
     """Update an existing tracklist.
 
@@ -140,14 +154,18 @@ def update_tracklist(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
-        )
+        ) from e
 
 
-@router.post("/{tracklist_id}/tracks", response_model=TrackEntry, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{tracklist_id}/tracks",
+    response_model=TrackEntry,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_track(
     tracklist_id: UUID,
     request: AddTrackRequest,
-    db: Session = Depends(get_db_session),
+    db: Session,  # Will be injected via Depends in route
 ) -> TrackEntry:
     """Add a track to a tracklist.
 
@@ -211,7 +229,7 @@ def update_track(
     tracklist_id: UUID,
     position: int,
     request: UpdateTrackRequest,
-    db: Session = Depends(get_db_session),
+    db: Session,  # Will be injected via Depends in route
 ) -> TrackEntry:
     """Update a track in a tracklist.
 
@@ -276,7 +294,7 @@ def update_track(
 def delete_track(
     tracklist_id: UUID,
     position: int,
-    db: Session = Depends(get_db_session),
+    db: Session,  # Will be injected via Depends in route
 ) -> None:
     """Delete a track from a tracklist.
 
@@ -325,7 +343,7 @@ def update_track_timing(
     tracklist_id: UUID,
     position: int,
     request: UpdateTrackTimingRequest,
-    db: Session = Depends(get_db_session),
+    db: Session,  # Will be injected via Depends in route
 ) -> TrackEntry:
     """Update timing for a track.
 
@@ -388,12 +406,12 @@ def update_track_timing(
     return track
 
 
-@router.get("/{audio_file_id}/drafts", response_model=List[Tracklist])
+@router.get("/{audio_file_id}/drafts", response_model=list[Tracklist])
 def list_drafts(
     audio_file_id: UUID,
+    db: Session,  # Will be injected via Depends in route
     include_versions: bool = False,
-    db: Session = Depends(get_db_session),
-) -> List[Tracklist]:
+) -> list[Tracklist]:
     """List all draft tracklists for an audio file.
 
     Args:
@@ -411,9 +429,9 @@ def list_drafts(
 class CatalogSearchRequest(BaseModel):
     """Request model for catalog search."""
 
-    query: Optional[str] = Field(None, description="General search query")
-    artist: Optional[str] = Field(None, description="Artist name to search for")
-    title: Optional[str] = Field(None, description="Track title to search for")
+    query: str | None = Field(None, description="General search query")
+    artist: str | None = Field(None, description="Artist name to search for")
+    title: str | None = Field(None, description="Track title to search for")
     limit: int = Field(10, ge=1, le=50, description="Maximum results to return")
 
 
@@ -421,30 +439,30 @@ class CatalogSearchResult(BaseModel):
     """Catalog search result."""
 
     catalog_track_id: UUID = Field(description="Recording ID in catalog")
-    artist: Optional[str] = Field(None, description="Artist name from metadata")
-    title: Optional[str] = Field(None, description="Track title from metadata")
-    album: Optional[str] = Field(None, description="Album name from metadata")
-    genre: Optional[str] = Field(None, description="Genre from metadata")
-    bpm: Optional[float] = Field(None, description="BPM from metadata")
-    key: Optional[str] = Field(None, description="Musical key from metadata")
+    artist: str | None = Field(None, description="Artist name from metadata")
+    title: str | None = Field(None, description="Track title from metadata")
+    album: str | None = Field(None, description="Album name from metadata")
+    genre: str | None = Field(None, description="Genre from metadata")
+    bpm: float | None = Field(None, description="BPM from metadata")
+    key: str | None = Field(None, description="Musical key from metadata")
     confidence: float = Field(description="Match confidence score")
 
 
 class CatalogMatchRequest(BaseModel):
     """Request to match tracks to catalog."""
 
-    tracks: List[TrackEntry] = Field(description="Tracks to match")
+    tracks: list[TrackEntry] = Field(description="Tracks to match")
     threshold: float = Field(0.7, ge=0.0, le=1.0, description="Minimum confidence threshold")
 
 
-@router.get("/catalog/search", response_model=List[CatalogSearchResult])
+@router.get("/catalog/search", response_model=list[CatalogSearchResult])
 def search_catalog(
-    query: Optional[str] = None,
-    artist: Optional[str] = None,
-    title: Optional[str] = None,
+    db: Session,  # Will be injected via Depends in route
+    query: str | None = None,
+    artist: str | None = None,
+    title: str | None = None,
     limit: int = 10,
-    db: Session = Depends(get_db_session),
-) -> List[CatalogSearchResult]:
+) -> list[CatalogSearchResult]:
     """Search the catalog for tracks.
 
     Args:
@@ -491,11 +509,11 @@ def search_catalog(
     return search_results
 
 
-@router.post("/catalog/match", response_model=List[TrackEntry])
+@router.post("/catalog/match", response_model=list[TrackEntry])
 def match_tracks_to_catalog(
     request: CatalogMatchRequest,
-    db: Session = Depends(get_db_session),
-) -> List[TrackEntry]:
+    db: Session,  # Will be injected via Depends in route
+) -> list[TrackEntry]:
     """Match multiple tracks to catalog entries.
 
     Args:
@@ -506,20 +524,18 @@ def match_tracks_to_catalog(
         List of tracks with catalog_track_id populated.
     """
     catalog_service = CatalogSearchService(db)
-    matched_tracks = catalog_service.fuzzy_match_tracks(
+    return catalog_service.fuzzy_match_tracks(
         tracks=request.tracks,
         threshold=request.threshold,
     )
-
-    return matched_tracks
 
 
 @router.post("/{tracklist_id}/publish", response_model=Tracklist)
 async def publish_draft(
     tracklist_id: UUID,
+    db: Session,  # Will be injected via Depends in route
     validate_before_publish: bool = True,
     generate_cue_async: bool = True,
-    db: Session = Depends(get_db_session),
 ) -> Tracklist:
     """Publish a draft as final version.
 
@@ -539,14 +555,18 @@ async def publish_draft(
     # Get the draft first to validate it
     draft = draft_service.get_draft(tracklist_id)
     if not draft:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Draft with ID {tracklist_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Draft with ID {tracklist_id} not found",
+        )
 
     # Validate before publishing if requested
     if validate_before_publish:
         # Check minimum requirements
         if not draft.tracks or len(draft.tracks) == 0:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot publish draft without any tracks"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot publish draft without any tracks",
             )
 
         # Validate timing consistency if we have an audio file
@@ -557,7 +577,8 @@ async def publish_draft(
             for track in draft.tracks:
                 if track.start_time is None:
                     raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST, detail=f"Track {track.position} is missing start time"
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Track {track.position} is missing start time",
                     )
 
             # Check for timing conflicts across all tracks
@@ -576,10 +597,6 @@ async def publish_draft(
         # Generate CUE file asynchronously if requested
         if generate_cue_async:
             # Use async message queue for non-blocking CUE generation
-            from services.tracklist_service.src.messaging.cue_generation_handler import CueGenerationMessageHandler
-            from services.tracklist_service.src.services.cue_generation_service import CueGenerationService
-            from services.tracklist_service.src.services.storage_service import StorageService
-            from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient, RabbitMQConfig
 
             # Initialize required services
             storage_service = StorageService()
@@ -587,7 +604,9 @@ async def publish_draft(
             rabbitmq_client = RabbitMQClient(RabbitMQConfig())
 
             _ = CueGenerationMessageHandler(
-                cue_generation_service=cue_service, storage_service=storage_service, rabbitmq_client=rabbitmq_client
+                cue_generation_service=cue_service,
+                storage_service=storage_service,
+                rabbitmq_client=rabbitmq_client,
             )
 
             # Note: CueGenerationMessageHandler doesn't have publish_generation_request method
@@ -620,7 +639,7 @@ async def publish_draft(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
 
 
 class CueGenerateRequest(BaseModel):
@@ -634,8 +653,8 @@ class CueGenerateRequest(BaseModel):
 def generate_cue_file(
     tracklist_id: UUID,
     request: CueGenerateRequest,
-    db: Session = Depends(get_db_session),
-) -> Dict[str, Any]:
+    db: Session,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Generate a CUE file for a tracklist.
 
     Args:
@@ -655,24 +674,27 @@ def generate_cue_file(
     tracklist = draft_service.get_draft(tracklist_id)
     if not tracklist:
         # Try getting a published version
-        from services.tracklist_service.src.models.db.tracklist import Tracklist as TracklistDB  # type: ignore[import-untyped]
 
         tracklist_db = db.query(TracklistDB).filter_by(id=tracklist_id).first()
         if not tracklist_db:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=f"Tracklist with ID {tracklist_id} not found"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Tracklist with ID {tracklist_id} not found",
             )
         tracklist = tracklist_db.to_model()
 
     # Generate CUE file
     cue_service = CueIntegrationService()
     cue_success, cue_content, cue_error = cue_service.generate_cue_content(
-        tracklist=tracklist, cue_format=CueFormat(request.cue_format), audio_filename=request.audio_file_path
+        tracklist=tracklist,
+        cue_format=CueFormat(request.cue_format),
+        audio_filename=request.audio_file_path,
     )
 
     if not cue_success:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"CUE generation failed: {cue_error}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"CUE generation failed: {cue_error}",
         )
 
     # Note: The method returns content, not a file path - would need to save content to get path
@@ -691,7 +713,7 @@ def generate_cue_file(
 class BulkTrackUpdateRequest(BaseModel):
     """Request for bulk track updates."""
 
-    tracks: List[TrackEntry] = Field(description="Updated tracks")
+    tracks: list[TrackEntry] = Field(description="Updated tracks")
 
 
 class TrackReorderRequest(BaseModel):
@@ -704,15 +726,15 @@ class TrackReorderRequest(BaseModel):
 class TimingSuggestionsRequest(BaseModel):
     """Request for timing suggestions."""
 
-    target_duration: Optional[str] = Field(None, description="Target duration (HH:MM:SS)")
+    target_duration: str | None = Field(None, description="Target duration (HH:MM:SS)")
 
 
-@router.put("/{tracklist_id}/tracks/bulk", response_model=List[TrackEntry])
+@router.put("/{tracklist_id}/tracks/bulk", response_model=list[TrackEntry])
 def bulk_update_tracks(
     tracklist_id: UUID,
     request: BulkTrackUpdateRequest,
-    db: Session = Depends(get_db_session),
-) -> List[TrackEntry]:
+    db: Session,  # Will be injected via Depends in route
+) -> list[TrackEntry]:
     """Bulk update multiple tracks.
 
     Args:
@@ -750,12 +772,12 @@ def bulk_update_tracks(
     return request.tracks
 
 
-@router.post("/{tracklist_id}/tracks/reorder", response_model=List[TrackEntry])
+@router.post("/{tracklist_id}/tracks/reorder", response_model=list[TrackEntry])
 def reorder_track(
     tracklist_id: UUID,
     request: TrackReorderRequest,
-    db: Session = Depends(get_db_session),
-) -> List[TrackEntry]:
+    db: Session,  # Will be injected via Depends in route
+) -> list[TrackEntry]:
     """Reorder a track within the tracklist.
 
     Args:
@@ -801,10 +823,9 @@ def reorder_track(
             # Moving down: shift tracks up
             if request.from_position < track.position <= request.to_position:
                 track.position -= 1
-        else:
-            # Moving up: shift tracks down
-            if request.to_position <= track.position < request.from_position:
-                track.position += 1
+        # Moving up: shift tracks down
+        elif request.to_position <= track.position < request.from_position:
+            track.position += 1
 
     # Insert at new position
     track_to_move.position = request.to_position
@@ -820,12 +841,12 @@ def reorder_track(
     return normalized_tracks
 
 
-@router.post("/{tracklist_id}/tracks/auto-calculate-end-times", response_model=List[TrackEntry])
+@router.post("/{tracklist_id}/tracks/auto-calculate-end-times", response_model=list[TrackEntry])
 def auto_calculate_end_times(
     tracklist_id: UUID,
-    audio_duration: Optional[str] = None,
-    db: Session = Depends(get_db_session),
-) -> List[TrackEntry]:
+    db: Session,  # Will be injected via Depends in route
+    audio_duration: str | None = None,
+) -> list[TrackEntry]:
     """Auto-calculate end times for all tracks.
 
     Args:
@@ -869,12 +890,12 @@ def auto_calculate_end_times(
     return updated_tracks
 
 
-@router.get("/{tracklist_id}/tracks/timing-suggestions", response_model=List[Dict[str, Any]])
+@router.get("/{tracklist_id}/tracks/timing-suggestions", response_model=list[dict[str, Any]])
 def get_timing_suggestions(
     tracklist_id: UUID,
-    target_duration: Optional[str] = None,
-    db: Session = Depends(get_db_session),
-) -> List[Dict[str, Any]]:
+    db: Session,  # Will be injected via Depends in route
+    target_duration: str | None = None,
+) -> list[dict[str, Any]]:
     """Get timing adjustment suggestions.
 
     Args:
@@ -907,21 +928,19 @@ def get_timing_suggestions(
 
     # Get timing suggestions
     timing_service = TimingService()
-    suggestions = timing_service.suggest_timing_adjustments(
+    return timing_service.suggest_timing_adjustments(
         draft.tracks,
         target_duration=target_duration_td,
     )
 
-    return suggestions
 
-
-@router.post("/{tracklist_id}/tracks/validate-timing", response_model=Dict[str, Any])
+@router.post("/{tracklist_id}/tracks/validate-timing", response_model=dict[str, Any])
 def validate_timing(
     tracklist_id: UUID,
-    audio_duration: Optional[str] = None,
+    db: Session,  # Will be injected via Depends in route
+    audio_duration: str | None = None,
     allow_gaps: bool = True,
-    db: Session = Depends(get_db_session),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Validate track timing consistency.
 
     Args:
@@ -983,12 +1002,12 @@ def validate_timing(
     }
 
 
-@router.post("/{tracklist_id}/tracks/match-to-catalog", response_model=List[TrackEntry])
+@router.post("/{tracklist_id}/tracks/match-to-catalog", response_model=list[TrackEntry])
 def match_all_tracks_to_catalog(
     tracklist_id: UUID,
+    db: Session,  # Will be injected via Depends in route
     threshold: float = 0.7,
-    db: Session = Depends(get_db_session),
-) -> List[TrackEntry]:
+) -> list[TrackEntry]:
     """Match all tracks in tracklist to catalog.
 
     Args:

@@ -1,49 +1,59 @@
 """SQLAlchemy models for Tracktion data entities."""
 
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any, Optional
 
-from sqlalchemy import String, DateTime, ForeignKey, Text, Integer, DECIMAL, ARRAY
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship, Mapped, mapped_column
+from sqlalchemy import ARRAY, DECIMAL, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from .database import Base
 
 
-class Recording(Base):  # type: ignore[misc]
+class Recording(Base):
     """Model for music recording files."""
 
     __tablename__ = "recordings"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.uuid_generate_v4()
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=func.uuid_generate_v4(),
     )
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     file_name: Mapped[str] = mapped_column(Text, nullable=False)
-    file_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    sha256_hash: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
-    xxh128_hash: Mapped[Optional[str]] = mapped_column(String(32), unique=True, nullable=True)
-    processing_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="pending")
-    processing_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sha256_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    xxh128_hash: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
+    processing_status: Mapped[str | None] = mapped_column(String(50), nullable=True, default="pending")
+    processing_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.current_timestamp()
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.current_timestamp(),
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), onupdate=lambda: datetime.now(timezone.utc), nullable=True
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=True,
     )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     # Relationships
-    metadata_items: Mapped[List["Metadata"]] = relationship(
+    metadata_items: Mapped[list["Metadata"]] = relationship(
         "Metadata", back_populates="recording", cascade="all, delete-orphan"
     )
     tracklist: Mapped[Optional["Tracklist"]] = relationship(
-        "Tracklist", back_populates="recording", uselist=False, cascade="all, delete-orphan"
+        "Tracklist",
+        back_populates="recording",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
-    rename_proposals: Mapped[List["RenameProposal"]] = relationship(
+    rename_proposals: Mapped[list["RenameProposal"]] = relationship(
         "RenameProposal", back_populates="recording", cascade="all, delete-orphan"
     )
 
@@ -51,7 +61,7 @@ class Recording(Base):  # type: ignore[misc]
         """String representation of Recording."""
         return f"<Recording(id={self.id}, file_name={self.file_name})>"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert Recording to dictionary.
 
         Returns:
@@ -73,13 +83,16 @@ class Recording(Base):  # type: ignore[misc]
         }
 
 
-class Metadata(Base):  # type: ignore[misc]
+class Metadata(Base):
     """Model for recording metadata key-value pairs."""
 
     __tablename__ = "metadata"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.uuid_generate_v4()
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=func.uuid_generate_v4(),
     )
     recording_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("recordings.id"), nullable=False, index=True
@@ -94,29 +107,37 @@ class Metadata(Base):  # type: ignore[misc]
         """String representation of Metadata."""
         return f"<Metadata(id={self.id}, key={self.key}, value={self.value})>"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert Metadata to dictionary.
 
         Returns:
             Dictionary representation of the metadata
         """
-        return {"id": str(self.id), "recording_id": str(self.recording_id), "key": self.key, "value": self.value}
+        return {
+            "id": str(self.id),
+            "recording_id": str(self.recording_id),
+            "key": self.key,
+            "value": self.value,
+        }
 
 
-class Tracklist(Base):  # type: ignore[misc]
+class Tracklist(Base):
     """Model for recording tracklists."""
 
     __tablename__ = "tracklists"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.uuid_generate_v4()
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=func.uuid_generate_v4(),
     )
     recording_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("recordings.id"), nullable=False, unique=True
     )
     source: Mapped[str] = mapped_column(String(255), nullable=False)
-    tracks: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
-    cue_file_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tracks: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    cue_file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
     recording: Mapped["Recording"] = relationship("Recording", back_populates="tracklist")
@@ -125,7 +146,7 @@ class Tracklist(Base):  # type: ignore[misc]
         """String representation of Tracklist."""
         return f"<Tracklist(id={self.id}, source={self.source})>"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert Tracklist to dictionary.
 
         Returns:
@@ -161,13 +182,16 @@ class Tracklist(Base):  # type: ignore[misc]
         return True
 
 
-class RenameProposal(Base):  # type: ignore[misc]
+class RenameProposal(Base):
     """Model for file rename proposals."""
 
     __tablename__ = "rename_proposals"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.uuid_generate_v4()
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=func.uuid_generate_v4(),
     )
     recording_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("recordings.id"), nullable=False, index=True
@@ -176,17 +200,19 @@ class RenameProposal(Base):  # type: ignore[misc]
     original_filename: Mapped[str] = mapped_column(Text, nullable=False)
     proposed_filename: Mapped[str] = mapped_column(Text, nullable=False)
     full_proposed_path: Mapped[str] = mapped_column(Text, nullable=False)
-    confidence_score: Mapped[Optional[float]] = mapped_column(DECIMAL(3, 2), nullable=True)
+    confidence_score: Mapped[float | None] = mapped_column(DECIMAL(3, 2), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
-    conflicts: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True)
-    warnings: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True)
+    conflicts: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    warnings: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.current_timestamp()
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.current_timestamp(),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         server_default=func.current_timestamp(),
     )
 
@@ -197,7 +223,7 @@ class RenameProposal(Base):  # type: ignore[misc]
         """String representation of RenameProposal."""
         return f"<RenameProposal(id={self.id}, status={self.status}, proposed={self.proposed_filename})>"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert RenameProposal to dictionary.
 
         Returns:
@@ -210,7 +236,7 @@ class RenameProposal(Base):  # type: ignore[misc]
             "original_filename": self.original_filename,
             "proposed_filename": self.proposed_filename,
             "full_proposed_path": self.full_proposed_path,
-            "confidence_score": float(self.confidence_score) if self.confidence_score else None,
+            "confidence_score": (float(self.confidence_score) if self.confidence_score else None),
             "status": self.status,
             "conflicts": self.conflicts,
             "warnings": self.warnings,

@@ -1,18 +1,21 @@
 """1001tracklists synchronization service for checking and applying updates."""
 
 import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.tracklist_service.src.models.tracklist import TracklistDB, TrackEntry
-from services.tracklist_service.src.models.synchronization import SyncConfiguration, SyncEvent
+from services.tracklist_service.src.models.synchronization import (
+    SyncConfiguration,
+    SyncEvent,
+)
+from services.tracklist_service.src.models.tracklist import TrackEntry, TracklistDB
+from services.tracklist_service.src.services.audit_service import AuditService
 from services.tracklist_service.src.services.import_service import ImportService
 from services.tracklist_service.src.services.version_service import VersionService
-from services.tracklist_service.src.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +26,9 @@ class TracklistsSyncService:
     def __init__(
         self,
         session: AsyncSession,
-        import_service: Optional[ImportService] = None,
-        version_service: Optional[VersionService] = None,
-        audit_service: Optional[AuditService] = None,
+        import_service: ImportService | None = None,
+        version_service: VersionService | None = None,
+        audit_service: AuditService | None = None,
     ):
         """Initialize sync service.
 
@@ -41,7 +44,7 @@ class TracklistsSyncService:
         self.audit_service = audit_service or AuditService(session)
         self.auto_accept_threshold = 0.9
 
-    async def check_for_updates(self, tracklist_id: UUID) -> Optional[Dict[str, Any]]:
+    async def check_for_updates(self, tracklist_id: UUID) -> dict[str, Any] | None:
         """Check if a tracklist has updates from 1001tracklists.
 
         Args:
@@ -88,7 +91,7 @@ class TracklistsSyncService:
                     "changes": changes,
                     "confidence": confidence,
                     "source_url": url,
-                    "fetched_at": datetime.utcnow(),
+                    "fetched_at": datetime.now(UTC),
                 }
 
             return None
@@ -97,7 +100,7 @@ class TracklistsSyncService:
             logger.error(f"Failed to check updates for tracklist {tracklist_id}: {e}")
             return None
 
-    def _compare_tracklists(self, current: List[TrackEntry], latest: List[TrackEntry]) -> Dict[str, Any]:
+    def _compare_tracklists(self, current: list[TrackEntry], latest: list[TrackEntry]) -> dict[str, Any]:
         """Compare two tracklist versions to find differences.
 
         Args:
@@ -107,7 +110,7 @@ class TracklistsSyncService:
         Returns:
             Dictionary describing the changes
         """
-        changes: Dict[str, Any] = {
+        changes: dict[str, Any] = {
             "has_changes": False,
             "tracks_added": [],
             "tracks_removed": [],
@@ -162,15 +165,18 @@ class TracklistsSyncService:
             True if tracks differ, False otherwise
         """
         # Compare key fields
-        fields_to_compare = ["artist", "title", "remix", "label", "start_time", "end_time"]
+        fields_to_compare = [
+            "artist",
+            "title",
+            "remix",
+            "label",
+            "start_time",
+            "end_time",
+        ]
 
-        for field in fields_to_compare:
-            if getattr(track1, field) != getattr(track2, field):
-                return True
+        return any(getattr(track1, field) != getattr(track2, field) for field in fields_to_compare)
 
-        return False
-
-    def _calculate_change_confidence(self, changes: Dict[str, Any]) -> float:
+    def _calculate_change_confidence(self, changes: dict[str, Any]) -> float:
         """Calculate confidence score for changes.
 
         Args:
@@ -201,8 +207,8 @@ class TracklistsSyncService:
         return max(0.0, min(1.0, confidence))
 
     async def apply_updates(
-        self, tracklist_id: UUID, updates: Dict[str, Any], auto: bool = False
-    ) -> Tuple[bool, Optional[str]]:
+        self, tracklist_id: UUID, updates: dict[str, Any], auto: bool = False
+    ) -> tuple[bool, str | None]:
         """Apply updates from 1001tracklists to a tracklist.
 
         Args:
@@ -240,7 +246,7 @@ class TracklistsSyncService:
             event_type="update",
             source="1001tracklists",
             status="processing",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             changes=updates["changes"],
         )
         self.session.add(sync_event)
@@ -249,7 +255,7 @@ class TracklistsSyncService:
             # Get the tracklist
             tracklist = await self.session.get(TracklistDB, tracklist_id)
             if not tracklist:
-                sync_event.status = "failed"  # type: ignore[assignment]
+                sync_event.status = "failed"
                 await self.session.commit()
                 return False, "Tracklist not found"
 
@@ -264,7 +270,7 @@ class TracklistsSyncService:
             # Apply the changes
             new_tracks = self._apply_changes_to_tracks(tracklist.tracks, updates["changes"])
             tracklist.tracks = new_tracks
-            tracklist.updated_at = datetime.utcnow()
+            tracklist.updated_at = datetime.now(UTC)
 
             # Log to audit
             await self.audit_service.log_tracklist_change(
@@ -273,15 +279,18 @@ class TracklistsSyncService:
                 actor="system",
                 before={"track_count": len(tracklist.tracks)},
                 after={"track_count": len(new_tracks)},
-                metadata={"source": "1001tracklists", "confidence": updates["confidence"]},
+                metadata={
+                    "source": "1001tracklists",
+                    "confidence": updates["confidence"],
+                },
             )
 
             # Update sync configuration
-            sync_config.last_sync_at = datetime.utcnow()  # type: ignore[assignment]
+            sync_config.last_sync_at = datetime.now(UTC)
 
             # Mark sync event as completed
-            sync_event.status = "completed"  # type: ignore[assignment]
-            sync_event.completed_at = datetime.utcnow()  # type: ignore[assignment]
+            sync_event.status = "completed"
+            sync_event.completed_at = datetime.now(UTC)
 
             await self.session.commit()
 
@@ -289,13 +298,13 @@ class TracklistsSyncService:
 
         except Exception as e:
             logger.error(f"Failed to apply updates for tracklist {tracklist_id}: {e}")
-            sync_event.status = "failed"  # type: ignore[assignment]
+            sync_event.status = "failed"
             await self.session.commit()
             return False, str(e)
 
     def _apply_changes_to_tracks(
-        self, current_tracks: List[Dict[str, Any]], changes: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, current_tracks: list[dict[str, Any]], changes: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Apply changes to the current tracks list.
 
         Args:
@@ -323,7 +332,7 @@ class TracklistsSyncService:
         # Return as sorted list
         return [tracks_by_pos[pos] for pos in sorted(tracks_by_pos.keys())]
 
-    async def _queue_for_review(self, tracklist_id: UUID, updates: Dict[str, Any]) -> None:
+    async def _queue_for_review(self, tracklist_id: UUID, updates: dict[str, Any]) -> None:
         """Queue changes for manual review.
 
         Args:
@@ -336,7 +345,7 @@ class TracklistsSyncService:
             event_type="conflict",
             source="1001tracklists",
             status="pending",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             changes=updates["changes"],
             conflict_data={
                 "confidence": updates["confidence"],

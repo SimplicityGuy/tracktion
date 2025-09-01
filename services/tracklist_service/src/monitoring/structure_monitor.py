@@ -2,14 +2,16 @@
 
 import hashlib
 import json
-from datetime import datetime, UTC
-from typing import List, Optional, Dict, Any
-from dataclasses import dataclass, field
-from enum import Enum
 import logging
+import re
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
 from pathlib import Path
-from bs4 import BeautifulSoup, Tag
+from typing import Any
+
 import redis.asyncio as redis
+from bs4 import BeautifulSoup, Tag
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +31,8 @@ class StructuralChange:
 
     element_path: str
     change_type: ChangeType
-    old_value: Optional[str] = None
-    new_value: Optional[str] = None
+    old_value: str | None = None
+    new_value: str | None = None
     impact_score: float = 0.0
 
 
@@ -40,7 +42,7 @@ class ChangeReport:
 
     page_type: str
     timestamp: datetime
-    changes: List[StructuralChange] = field(default_factory=list)
+    changes: list[StructuralChange] = field(default_factory=list)
     severity: str = "low"
     fingerprint_match_percentage: float = 100.0
     requires_manual_review: bool = False
@@ -50,7 +52,7 @@ class ChangeReport:
         """Check if any changes are breaking."""
         return any(c.impact_score > 0.7 for c in self.changes)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert report to dictionary for storage/transmission."""
         return {
             "page_type": self.page_type,
@@ -75,7 +77,11 @@ class ChangeReport:
 class StructureMonitor:
     """Monitor HTML structure changes for 1001tracklists pages."""
 
-    def __init__(self, redis_client: Optional[redis.Redis[str]] = None, config_path: Optional[Path] = None):
+    def __init__(
+        self,
+        redis_client: redis.Redis | None = None,
+        config_path: Path | None = None,
+    ):
         """Initialize structure monitor.
 
         Args:
@@ -85,17 +91,17 @@ class StructureMonitor:
         self.redis_client = redis_client
         self.config_path = config_path or Path("config/selectors.json")
         self._selectors_config = self._load_selector_config()
-        self._baseline_cache: Dict[str, Dict[str, Any]] = {}
+        self._baseline_cache: dict[str, dict[str, Any]] = {}
 
-    def _load_selector_config(self) -> Dict[str, Any]:
+    def _load_selector_config(self) -> dict[str, Any]:
         """Load selector configuration from file."""
         if self.config_path.exists():
-            with open(self.config_path, "r") as f:
-                config: Dict[str, Any] = json.load(f)
+            with self.config_path.open() as f:
+                config: dict[str, Any] = json.load(f)
                 return config
         return self._get_default_selectors()
 
-    def _get_default_selectors(self) -> Dict[str, Any]:
+    def _get_default_selectors(self) -> dict[str, Any]:
         """Get default selector configuration for 1001tracklists."""
         return {
             "search": {
@@ -104,7 +110,12 @@ class StructureMonitor:
                 "optional": [".result-image", ".result-tags"],
             },
             "tracklist": {
-                "critical": [".tracklist-container", ".track-item", ".track-time", ".track-title"],
+                "critical": [
+                    ".tracklist-container",
+                    ".track-item",
+                    ".track-time",
+                    ".track-title",
+                ],
                 "important": [".track-artist", ".track-label", ".mix-info"],
                 "optional": [".track-id", ".track-notes", ".social-stats"],
             },
@@ -115,7 +126,7 @@ class StructureMonitor:
             },
         }
 
-    def capture_structure_fingerprint(self, html: str, page_type: str) -> Dict[str, Any]:
+    def capture_structure_fingerprint(self, html: str, page_type: str) -> dict[str, Any]:
         """Capture structural fingerprint of HTML page.
 
         Args:
@@ -148,9 +159,9 @@ class StructureMonitor:
 
         return fingerprint
 
-    def _analyze_structure(self, soup: BeautifulSoup) -> Dict[str, Any]:
+    def _analyze_structure(self, soup: BeautifulSoup) -> dict[str, Any]:
         """Analyze overall HTML structure."""
-        structure: Dict[str, Any] = {
+        structure: dict[str, Any] = {
             "tag_counts": {},
             "class_names": set(),
             "id_names": set(),
@@ -192,9 +203,9 @@ class StructureMonitor:
 
         return structure
 
-    def _analyze_selectors(self, soup: BeautifulSoup, selectors: Dict[str, Any]) -> Dict[str, Any]:
+    def _analyze_selectors(self, soup: BeautifulSoup, selectors: dict[str, Any]) -> dict[str, Any]:
         """Analyze specific selectors for a page type."""
-        results: Dict[str, Dict[str, Any]] = {}
+        results: dict[str, dict[str, Any]] = {}
 
         for priority, selector_list in selectors.items():
             results[priority] = {}
@@ -203,19 +214,19 @@ class StructureMonitor:
                 results[priority][selector] = {
                     "count": len(elements),
                     "exists": len(elements) > 0,
-                    "first_text": elements[0].get_text(strip=True)[:100] if elements else None,
-                    "attributes": self._get_element_attributes(elements[0]) if elements else {},
+                    "first_text": (elements[0].get_text(strip=True)[:100] if elements else None),
+                    "attributes": (self._get_element_attributes(elements[0]) if elements else {}),
                 }
 
         return results
 
-    def _get_element_attributes(self, element: Tag) -> Dict[str, Any]:
+    def _get_element_attributes(self, element: Tag) -> dict[str, Any]:
         """Get relevant attributes from an element."""
         if not element:
             return {}
 
         classes_raw = element.get("class")
-        classes: List[str]
+        classes: list[str]
         if classes_raw is None:
             classes = []
         elif isinstance(classes_raw, str):
@@ -232,7 +243,7 @@ class StructureMonitor:
             "data_attrs": {k: v for k, v in element.attrs.items() if k.startswith("data-")},
         }
 
-    def _detect_version(self, soup: BeautifulSoup) -> Optional[str]:
+    def _detect_version(self, soup: BeautifulSoup) -> str | None:
         """Try to detect site version from meta tags or comments."""
         # Check meta tags
         version_meta = soup.find("meta", attrs={"name": "version"})
@@ -243,15 +254,13 @@ class StructureMonitor:
         # Check for version in comments
         for comment in soup.find_all(string=lambda text: isinstance(text, str) and "version" in text.lower()):
             if "version" in str(comment).lower():
-                import re
-
                 match = re.search(r"version[:\s]+([0-9.]+)", str(comment), re.IGNORECASE)
                 if match:
                     return match.group(1)
 
         return None
 
-    def compare_structures(self, current: dict[str, Any], baseline: Dict[str, Any]) -> ChangeReport:
+    def compare_structures(self, current: dict[str, Any], baseline: dict[str, Any]) -> ChangeReport:
         """Compare current structure with baseline.
 
         Args:
@@ -313,9 +322,9 @@ class StructureMonitor:
                     changes.append(
                         StructuralChange(
                             element_path=f"selector:{selector}",
-                            change_type=ChangeType.ADDED
-                            if baseline_info.get("exists") is False
-                            else ChangeType.REMOVED,
+                            change_type=(
+                                ChangeType.ADDED if baseline_info.get("exists") is False else ChangeType.REMOVED
+                            ),
                             old_value=str(baseline_info.get("exists", False)),
                             new_value=str(current_info.get("exists", False)),
                             impact_score=impact_base,
@@ -352,7 +361,7 @@ class StructureMonitor:
 
         return report
 
-    async def store_baseline(self, page_type: str, structure: Dict[str, Any]) -> None:
+    async def store_baseline(self, page_type: str, structure: dict[str, Any]) -> None:
         """Store baseline structure in Redis.
 
         Args:
@@ -370,7 +379,8 @@ class StructureMonitor:
             # Also store in version history
             history_key = f"structure:history:{page_type}"
             await self.redis_client.lpush(
-                history_key, json.dumps({"timestamp": datetime.now(UTC).isoformat(), "structure": structure})
+                history_key,
+                json.dumps({"timestamp": datetime.now(UTC).isoformat(), "structure": structure}),
             )
             # Keep only last 10 versions
             await self.redis_client.ltrim(history_key, 0, 9)
@@ -380,7 +390,7 @@ class StructureMonitor:
 
         logger.info(f"Stored baseline structure for {page_type}")
 
-    async def get_baseline(self, page_type: str) -> Optional[Dict[str, Any]]:
+    async def get_baseline(self, page_type: str) -> dict[str, Any] | None:
         """Retrieve baseline structure from Redis.
 
         Args:
@@ -397,13 +407,13 @@ class StructureMonitor:
             key = f"structure:baseline:{page_type}"
             data = await self.redis_client.get(key)
             if data:
-                structure: Dict[str, Any] = json.loads(data)
+                structure: dict[str, Any] = json.loads(data)
                 self._baseline_cache[page_type] = structure
                 return structure
 
         return None
 
-    async def check_for_changes(self, html: str, page_type: str) -> Optional[ChangeReport]:
+    async def check_for_changes(self, html: str, page_type: str) -> ChangeReport | None:
         """Check if HTML structure has changed from baseline.
 
         Args:

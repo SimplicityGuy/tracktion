@@ -5,12 +5,13 @@ Provides Pydantic models for search requests, results, and responses
 with proper validation and serialization.
 """
 
-from datetime import date as date_type, datetime
+from datetime import date as date_type
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator, ValidationInfo
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 
 class SearchType(str, Enum):
@@ -37,15 +38,15 @@ class SearchRequest(BaseModel):
 
     query: str = Field(min_length=1, max_length=255, description="Search query string")
     search_type: SearchType = Field(default=SearchType.DJ, description="Type of search to perform")
-    start_date: Optional[date_type] = Field(None, description="Start date for filtering results")
-    end_date: Optional[date_type] = Field(None, description="End date for filtering results")
+    start_date: date_type | None = Field(None, description="Start date for filtering results")
+    end_date: date_type | None = Field(None, description="End date for filtering results")
     page: int = Field(default=1, ge=1, description="Page number for pagination (1-based)")
     limit: int = Field(default=20, ge=1, le=100, description="Number of results per page")
     correlation_id: UUID = Field(default_factory=uuid4, description="Unique identifier for request tracking")
 
     @field_validator("end_date")
     @classmethod
-    def validate_date_range(cls, v: Optional[date_type], info: ValidationInfo) -> Optional[date_type]:
+    def validate_date_range(cls, v: date_type | None, info: ValidationInfo) -> date_type | None:
         """Validate that end_date is after start_date."""
         if v is not None and info.data and "start_date" in info.data:
             start_date = info.data["start_date"]
@@ -68,15 +69,15 @@ class SearchResult(BaseModel):
     """Individual search result item."""
 
     dj_name: str = Field(description="Name of the DJ or artist")
-    event_name: Optional[str] = Field(None, description="Name of the event or festival")
-    date: Optional[date_type] = Field(None, description="Date of the set")
-    venue: Optional[str] = Field(None, description="Venue where the set was performed")
-    set_type: Optional[str] = Field(None, description="Type of set (e.g., 'DJ Set', 'Live Set')")
+    event_name: str | None = Field(None, description="Name of the event or festival")
+    date: date_type | None = Field(None, description="Date of the set")
+    venue: str | None = Field(None, description="Venue where the set was performed")
+    set_type: str | None = Field(None, description="Type of set (e.g., 'DJ Set', 'Live Set')")
     url: str = Field(description="URL to the tracklist on 1001tracklists.com")
-    duration: Optional[str] = Field(None, description="Duration of the set")
-    track_count: Optional[int] = Field(None, ge=0, description="Number of tracks in the set")
-    genre: Optional[str] = Field(None, description="Primary genre of the set")
-    description: Optional[str] = Field(None, description="Additional description or notes")
+    duration: str | None = Field(None, description="Duration of the set")
+    track_count: int | None = Field(None, ge=0, description="Number of tracks in the set")
+    genre: str | None = Field(None, description="Primary genre of the set")
+    description: str | None = Field(None, description="Additional description or notes")
 
     # Metadata for caching and tracking
     scraped_at: datetime = Field(default_factory=datetime.utcnow, description="When this data was scraped")
@@ -94,16 +95,16 @@ class SearchResult(BaseModel):
 class SearchResponse(BaseModel):
     """Response model for search operations."""
 
-    results: List[SearchResult] = Field(description="List of search results")
+    results: list[SearchResult] = Field(description="List of search results")
     pagination: PaginationInfo = Field(description="Pagination information")
-    query_info: Dict[str, Any] = Field(description="Information about the query performed")
+    query_info: dict[str, Any] = Field(description="Information about the query performed")
     cache_hit: bool = Field(description="Whether this response was served from cache")
     response_time_ms: float = Field(ge=0, description="Response time in milliseconds")
     correlation_id: UUID = Field(description="Correlation ID from the request")
 
     @field_validator("results")
     @classmethod
-    def validate_results_count(cls, v: List[SearchResult], info: ValidationInfo) -> List[SearchResult]:
+    def validate_results_count(cls, v: list[SearchResult], info: ValidationInfo) -> list[SearchResult]:
         """Validate that results count matches pagination info."""
         if info.data and "pagination" in info.data:
             pagination = info.data["pagination"]
@@ -119,8 +120,8 @@ class SearchError(BaseModel):
     error_code: str = Field(description="Machine-readable error code")
     error_message: str = Field(description="Human-readable error message")
     correlation_id: UUID = Field(description="Correlation ID from the request")
-    details: Optional[Dict[str, Any]] = Field(None, description="Additional error details")
-    retry_after: Optional[int] = Field(None, ge=0, description="Seconds to wait before retrying")
+    details: dict[str, Any] | None = Field(None, description="Additional error details")
+    retry_after: int | None = Field(None, ge=0, description="Seconds to wait before retrying")
 
 
 # Message queue models
@@ -130,7 +131,7 @@ class SearchRequestMessage(BaseModel):
     """Message model for search requests via message queue."""
 
     request: SearchRequest = Field(description="The search request")
-    reply_to: Optional[str] = Field(None, description="Queue to send the response to")
+    reply_to: str | None = Field(None, description="Queue to send the response to")
     timeout_seconds: int = Field(default=30, ge=1, description="Request timeout in seconds")
 
 
@@ -138,8 +139,8 @@ class SearchResponseMessage(BaseModel):
     """Message model for search responses via message queue."""
 
     success: bool = Field(description="Whether the search was successful")
-    response: Optional[SearchResponse] = Field(None, description="Search response if successful")
-    error: Optional[SearchError] = Field(None, description="Error details if unsuccessful")
+    response: SearchResponse | None = Field(None, description="Search response if successful")
+    error: SearchError | None = Field(None, description="Error details if unsuccessful")
     processing_time_ms: float = Field(ge=0, description="Total processing time in milliseconds")
 
 
@@ -151,8 +152,8 @@ class CacheKey(BaseModel):
 
     search_type: SearchType
     query: str
-    start_date: Optional[date_type] = None
-    end_date: Optional[date_type] = None
+    start_date: date_type | None = None
+    end_date: date_type | None = None
     page: int
     limit: int
 

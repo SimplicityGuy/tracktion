@@ -1,5 +1,5 @@
 """Database package for tracklist service."""
 
-from .database import get_db_session, get_db_context, init_database, close_database
+from .database import close_database, get_db_context, get_db_session, init_database
 
-__all__ = ["get_db_session", "get_db_context", "init_database", "close_database"]
+__all__ = ["close_database", "get_db_context", "get_db_session", "init_database"]

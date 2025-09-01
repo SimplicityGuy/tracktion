@@ -3,13 +3,17 @@
 import json
 import logging
 import shutil
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from .models import MLModel, ModelStatus
 
 logger = logging.getLogger(__name__)
+
+# Constants
+MIN_ACCURACY_THRESHOLD = 0.7  # Minimum accuracy required for model deployment
+MIN_DEPLOYMENT_HISTORY_FOR_ROLLBACK = 2  # Minimum history entries required for rollback
 
 
 class ModelVersionManager:
@@ -30,7 +34,7 @@ class ModelVersionManager:
         models = []
 
         for metadata_file in self.model_dir.glob("metadata_*.json"):
-            with open(metadata_file) as f:
+            with metadata_file.open() as f:
                 metadata_dict = json.load(f)
 
             model = MLModel(
@@ -61,13 +65,13 @@ class ModelVersionManager:
             return False
 
         # Check if model meets deployment criteria
-        with open(metadata_path) as f:
+        with metadata_path.open() as f:
             metadata = json.load(f)
 
         if not force:
             # Check accuracy threshold
             accuracy = metadata["training_metrics"].get("accuracy", 0)
-            if accuracy < 0.7:
+            if accuracy < MIN_ACCURACY_THRESHOLD:
                 logger.error(f"Model accuracy {accuracy:.2f} below threshold 0.70")
                 return False
 
@@ -86,7 +90,7 @@ class ModelVersionManager:
 
         # Update model status
         metadata["status"] = ModelStatus.DEPLOYED.value
-        with open(metadata_path, "w") as f:
+        with Path(metadata_path).open("w") as f:
             json.dump(metadata, f, indent=2)
 
         logger.info(f"Successfully deployed model version {version}")
@@ -107,7 +111,7 @@ class ModelVersionManager:
                 return False
         else:
             # Rollback to previous version
-            if len(history) < 2:
+            if len(history) < MIN_DEPLOYMENT_HISTORY_FOR_ROLLBACK:
                 logger.error("No previous version to rollback to")
                 return False
             target_version = history[-2]["version"]
@@ -135,7 +139,7 @@ class ModelVersionManager:
             "version_a": version_a,
             "version_b": version_b,
             "traffic_split": traffic_split,
-            "start_time": datetime.now().isoformat(),
+            "start_time": datetime.now(tz=UTC).isoformat(),
             "duration_hours": duration_hours,
             "metrics": {
                 "version_a": {"requests": 0, "approvals": 0},
@@ -144,7 +148,7 @@ class ModelVersionManager:
         }
 
         # Save configuration
-        with open(self.ab_test_config_file, "w") as f:
+        with Path(self.ab_test_config_file).open("w") as f:
             json.dump(ab_config, f, indent=2)
 
         logger.info(
@@ -159,12 +163,12 @@ class ModelVersionManager:
         if not self.ab_test_config_file.exists():
             return None
 
-        with open(self.ab_test_config_file) as f:
+        with self.ab_test_config_file.open() as f:
             config = json.load(f)
 
         # Calculate elapsed time
         start_time = datetime.fromisoformat(config["start_time"])
-        elapsed_hours = (datetime.now() - start_time).total_seconds() / 3600
+        elapsed_hours = (datetime.now(tz=UTC) - start_time).total_seconds() / 3600
 
         config["elapsed_hours"] = elapsed_hours
         config["is_active"] = elapsed_hours < config["duration_hours"]
@@ -184,7 +188,7 @@ class ModelVersionManager:
         if not self.ab_test_config_file.exists():
             return
 
-        with open(self.ab_test_config_file) as f:
+        with self.ab_test_config_file.open() as f:
             config = json.load(f)
 
         # Update metrics
@@ -198,7 +202,7 @@ class ModelVersionManager:
                 config["metrics"]["version_b"]["approvals"] += 1
 
         # Save updated configuration
-        with open(self.ab_test_config_file, "w") as f:
+        with Path(self.ab_test_config_file).open("w") as f:
             json.dump(config, f, indent=2)
 
     def cleanup_old_models(self, keep_last: int = 5) -> int:
@@ -235,7 +239,7 @@ class ModelVersionManager:
 
         if deployed_model.exists() and deployed_metadata.exists():
             # Get version from metadata
-            with open(deployed_metadata) as f:
+            with deployed_metadata.open() as f:
                 metadata = json.load(f)
             version = metadata["version"]
 
@@ -256,7 +260,7 @@ class ModelVersionManager:
         history.append(
             {
                 "version": version,
-                "deployed_at": datetime.now().isoformat(),
+                "deployed_at": datetime.now(tz=UTC).isoformat(),
                 "accuracy": metadata["training_metrics"].get("accuracy", 0),
                 "f1_score": metadata["training_metrics"].get("f1_score", 0),
             }
@@ -265,7 +269,7 @@ class ModelVersionManager:
         # Keep last 50 deployments
         history = history[-50:]
 
-        with open(self.deployment_history_file, "w") as f:
+        with Path(self.deployment_history_file).open("w") as f:
             json.dump(history, f, indent=2)
 
     def _get_deployment_history(self) -> list[dict[str, Any]]:
@@ -273,5 +277,5 @@ class ModelVersionManager:
         if not self.deployment_history_file.exists():
             return []
 
-        with open(self.deployment_history_file) as f:
+        with self.deployment_history_file.open() as f:
             return json.load(f)  # type: ignore[no-any-return]

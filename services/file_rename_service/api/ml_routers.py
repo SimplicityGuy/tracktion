@@ -1,13 +1,17 @@
 """ML model management API routers."""
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from services.file_rename_service.app.ml.models import FeedbackData, ModelAlgorithm, TrainingData
+from services.file_rename_service.app.ml.models import (
+    FeedbackData,
+    ModelAlgorithm,
+    TrainingData,
+)
 from services.file_rename_service.app.ml.predictor import Predictor
 from services.file_rename_service.app.ml.trainer import Trainer
 from services.file_rename_service.app.ml.versioning import ModelVersionManager
@@ -177,32 +181,31 @@ async def train_model(
     """
     try:
         # Generate job ID
-        job_id = f"train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        job_id = f"train_{datetime.now(tz=UTC).strftime('%Y%m%d_%H%M%S')}"
 
         # TODO: Load training data from database
         # For now, create mock training data
-        training_data = []
-        for i in range(100):
-            training_data.append(
-                TrainingData(
-                    filename_original=f"file_{i}.txt",
-                    filename_renamed=f"renamed_file_{i}.txt",
-                    tokens=[
-                        {"type": "word", "value": "file"},
-                        {"type": "separator", "value": "_"},
-                        {"type": "number", "value": str(i)},
-                        {"type": "extension", "value": "txt"},
-                    ],
-                    user_approved=True,
-                    confidence_score=0.8,
-                )
+        training_data = [
+            TrainingData(
+                filename_original=f"file_{i}.txt",
+                filename_renamed=f"renamed_file_{i}.txt",
+                tokens=[
+                    {"type": "word", "value": "file"},
+                    {"type": "separator", "value": "_"},
+                    {"type": "number", "value": str(i)},
+                    {"type": "extension", "value": "txt"},
+                ],
+                user_approved=True,
+                confidence_score=0.8,
             )
+            for i in range(100)
+        ]
 
         # Initialize job tracking
         training_jobs[job_id] = {
             "status": "pending",
             "progress": 0.0,
-            "started_at": datetime.now().isoformat(),
+            "started_at": datetime.now(tz=UTC).isoformat(),
         }
 
         # Start background training
@@ -331,12 +334,11 @@ async def deploy_model(request: ModelDeployRequest) -> ModelDeployResponse:
                 version=request.version,
                 message=f"Model version {request.version} deployed successfully",
             )
-        else:
-            return ModelDeployResponse(
-                success=False,
-                version=request.version,
-                message="Deployment failed - check model metrics",
-            )
+        return ModelDeployResponse(
+            success=False,
+            version=request.version,
+            message="Deployment failed - check model metrics",
+        )
 
     except Exception as e:
         logger.error(f"Error deploying model: {e}")
@@ -369,12 +371,11 @@ async def rollback_model(request: ModelRollbackRequest) -> ModelDeployResponse:
                 version=request.target_version or "previous",
                 message="Model rolled back successfully",
             )
-        else:
-            return ModelDeployResponse(
-                success=False,
-                version=request.target_version or "previous",
-                message="Rollback failed",
-            )
+        return ModelDeployResponse(
+            success=False,
+            version=request.target_version or "previous",
+            message="Rollback failed",
+        )
 
     except Exception as e:
         logger.error(f"Error rolling back model: {e}")
@@ -393,14 +394,12 @@ async def setup_ab_test(request: ABTestRequest) -> dict[str, Any]:
     model versions with specified traffic split.
     """
     try:
-        config = version_manager.setup_ab_test(
+        return version_manager.setup_ab_test(
             version_a=request.version_a,
             version_b=request.version_b,
             traffic_split=request.traffic_split,
             duration_hours=request.duration_hours,
         )
-
-        return config
 
     except FileNotFoundError as e:
         raise HTTPException(
@@ -424,8 +423,7 @@ async def get_ab_test_status() -> dict[str, Any] | None:
     or null if no test is active.
     """
     try:
-        ab_status = version_manager.get_ab_test_status()
-        return ab_status
+        return version_manager.get_ab_test_status()
 
     except Exception as e:
         logger.error(f"Error getting A/B test status: {e}")

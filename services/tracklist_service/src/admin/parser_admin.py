@@ -3,35 +3,30 @@
 import logging
 import time
 import uuid
-from datetime import datetime, UTC
-from typing import Dict, List, Optional, Any
+from datetime import UTC, datetime
+from typing import Any
 
-import requests  # type: ignore
+import requests  # type: ignore[import-untyped]  # types-requests not installed in this environment
 from bs4 import BeautifulSoup
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from src.cache.fallback_cache import FallbackCache
+from src.monitoring.alert_manager import AlertManager
+from src.monitoring.structure_monitor import StructureMonitor
+from src.scrapers.adaptive_parser import AdaptiveParser
+from src.scrapers.resilient_extractor import CSSStrategy, RegexStrategy, ResilientExtractor, TextStrategy, XPathStrategy
 
 from .models import (
-    SelectorUpdate,
-    ManualDataCorrection,
-    RollbackRequest,
-    ParserTestResult,
     AdminOperation,
-    ParserHealthStatus,
-    SelectorTestRequest,
     ConfigurationSnapshot,
+    ManualDataCorrection,
+    ParserHealthStatus,
+    ParserTestResult,
+    RollbackRequest,
+    SelectorTestRequest,
+    SelectorUpdate,
 )
-from ..scrapers.adaptive_parser import AdaptiveParser
-from ..scrapers.resilient_extractor import (
-    ResilientExtractor,
-    CSSStrategy,
-    XPathStrategy,
-    TextStrategy,
-    RegexStrategy,
-)
-from ..monitoring.alert_manager import AlertManager
-from ..monitoring.structure_monitor import StructureMonitor
-from ..cache.fallback_cache import FallbackCache
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +34,12 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 security = HTTPBearer()
 
 
-async def verify_admin_access(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+security_dependency = security  # Will be injected via Depends in route
+
+
+async def verify_admin_access(
+    credentials: HTTPAuthorizationCredentials = security_dependency,
+) -> str:
     """Verify admin access token and return admin user ID."""
     # TODO: Implement proper authentication
     # For now, return a placeholder admin user
@@ -53,60 +53,89 @@ async def verify_admin_access(credentials: HTTPAuthorizationCredentials = Depend
     raise HTTPException(status_code=403, detail="Invalid admin token")
 
 
-# Initialize components
-_adaptive_parser: Optional[AdaptiveParser] = None
-_resilient_extractor: Optional[ResilientExtractor] = None
-_alert_manager: Optional[AlertManager] = None
-_structure_monitor: Optional[StructureMonitor] = None
-_fallback_cache: Optional[FallbackCache] = None
+class ComponentRegistry:
+    """Singleton registry for admin components."""
+
+    _instance: "ComponentRegistry | None" = None
+
+    def __init__(self) -> None:
+        """Initialize component registry."""
+        self._adaptive_parser: AdaptiveParser | None = None
+        self._resilient_extractor: ResilientExtractor | None = None
+        self._alert_manager: AlertManager | None = None
+        self._structure_monitor: StructureMonitor | None = None
+        self._fallback_cache: FallbackCache | None = None
+
+    @classmethod
+    def get_instance(cls) -> "ComponentRegistry":
+        """Get singleton instance."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def get_adaptive_parser(self) -> AdaptiveParser:
+        """Get or create adaptive parser instance."""
+        if self._adaptive_parser is None:
+            self._adaptive_parser = AdaptiveParser()
+        return self._adaptive_parser
+
+    def get_resilient_extractor(self) -> ResilientExtractor:
+        """Get or create resilient extractor instance."""
+        if self._resilient_extractor is None:
+            self._resilient_extractor = ResilientExtractor()
+        return self._resilient_extractor
+
+    def get_alert_manager(self) -> AlertManager:
+        """Get or create alert manager instance."""
+        if self._alert_manager is None:
+            self._alert_manager = AlertManager()
+        return self._alert_manager
+
+    def get_structure_monitor(self) -> StructureMonitor:
+        """Get or create structure monitor instance."""
+        if self._structure_monitor is None:
+            self._structure_monitor = StructureMonitor()
+        return self._structure_monitor
+
+    def get_fallback_cache(self) -> FallbackCache:
+        """Get or create fallback cache instance."""
+        if self._fallback_cache is None:
+            self._fallback_cache = FallbackCache()
+        return self._fallback_cache
 
 
+# Convenience functions
 def get_adaptive_parser() -> AdaptiveParser:
     """Get or create adaptive parser instance."""
-    global _adaptive_parser
-    if _adaptive_parser is None:
-        _adaptive_parser = AdaptiveParser()
-    return _adaptive_parser
+    return ComponentRegistry.get_instance().get_adaptive_parser()
 
 
 def get_resilient_extractor() -> ResilientExtractor:
     """Get or create resilient extractor instance."""
-    global _resilient_extractor
-    if _resilient_extractor is None:
-        _resilient_extractor = ResilientExtractor()
-    return _resilient_extractor
+    return ComponentRegistry.get_instance().get_resilient_extractor()
 
 
 def get_alert_manager() -> AlertManager:
     """Get or create alert manager instance."""
-    global _alert_manager
-    if _alert_manager is None:
-        _alert_manager = AlertManager()
-    return _alert_manager
+    return ComponentRegistry.get_instance().get_alert_manager()
 
 
 def get_structure_monitor() -> StructureMonitor:
     """Get or create structure monitor instance."""
-    global _structure_monitor
-    if _structure_monitor is None:
-        _structure_monitor = StructureMonitor()
-    return _structure_monitor
+    return ComponentRegistry.get_instance().get_structure_monitor()
 
 
 def get_fallback_cache() -> FallbackCache:
     """Get or create fallback cache instance."""
-    global _fallback_cache
-    if _fallback_cache is None:
-        _fallback_cache = FallbackCache()
-    return _fallback_cache
+    return ComponentRegistry.get_instance().get_fallback_cache()
 
 
-@router.post("/selectors/update", response_model=Dict[str, Any])
+@router.post("/selectors/update", response_model=dict[str, Any])
 async def update_selectors(
     updates: SelectorUpdate,
     background_tasks: BackgroundTasks,
-    admin_user: str = Depends(verify_admin_access),
-) -> Dict[str, Any]:
+    admin_user: str,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Update parser selectors with new configuration.
 
     Args:
@@ -130,18 +159,23 @@ async def update_selectors(
 
         strategy_class = strategy_map.get(updates.selector_type.value)
         if not strategy_class:
-            raise HTTPException(status_code=400, detail=f"Unsupported selector type: {updates.selector_type}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported selector type: {updates.selector_type}",
+            )
 
         # Test selector if test URL provided
         test_result = None
         if updates.test_url:
-            test_result = await test_selector_internal(
-                updates.test_url,
-                updates.page_type,
-                updates.field_name,
-                updates.selector_type.value,
-                updates.selector_value,
+            test_params = SelectorTestRequest(
+                url=updates.test_url,
+                page_type=updates.page_type,
+                field_name=updates.field_name,
+                selector_type=updates.selector_type,
+                selector_value=updates.selector_value,
+                expected_result=None,
             )
+            test_result = await test_selector_internal(test_params)
 
             if not test_result["success"]:
                 logger.warning(f"Selector test failed for {updates.field_name}: {test_result['error_message']}")
@@ -184,7 +218,7 @@ async def update_selectors(
 
     except Exception as e:
         logger.error(f"Error updating selectors: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Selector update failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Selector update failed: {e!s}") from e
 
 
 async def apply_selector_update(
@@ -217,7 +251,7 @@ async def apply_selector_update(
 @router.post("/parser/test", response_model=ParserTestResult)
 async def test_parser(
     test_request: SelectorTestRequest,
-    admin_user: str = Depends(verify_admin_access),
+    admin_user: str,  # Will be injected via Depends in route
 ) -> ParserTestResult:
     """Test parser with specific selector configuration.
 
@@ -229,14 +263,7 @@ async def test_parser(
         Test result with extracted data and metrics
     """
     try:
-        result = await test_selector_internal(
-            test_request.url,
-            test_request.page_type,
-            test_request.field_name,
-            test_request.selector_type.value,
-            test_request.selector_value,
-            test_request.expected_result,
-        )
+        result = await test_selector_internal(test_request)
 
         return ParserTestResult(**result)
 
@@ -252,19 +279,14 @@ async def test_parser(
 
 
 async def test_selector_internal(
-    url: str,
-    page_type: str,
-    field_name: str,
-    selector_type: str,
-    selector_value: str,
-    expected_result: Optional[str] = None,
-) -> Dict[str, Any]:
+    test_params: SelectorTestRequest,
+) -> dict[str, Any]:
     """Internal selector testing logic."""
     start_time = time.time()
 
     try:
         # Fetch page content
-        response = requests.get(url, timeout=30)
+        response = requests.get(test_params.url, timeout=30)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.content, "html.parser")
@@ -277,42 +299,42 @@ async def test_selector_internal(
             "regex": RegexStrategy,
         }
 
-        strategy_class = strategy_map.get(selector_type)
+        strategy_class = strategy_map.get(test_params.selector_type.value)
         if not strategy_class:
-            raise ValueError(f"Unsupported selector type: {selector_type}")
+            raise ValueError(f"Unsupported selector type: {test_params.selector_type.value}")
 
-        strategy = strategy_class(selector_value)
+        strategy = strategy_class(test_params.selector_value)
 
         # Extract data
-        extracted_data = strategy.extract(soup, field_name)
+        extracted_data = strategy.extract(soup, test_params.field_name)
 
         execution_time = int((time.time() - start_time) * 1000)
 
         # Calculate quality score
         quality_score = 1.0 if extracted_data.value else 0.0
-        if expected_result and extracted_data.value:
+        if test_params.expected_result and extracted_data.value:
             # Simple similarity check
-            similarity = 1.0 if expected_result.lower() in extracted_data.value.lower() else 0.5
+            similarity = 1.0 if test_params.expected_result.lower() in extracted_data.value.lower() else 0.5
             quality_score = similarity
 
         warnings = []
         if not extracted_data.value:
             warnings.append("No data extracted")
-        elif expected_result and expected_result.lower() not in extracted_data.value.lower():
+        elif test_params.expected_result and test_params.expected_result.lower() not in extracted_data.value.lower():
             warnings.append("Extracted data differs from expected result")
 
         return {
             "success": bool(extracted_data.value),
-            "extracted_data": extracted_data.to_dict() if extracted_data.value else None,
+            "extracted_data": (extracted_data.to_dict() if extracted_data.value else None),
             "execution_time_ms": execution_time,
-            "strategy_used": selector_type,
+            "strategy_used": test_params.selector_type.value,
             "quality_score": quality_score,
             "warnings": warnings,
             "metadata": {
-                "page_type": page_type,
-                "field_name": field_name,
-                "selector": selector_value,
-                "url": url,
+                "page_type": test_params.page_type,
+                "field_name": test_params.field_name,
+                "selector": test_params.selector_value,
+                "url": test_params.url,
             },
         }
 
@@ -322,24 +344,24 @@ async def test_selector_internal(
             "success": False,
             "error_message": str(e),
             "execution_time_ms": execution_time,
-            "strategy_used": selector_type,
+            "strategy_used": test_params.selector_type.value,
             "quality_score": 0.0,
-            "warnings": [f"Test failed: {str(e)}"],
+            "warnings": [f"Test failed: {e!s}"],
             "metadata": {
-                "page_type": page_type,
-                "field_name": field_name,
-                "selector": selector_value,
-                "url": url,
+                "page_type": test_params.page_type,
+                "field_name": test_params.field_name,
+                "selector": test_params.selector_value,
+                "url": test_params.url,
             },
         }
 
 
-@router.post("/data/correct", response_model=Dict[str, Any])
+@router.post("/data/correct", response_model=dict[str, Any])
 async def correct_data(
     correction: ManualDataCorrection,
     background_tasks: BackgroundTasks,
-    admin_user: str = Depends(verify_admin_access),
-) -> Dict[str, Any]:
+    admin_user: str,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Manually correct extracted data.
 
     Args:
@@ -384,7 +406,7 @@ async def correct_data(
 
     except Exception as e:
         logger.error(f"Error correcting data: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Data correction failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Data correction failed: {e!s}") from e
 
 
 async def apply_data_correction(
@@ -434,12 +456,12 @@ async def apply_data_correction(
         admin_operation.error_message = str(e)
 
 
-@router.post("/parser/rollback", response_model=Dict[str, Any])
+@router.post("/parser/rollback", response_model=dict[str, Any])
 async def rollback_parser(
     rollback_request: RollbackRequest,
     background_tasks: BackgroundTasks,
-    admin_user: str = Depends(verify_admin_access),
-) -> Dict[str, Any]:
+    admin_user: str,  # Will be injected via Depends in route
+) -> dict[str, Any]:
     """Rollback parser to previous version.
 
     Args:
@@ -455,7 +477,10 @@ async def rollback_parser(
 
         # Validate target version exists
         if not await adaptive_parser.version_exists(rollback_request.target_version):
-            raise HTTPException(status_code=404, detail=f"Version {rollback_request.target_version} not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Version {rollback_request.target_version} not found",
+            )
 
         operation_id = str(uuid.uuid4())
 
@@ -490,7 +515,7 @@ async def rollback_parser(
 
     except Exception as e:
         logger.error(f"Error initiating rollback: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Rollback failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Rollback failed: {e!s}") from e
 
 
 async def perform_rollback(
@@ -516,7 +541,7 @@ async def perform_rollback(
 
 @router.get("/parser/health", response_model=ParserHealthStatus)
 async def get_parser_health(
-    admin_user: str = Depends(verify_admin_access),
+    admin_user: str,  # Will be injected via Depends in route
 ) -> ParserHealthStatus:
     """Get current parser health and status.
 
@@ -544,7 +569,12 @@ async def get_parser_health(
             success_rate_24h=health_status.success_rate,
             total_extractions_24h=len(health_status.failed_extractions) + 100,  # Placeholder calculation
             failed_extractions_24h=len(health_status.failed_extractions),
-            active_strategies={"css": 5, "xpath": 3, "text": 2, "regex": 1},  # Placeholder data
+            active_strategies={
+                "css": 5,
+                "xpath": 3,
+                "text": 2,
+                "regex": 1,
+            },  # Placeholder data
             last_config_update=current_version.created_at,
             alerts_active=[alert.message for alert in active_alerts],
             system_status="healthy" if health_status.healthy else "degraded",
@@ -553,12 +583,12 @@ async def get_parser_health(
 
     except Exception as e:
         logger.error(f"Error getting parser health: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get parser health: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get parser health: {e!s}") from e
 
 
 @router.get("/configuration/snapshot", response_model=ConfigurationSnapshot)
 async def get_configuration_snapshot(
-    admin_user: str = Depends(verify_admin_access),
+    admin_user: str,  # Will be injected via Depends in route
 ) -> ConfigurationSnapshot:
     """Get current parser configuration snapshot.
 
@@ -577,24 +607,22 @@ async def get_configuration_snapshot(
             version=current_version.version,
             timestamp=current_version.created_at,
             strategies=current_version.strategies,
-            success_rates={
-                strategy: rate for strategy, rate in current_version.metadata.get("success_rates", {}).items()
-            },
+            success_rates=dict(current_version.metadata.get("success_rates", {}).items()),
             metadata=current_version.metadata,
             admin_notes=current_version.metadata.get("admin_notes"),
         )
 
     except Exception as e:
         logger.error(f"Error getting configuration snapshot: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get configuration: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get configuration: {e!s}") from e
 
 
 @router.get("/operations/history")
 async def get_operation_history(
+    admin_user: str,  # Will be injected via Depends in route
     limit: int = 50,
-    operation_type: Optional[str] = None,
-    admin_user: str = Depends(verify_admin_access),
-) -> List[Dict[str, Any]]:
+    operation_type: str | None = None,
+) -> list[dict[str, Any]]:
     """Get history of admin operations.
 
     Args:
@@ -621,4 +649,4 @@ async def get_operation_history(
 
     except Exception as e:
         logger.error(f"Error getting operation history: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get operation history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get operation history: {e!s}") from e

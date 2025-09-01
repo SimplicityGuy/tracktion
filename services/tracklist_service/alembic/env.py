@@ -1,15 +1,15 @@
 import os
-from logging.config import fileConfig
-
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
-from alembic import context
 
 # Import models for autogenerate support
 import sys
+from logging.config import fileConfig
+from pathlib import Path
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from sqlalchemy import engine_from_config, pool
+
+from alembic import context  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
+
+sys.path.append(str(Path(__file__).parent.parent))
 from src.models.tracklist import Base
 
 # this is the Alembic Config object, which provides

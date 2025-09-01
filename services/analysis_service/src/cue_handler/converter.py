@@ -1,25 +1,27 @@
 """CUE file format converter for converting between different CUE formats."""
 
 from __future__ import annotations
+
+import copy
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional, Dict, Any, cast
-import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, cast
 
-from .parser import CueParser
-from .generator import CueFormat
-from .formats import get_generator
-from .validator import CueValidator, ValidationResult
-from .validation_rules import Severity
+from .compatibility import CompatibilityChecker, CompatibilityReport
 from .exceptions import CueParsingError
 from .format_mappings import (
     CONVERSION_RULES,
     LOSSY_CONVERSIONS,
     get_format_from_string,
 )
-from .compatibility import CompatibilityChecker, CompatibilityReport
+from .formats import get_generator
+from .generator import CueFormat
+from .parser import CueParser
+from .validation_rules import Severity
+from .validator import CueValidator, ValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +40,10 @@ class ConversionChange:
 
     change_type: str  # "removed", "modified", "added"
     command: str
-    original_value: Optional[str] = None
-    new_value: Optional[str] = None
+    original_value: str | None = None
+    new_value: str | None = None
     reason: str = ""
-    track_number: Optional[int] = None
+    track_number: int | None = None
 
 
 @dataclass
@@ -53,12 +55,12 @@ class ConversionReport:
     target_file: str
     target_format: CueFormat
     success: bool
-    changes: List[ConversionChange] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    changes: list[ConversionChange] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
     metadata_preserved: float = 100.0  # Percentage
-    validation_result: Optional[ValidationResult] = None
-    compatibility_report: Optional[CompatibilityReport] = None
+    validation_result: ValidationResult | None = None
+    compatibility_report: CompatibilityReport | None = None
 
     def add_change(self, change: ConversionChange) -> None:
         """Add a change to the report."""
@@ -96,7 +98,7 @@ class BatchConversionReport:
     total_files: int = 0
     successful: int = 0
     failed: int = 0
-    reports: List[ConversionReport] = field(default_factory=list)
+    reports: list[ConversionReport] = field(default_factory=list)
 
     def add_report(self, report: ConversionReport) -> None:
         """Add a single conversion report to the batch."""
@@ -124,7 +126,10 @@ class CueConverter:
     """Converts CUE files between different formats."""
 
     def __init__(
-        self, mode: ConversionMode = ConversionMode.STANDARD, validate_output: bool = True, verbose: bool = False
+        self,
+        mode: ConversionMode = ConversionMode.STANDARD,
+        validate_output: bool = True,
+        verbose: bool = False,
     ):
         """Initialize the CUE converter.
 
@@ -147,9 +152,9 @@ class CueConverter:
         self,
         source_file: Path | str,
         target_format: CueFormat | str,
-        output_file: Optional[Path | str] = None,
+        output_file: Path | str | None = None,
         dry_run: bool = False,
-        custom_rules: Optional[Dict[str, Any]] = None,
+        custom_rules: dict[str, Any] | None = None,
     ) -> ConversionReport:
         """Convert a single CUE file to a different format.
 
@@ -169,9 +174,9 @@ class CueConverter:
                 source_file=str(source_file),
                 source_format=CueFormat.STANDARD,
                 target_file="",
-                target_format=target_format
-                if isinstance(target_format, CueFormat)
-                else get_format_from_string(target_format),
+                target_format=(
+                    target_format if isinstance(target_format, CueFormat) else get_format_from_string(target_format)
+                ),
                 success=False,
             )
             report.add_error(f"Source file does not exist: {source_file}")
@@ -216,8 +221,8 @@ class CueConverter:
 
             # Apply conversion rules
             conversion_rules_key = (source_format.value, target_format.value)
-            conversion_rules_base = cast(Dict[str, Any], CONVERSION_RULES.get(conversion_rules_key, {}))
-            conversion_rules: Dict[str, Any] = dict(conversion_rules_base)
+            conversion_rules_base = cast("dict[str, Any]", CONVERSION_RULES.get(conversion_rules_key, {}))
+            conversion_rules: dict[str, Any] = dict(conversion_rules_base)
             if custom_rules:
                 # Ensure we have a mutable dict
                 conversion_rules = dict(conversion_rules) if conversion_rules else {}
@@ -232,7 +237,7 @@ class CueConverter:
                 # Convert CueSheet to generator format
                 # This is a placeholder - actual conversion depends on CueSheet structure
                 # For now, we'll write the content directly
-                with open(str(source_path), "r") as f:
+                with source_path.open() as f:
                     output_content = f.read()  # Temporary: just copy for testing
 
                 # Write output file
@@ -257,22 +262,22 @@ class CueConverter:
             report.calculate_metadata_preservation()
 
         except CueParsingError as e:
-            report.add_error(f"Failed to parse source file: {str(e)}")
+            report.add_error(f"Failed to parse source file: {e!s}")
         except Exception as e:
-            report.add_error(f"Conversion failed: {str(e)}")
+            report.add_error(f"Conversion failed: {e!s}")
             logger.exception("Conversion error")
 
         return report
 
     def batch_convert(
         self,
-        source_pattern: str | List[Path],
+        source_pattern: str | list[Path],
         target_format: CueFormat | str,
-        output_dir: Optional[Path | str] = None,
+        output_dir: Path | str | None = None,
         parallel: bool = True,
         max_workers: int = 4,
         dry_run: bool = False,
-        custom_rules: Optional[Dict[str, Any]] = None,
+        custom_rules: dict[str, Any] | None = None,
     ) -> BatchConversionReport:
         """Convert multiple CUE files in batch.
 
@@ -311,13 +316,15 @@ class CueConverter:
                 futures = {}
                 for source_file in source_files:
                     # Determine output file
-                    if output_dir:
-                        output_file = output_path / source_file.name
-                    else:
-                        output_file = None
+                    output_file = output_path / source_file.name if output_dir else None
 
                     future = executor.submit(
-                        self.convert, source_file, target_format, output_file, dry_run, custom_rules
+                        self.convert,
+                        source_file,
+                        target_format,
+                        output_file,
+                        dry_run,
+                        custom_rules,
                     )
                     futures[future] = source_file
 
@@ -337,20 +344,19 @@ class CueConverter:
                             source_file=str(source_file),
                             source_format=CueFormat.STANDARD,
                             target_file="",
-                            target_format=target_format
-                            if isinstance(target_format, CueFormat)
-                            else get_format_from_string(target_format),
+                            target_format=(
+                                target_format
+                                if isinstance(target_format, CueFormat)
+                                else get_format_from_string(target_format)
+                            ),
                             success=False,
                         )
-                        error_report.add_error(f"Processing failed: {str(e)}")
+                        error_report.add_error(f"Processing failed: {e!s}")
                         batch_report.add_report(error_report)
         else:
             # Sequential processing
             for source_file in source_files:
-                if output_dir:
-                    output_file = Path(output_dir) / source_file.name
-                else:
-                    output_file = None
+                output_file = Path(output_dir) / source_file.name if output_dir else None
 
                 report = self.convert(source_file, target_format, output_file, dry_run, custom_rules)
                 batch_report.add_report(report)
@@ -408,7 +414,7 @@ class CueConverter:
         cue_sheet: Any,
         source_format: CueFormat,
         target_format: CueFormat,
-        rules: Dict[str, Any],
+        rules: dict[str, Any],
         report: ConversionReport,
     ) -> Any:
         """Apply conversion rules to transform CUE sheet.
@@ -424,7 +430,6 @@ class CueConverter:
             Converted CueSheet object
         """
         # Clone the cue sheet for modification
-        import copy
 
         converted = copy.deepcopy(cue_sheet)
 
@@ -488,7 +493,7 @@ class CueConverter:
                 ConversionChange(
                     change_type="modified",
                     command="ENCODING",
-                    original_value=converted.encoding if hasattr(converted, "encoding") else "ASCII",
+                    original_value=(converted.encoding if hasattr(converted, "encoding") else "ASCII"),
                     new_value=rules["encoding"],
                     reason="Target format encoding requirement",
                 )
@@ -522,32 +527,30 @@ class CueConverter:
         command_lower = command.lower()
 
         # Remove from global level
-        if hasattr(cue_sheet, command_lower):
-            if getattr(cue_sheet, command_lower) is not None:
+        if hasattr(cue_sheet, command_lower) and getattr(cue_sheet, command_lower) is not None:
+            report.add_change(
+                ConversionChange(
+                    change_type="removed",
+                    command=command,
+                    original_value=str(getattr(cue_sheet, command_lower)),
+                    reason="Command not supported in target format",
+                )
+            )
+            setattr(cue_sheet, command_lower, None)
+
+        # Remove from tracks
+        for i, track in enumerate(cue_sheet.tracks):
+            if hasattr(track, command_lower) and getattr(track, command_lower) is not None:
                 report.add_change(
                     ConversionChange(
                         change_type="removed",
                         command=command,
-                        original_value=str(getattr(cue_sheet, command_lower)),
+                        original_value=str(getattr(track, command_lower)),
+                        track_number=i + 1,
                         reason="Command not supported in target format",
                     )
                 )
-                setattr(cue_sheet, command_lower, None)
-
-        # Remove from tracks
-        for i, track in enumerate(cue_sheet.tracks):
-            if hasattr(track, command_lower):
-                if getattr(track, command_lower) is not None:
-                    report.add_change(
-                        ConversionChange(
-                            change_type="removed",
-                            command=command,
-                            original_value=str(getattr(track, command_lower)),
-                            track_number=i + 1,
-                            reason="Command not supported in target format",
-                        )
-                    )
-                    setattr(track, command_lower, None)
+                setattr(track, command_lower, None)
 
     def _generate_rem_value(self, field: str) -> str:
         """Generate a default value for a REM field.
@@ -569,7 +572,7 @@ class CueConverter:
         }
         return defaults.get(field, "")
 
-    def get_supported_formats(self) -> List[str]:
+    def get_supported_formats(self) -> list[str]:
         """Get list of supported conversion formats.
 
         Returns:

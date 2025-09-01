@@ -6,30 +6,30 @@ view usage analytics, and control key permissions.
 """
 
 import logging
-from datetime import datetime, UTC
-from typing import List, Optional, Dict, Any
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+import redis.asyncio as redis
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
-from ..auth.dependencies import authenticate_user
-from ..auth.models import User
-from ..auth.authentication import AuthenticationManager
-from ..analytics.usage_tracker import UsageTracker, AggregationPeriod
+from src.analytics.usage_tracker import AggregationPeriod, UsageTracker
+from src.auth.authentication import AuthenticationManager
+from src.auth.models import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/developer", tags=["developer"])
 
 # Initialize components (in production these would be dependency injected)
-auth_manager: Optional[AuthenticationManager] = None
-usage_tracker: Optional[UsageTracker] = None
+auth_manager: AuthenticationManager | None = None
+usage_tracker: UsageTracker | None = None
 
 
 def get_auth_manager() -> AuthenticationManager:
     """Get authentication manager instance."""
-    global auth_manager
+    global auth_manager  # noqa: PLW0603 - Module-level singleton pattern for API endpoints
     if auth_manager is None:
         # In production, this would be properly initialized
         auth_manager = AuthenticationManager(jwt_secret="dev-secret-key")
@@ -38,11 +38,9 @@ def get_auth_manager() -> AuthenticationManager:
 
 def get_usage_tracker() -> UsageTracker:
     """Get usage tracker instance."""
-    global usage_tracker
+    global usage_tracker  # noqa: PLW0603 - Module-level singleton pattern for API endpoints
     if usage_tracker is None:
         # In production, this would be properly initialized from dependencies
-        import redis.asyncio as redis
-
         redis_client = redis.Redis.from_url("redis://localhost:6379", decode_responses=True)
         usage_tracker = UsageTracker(redis_client)
     return usage_tracker
@@ -53,9 +51,9 @@ class CreateKeyRequest(BaseModel):
     """Request model for creating new API keys."""
 
     name: str = Field(..., description="Human-readable name for the key")
-    description: Optional[str] = Field(None, description="Optional description")
-    permissions: Optional[Dict[str, bool]] = Field(None, description="Custom permissions (defaults based on user tier)")
-    expires_in_days: Optional[int] = Field(None, ge=1, le=365, description="Key expiration in days (optional)")
+    description: str | None = Field(None, description="Optional description")
+    permissions: dict[str, bool] | None = Field(None, description="Custom permissions (defaults based on user tier)")
+    expires_in_days: int | None = Field(None, ge=1, le=365, description="Key expiration in days (optional)")
 
     @field_validator("name")
     @classmethod
@@ -69,14 +67,14 @@ class ApiKeyInfo(BaseModel):
     """API key information for listing (without sensitive data)."""
 
     key_id: str = Field(..., description="Unique key identifier")
-    name: Optional[str] = Field(None, description="Key name")
+    name: str | None = Field(None, description="Key name")
     key_prefix: str = Field(..., description="First 8 characters for identification")
     is_active: bool = Field(..., description="Whether key is active")
-    created_at: Optional[datetime] = Field(None, description="Creation timestamp")
-    expires_at: Optional[datetime] = Field(None, description="Expiration timestamp")
-    last_used_at: Optional[datetime] = Field(None, description="Last usage timestamp")
-    permissions: Optional[Dict[str, bool]] = Field(None, description="Key permissions")
-    usage_stats: Optional[Dict[str, Any]] = Field(None, description="Basic usage statistics")
+    created_at: datetime | None = Field(None, description="Creation timestamp")
+    expires_at: datetime | None = Field(None, description="Expiration timestamp")
+    last_used_at: datetime | None = Field(None, description="Last usage timestamp")
+    permissions: dict[str, bool] | None = Field(None, description="Key permissions")
+    usage_stats: dict[str, Any] | None = Field(None, description="Basic usage statistics")
 
 
 class ApiKeyResponse(BaseModel):
@@ -84,9 +82,9 @@ class ApiKeyResponse(BaseModel):
 
     key_id: str = Field(..., description="Unique key identifier")
     api_key: str = Field(..., description="The actual API key (shown only once)")
-    name: Optional[str] = Field(None, description="Key name")
-    permissions: Dict[str, bool] = Field(..., description="Key permissions")
-    expires_at: Optional[datetime] = Field(None, description="Expiration timestamp")
+    name: str | None = Field(None, description="Key name")
+    permissions: dict[str, bool] = Field(..., description="Key permissions")
+    expires_at: datetime | None = Field(None, description="Expiration timestamp")
     created_at: datetime = Field(..., description="Creation timestamp")
 
 
@@ -94,16 +92,16 @@ class KeyUsageResponse(BaseModel):
     """Response model for key usage analytics."""
 
     key_id: str = Field(..., description="Key identifier")
-    usage_stats: Dict[str, Any] = Field(..., description="Detailed usage statistics")
-    cost_breakdown: Dict[str, Any] = Field(..., description="Cost analysis")
-    recommendations: List[str] = Field(default_factory=list, description="Usage recommendations")
+    usage_stats: dict[str, Any] = Field(..., description="Detailed usage statistics")
+    cost_breakdown: dict[str, Any] = Field(..., description="Cost analysis")
+    recommendations: list[str] = Field(default_factory=list, description="Usage recommendations")
 
 
-@router.get("/keys", response_model=List[ApiKeyInfo])
+@router.get("/keys", response_model=list[ApiKeyInfo])
 async def list_api_keys(
-    include_inactive: bool = Query(False, description="Include inactive/revoked keys"),
-    user: User = Depends(authenticate_user),
-) -> List[ApiKeyInfo]:
+    user: User,  # Will be injected via Depends in route
+    include_inactive: bool = False,
+) -> list[ApiKeyInfo]:
     """
     List all API keys for the authenticated user.
 
@@ -157,11 +155,14 @@ async def list_api_keys(
 
     except Exception as e:
         logger.error(f"Error listing API keys for user {user.id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to retrieve API keys")
+        raise HTTPException(status_code=500, detail="Failed to retrieve API keys") from e
 
 
 @router.post("/keys", response_model=ApiKeyResponse)
-async def create_api_key(request: CreateKeyRequest, user: User = Depends(authenticate_user)) -> ApiKeyResponse:
+async def create_api_key(
+    request: CreateKeyRequest,
+    user: User,  # Will be injected via Depends in route
+) -> ApiKeyResponse:
     """
     Create a new API key for the authenticated user.
 
@@ -184,7 +185,8 @@ async def create_api_key(request: CreateKeyRequest, user: User = Depends(authent
         max_keys = {"free": 2, "premium": 10, "enterprise": 50}.get(user.tier.value, 2)
         if current_keys >= max_keys:
             raise HTTPException(
-                status_code=403, detail=f"Maximum number of API keys reached for {user.tier.value} tier ({max_keys})"
+                status_code=403,
+                detail=f"Maximum number of API keys reached for {user.tier.value} tier ({max_keys})",
             )
 
         # Generate new API key
@@ -197,14 +199,13 @@ async def create_api_key(request: CreateKeyRequest, user: User = Depends(authent
             for perm, enabled in request.permissions.items():
                 if enabled and perm in default_perms and not default_perms[perm]:
                     raise HTTPException(
-                        status_code=403, detail=f"Permission '{perm}' not available for {user.tier.value} tier"
+                        status_code=403,
+                        detail=f"Permission '{perm}' not available for {user.tier.value} tier",
                     )
             api_key.permissions = request.permissions
 
         # Set expiration if requested
         if request.expires_in_days:
-            from datetime import timedelta
-
             api_key.expires_at = datetime.now(UTC) + timedelta(days=request.expires_in_days)
 
         # Get the raw key to return (this is only shown once)
@@ -232,11 +233,14 @@ async def create_api_key(request: CreateKeyRequest, user: User = Depends(authent
         raise
     except Exception as e:
         logger.error(f"Error creating API key for user {user.id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to create API key")
+        raise HTTPException(status_code=500, detail="Failed to create API key") from e
 
 
 @router.post("/keys/{key_id}/rotate", response_model=ApiKeyResponse)
-async def rotate_api_key(key_id: str, user: User = Depends(authenticate_user)) -> ApiKeyResponse:
+async def rotate_api_key(
+    key_id: str,
+    user: User,  # Will be injected via Depends in route
+) -> ApiKeyResponse:
     """
     Rotate an existing API key (generates new key, keeps same metadata).
 
@@ -252,7 +256,7 @@ async def rotate_api_key(key_id: str, user: User = Depends(authenticate_user)) -
 
         # Find the existing key
         old_key = None
-        for raw_key, api_key in manager._api_keys.items():
+        for api_key in manager._api_keys.values():
             if api_key.key_id == key_id and api_key.user_id == user.id:
                 old_key = api_key
                 break
@@ -295,11 +299,14 @@ async def rotate_api_key(key_id: str, user: User = Depends(authenticate_user)) -
         raise
     except Exception as e:
         logger.error(f"Error rotating API key {key_id} for user {user.id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to rotate API key")
+        raise HTTPException(status_code=500, detail="Failed to rotate API key") from e
 
 
 @router.delete("/keys/{key_id}")
-async def revoke_api_key(key_id: str, user: User = Depends(authenticate_user)) -> JSONResponse:
+async def revoke_api_key(
+    key_id: str,
+    user: User,  # Will be injected via Depends in route
+) -> JSONResponse:
     """
     Revoke (deactivate) an API key immediately.
 
@@ -315,7 +322,7 @@ async def revoke_api_key(key_id: str, user: User = Depends(authenticate_user)) -
 
         # Find and revoke the key
         key_found = False
-        for raw_key, api_key in manager._api_keys.items():
+        for api_key in manager._api_keys.values():
             if api_key.key_id == key_id and api_key.user_id == user.id:
                 api_key.is_active = False
                 key_found = True
@@ -337,14 +344,14 @@ async def revoke_api_key(key_id: str, user: User = Depends(authenticate_user)) -
         raise
     except Exception as e:
         logger.error(f"Error revoking API key {key_id} for user {user.id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to revoke API key")
+        raise HTTPException(status_code=500, detail="Failed to revoke API key") from e
 
 
 @router.get("/keys/{key_id}/usage", response_model=KeyUsageResponse)
 async def get_key_usage_analytics(
     key_id: str,
-    period: str = Query("month", pattern="^(day|week|month)$", description="Usage period"),
-    user: User = Depends(authenticate_user),
+    user: User,  # Will be injected via Depends in route
+    period: str = "month",
 ) -> KeyUsageResponse:
     """
     Get detailed usage analytics for a specific API key.
@@ -364,7 +371,7 @@ async def get_key_usage_analytics(
         # Verify key belongs to user
         key_found = False
         api_key = None
-        for raw_key, stored_key in manager._api_keys.items():
+        for stored_key in manager._api_keys.values():
             if stored_key.key_id == key_id and stored_key.user_id == user.id:
                 key_found = True
                 api_key = stored_key
@@ -419,25 +426,28 @@ async def get_key_usage_analytics(
             "period": period,
             "key_id": key_id,
             "key_name": api_key.name if api_key else None,
-            "key_created": api_key.created_at.isoformat() if api_key and api_key.created_at else None,
-            "key_last_used": api_key.last_used_at.isoformat() if api_key and api_key.last_used_at else None,
+            "key_created": (api_key.created_at.isoformat() if api_key and api_key.created_at else None),
+            "key_last_used": (api_key.last_used_at.isoformat() if api_key and api_key.last_used_at else None),
         }
 
         return KeyUsageResponse(
-            key_id=key_id, usage_stats=detailed_stats, cost_breakdown=cost_breakdown, recommendations=recommendations
+            key_id=key_id,
+            usage_stats=detailed_stats,
+            cost_breakdown=cost_breakdown,
+            recommendations=recommendations,
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting usage analytics for key {key_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to retrieve usage analytics")
+        raise HTTPException(status_code=500, detail="Failed to retrieve usage analytics") from e
 
 
 @router.get("/usage/summary")
 async def get_usage_summary(
-    period: str = Query("month", pattern="^(day|week|month)$", description="Usage period"),
-    user: User = Depends(authenticate_user),
+    user: User,  # Will be injected via Depends in route
+    period: str = "month",
 ) -> JSONResponse:
     """
     Get overall usage summary across all user's API keys.
@@ -476,14 +486,26 @@ async def get_usage_summary(
 
         # Get tier limits (this would come from a configuration service)
         tier_limits = {
-            "free": {"requests_per_day": 1000, "tokens_per_month": 25000, "max_keys": 2},
-            "premium": {"requests_per_day": 10000, "tokens_per_month": 250000, "max_keys": 10},
-            "enterprise": {"requests_per_day": 100000, "tokens_per_month": 2500000, "max_keys": 50},
+            "free": {
+                "requests_per_day": 1000,
+                "tokens_per_month": 25000,
+                "max_keys": 2,
+            },
+            "premium": {
+                "requests_per_day": 10000,
+                "tokens_per_month": 250000,
+                "max_keys": 10,
+            },
+            "enterprise": {
+                "requests_per_day": 100000,
+                "tokens_per_month": 2500000,
+                "max_keys": 50,
+            },
         }
 
         user_limits = tier_limits.get(user.tier.value, tier_limits["free"])
 
-        summary: Dict[str, Any] = {
+        summary: dict[str, Any] = {
             "user_id": user.id,
             "user_tier": user.tier.value,
             "period": period,
@@ -522,4 +544,4 @@ async def get_usage_summary(
 
     except Exception as e:
         logger.error(f"Error getting usage summary for user {user.id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to retrieve usage summary")
+        raise HTTPException(status_code=500, detail="Failed to retrieve usage summary") from e

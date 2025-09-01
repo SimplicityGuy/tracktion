@@ -6,17 +6,17 @@ Create Date: 2025-08-28 17:00:30.829257
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op  # type: ignore
 import sqlalchemy as sa
 
+from alembic import op  # type: ignore
 
 # revision identifiers, used by Alembic.
 revision: str = "e05db30dd934"
-down_revision: Union[str, Sequence[str], None] = "063942b5b3ea"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "063942b5b3ea"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -32,11 +32,21 @@ def upgrade() -> None:
 
     # Recreate foreign keys with ON DELETE CASCADE
     op.create_foreign_key(
-        "metadata_recording_id_fkey", "metadata", "recordings", ["recording_id"], ["id"], ondelete="CASCADE"
+        "metadata_recording_id_fkey",
+        "metadata",
+        "recordings",
+        ["recording_id"],
+        ["id"],
+        ondelete="CASCADE",
     )
 
     op.create_foreign_key(
-        "tracklists_recording_id_fkey", "tracklists", "recordings", ["recording_id"], ["id"], ondelete="CASCADE"
+        "tracklists_recording_id_fkey",
+        "tracklists",
+        "recordings",
+        ["recording_id"],
+        ["id"],
+        ondelete="CASCADE",
     )
 
     op.create_foreign_key(
@@ -49,7 +59,8 @@ def upgrade() -> None:
     )
 
     # Create trigger function for cascade operations logging
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION log_cascade_deletions()
         RETURNS TRIGGER AS $$
         BEGIN
@@ -59,32 +70,40 @@ def upgrade() -> None:
             RETURN OLD;
         END;
         $$ LANGUAGE plpgsql;
-    """)
+    """
+    )
 
     # Create triggers on child tables to log cascade deletions
-    op.execute("""
+    op.execute(
+        """
         CREATE TRIGGER metadata_cascade_delete_trigger
         BEFORE DELETE ON metadata
         FOR EACH ROW
         EXECUTE FUNCTION log_cascade_deletions();
-    """)
+    """
+    )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TRIGGER tracklists_cascade_delete_trigger
         BEFORE DELETE ON tracklists
         FOR EACH ROW
         EXECUTE FUNCTION log_cascade_deletions();
-    """)
+    """
+    )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TRIGGER rename_proposals_cascade_delete_trigger
         BEFORE DELETE ON rename_proposals
         FOR EACH ROW
         EXECUTE FUNCTION log_cascade_deletions();
-    """)
+    """
+    )
 
     # Create function to check for orphaned records
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION check_orphaned_records()
         RETURNS TABLE(
             table_name TEXT,
@@ -113,10 +132,12 @@ def upgrade() -> None:
             WHERE r.id IS NULL;
         END;
         $$ LANGUAGE plpgsql;
-    """)
+    """
+    )
 
     # Create function to clean orphaned records (if any exist)
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION clean_orphaned_records()
         RETURNS TABLE(
             table_name TEXT,
@@ -150,7 +171,8 @@ def upgrade() -> None:
             RETURN QUERY SELECT 'rename_proposals'::TEXT, deleted_count;
         END;
         $$ LANGUAGE plpgsql;
-    """)
+    """
+    )
 
     # Add check constraints to ensure data integrity
     op.create_check_constraint("ck_recordings_file_path_not_empty", "recordings", sa.text("file_path != ''"))
@@ -197,8 +219,18 @@ def downgrade() -> None:
 
     op.create_foreign_key("metadata_recording_id_fkey", "metadata", "recordings", ["recording_id"], ["id"])
 
-    op.create_foreign_key("tracklists_recording_id_fkey", "tracklists", "recordings", ["recording_id"], ["id"])
+    op.create_foreign_key(
+        "tracklists_recording_id_fkey",
+        "tracklists",
+        "recordings",
+        ["recording_id"],
+        ["id"],
+    )
 
     op.create_foreign_key(
-        "rename_proposals_recording_id_fkey", "rename_proposals", "recordings", ["recording_id"], ["id"]
+        "rename_proposals_recording_id_fkey",
+        "rename_proposals",
+        "recordings",
+        ["recording_id"],
+        ["id"],
     )

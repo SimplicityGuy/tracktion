@@ -1,11 +1,12 @@
 """Neo4j repository for graph database operations."""
 
 import logging
-from typing import Dict, List, Optional, Any
+import uuid
+from typing import Any
 from uuid import UUID
 
-from neo4j import GraphDatabase, Driver
-from neo4j.exceptions import ServiceUnavailable, AuthError
+from neo4j import Driver, GraphDatabase
+from neo4j.exceptions import AuthError, ServiceUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class Neo4jRepository:
             self.driver.close()
             logger.info("Neo4j connection closed")
 
-    def create_recording_node(self, recording_id: UUID, file_name: str, file_path: str) -> Dict[str, Any]:
+    def create_recording_node(self, recording_id: UUID, file_name: str, file_path: str) -> dict[str, Any]:
         """Create a Recording node in Neo4j.
 
         Args:
@@ -74,7 +75,7 @@ class Neo4jRepository:
                 return dict(record["r"])
             return {}
 
-    def get_recording_node(self, recording_id: UUID) -> Optional[Dict[str, Any]]:
+    def get_recording_node(self, recording_id: UUID) -> dict[str, Any] | None:
         """Get a Recording node by UUID.
 
         Args:
@@ -110,7 +111,7 @@ class Neo4jRepository:
             )
             logger.debug(f"Added metadata {key}={value} to recording {recording_id}")
 
-    def get_recording_metadata(self, recording_id: UUID) -> List[Dict[str, str]]:
+    def get_recording_metadata(self, recording_id: UUID) -> list[dict[str, str]]:
         """Get all metadata for a recording.
 
         Args:
@@ -129,7 +130,7 @@ class Neo4jRepository:
             )
             return [{"key": record["key"], "value": record["value"]} for record in result]
 
-    def add_tracklist_with_tracks(self, recording_id: UUID, source: str, tracks: List[Dict[str, Any]]) -> None:
+    def add_tracklist_with_tracks(self, recording_id: UUID, source: str, tracks: list[dict[str, Any]]) -> None:
         """Create tracklist and track nodes with relationships.
 
         Args:
@@ -154,7 +155,7 @@ class Neo4jRepository:
             )
             logger.debug(f"Added tracklist with {len(tracks)} tracks to recording {recording_id}")
 
-    def get_tracklist_tracks(self, recording_id: UUID) -> List[Dict[str, Any]]:
+    def get_tracklist_tracks(self, recording_id: UUID) -> list[dict[str, Any]]:
         """Get all tracks for a recording's tracklist.
 
         Args:
@@ -175,7 +176,11 @@ class Neo4jRepository:
                 uuid=str(recording_id),
             )
             return [
-                {"title": record["title"], "artist": record["artist"], "start_time": record["start_time"]}
+                {
+                    "title": record["title"],
+                    "artist": record["artist"],
+                    "start_time": record["start_time"],
+                }
                 for record in result
             ]
 
@@ -291,13 +296,20 @@ class Neo4jRepository:
             True if the recording exists, False otherwise
         """
         with self.driver.session() as session:
-            result = session.run("MATCH (r:Recording {uuid: $uuid}) RETURN count(r) as count", uuid=str(recording_id))
+            result = session.run(
+                "MATCH (r:Recording {uuid: $uuid}) RETURN count(r) as count",
+                uuid=str(recording_id),
+            )
             record = result.single()
             return record["count"] > 0 if record else False
 
     def create_recording(
-        self, recording_id: UUID, file_path: str, file_hash: str, properties: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self,
+        recording_id: UUID,
+        file_path: str,
+        file_hash: str,
+        properties: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Create a Recording node in Neo4j.
 
         Args:
@@ -309,7 +321,11 @@ class Neo4jRepository:
         Returns:
             Created node properties
         """
-        props = {"uuid": str(recording_id), "file_path": file_path, "file_hash": file_hash}
+        props = {
+            "uuid": str(recording_id),
+            "file_path": file_path,
+            "file_hash": file_hash,
+        }
         if properties:
             props.update(properties)
 
@@ -326,7 +342,7 @@ class Neo4jRepository:
                 return dict(record["r"])
             return {}
 
-    def create_metadata(self, key: str, value: str, properties: Optional[Dict[str, Any]] = None) -> UUID:
+    def create_metadata(self, key: str, value: str, properties: dict[str, Any] | None = None) -> UUID:
         """Create a Metadata node.
 
         Args:
@@ -337,7 +353,6 @@ class Neo4jRepository:
         Returns:
             UUID of the created metadata node
         """
-        import uuid
 
         metadata_id = uuid.uuid4()
         props = {"uuid": str(metadata_id), "key": key, "value": value}
@@ -354,7 +369,10 @@ class Neo4jRepository:
         return metadata_id
 
     def create_has_metadata_relationship(
-        self, recording_id: UUID, metadata_id: UUID, properties: Optional[Dict[str, Any]] = None
+        self,
+        recording_id: UUID,
+        metadata_id: UUID,
+        properties: dict[str, Any] | None = None,
     ) -> None:
         """Create HAS_METADATA relationship between Recording and Metadata.
 
@@ -395,7 +413,6 @@ class Neo4jRepository:
         Returns:
             UUID of the artist node
         """
-        import uuid
 
         with self.driver.session() as session:
             result = session.run(
@@ -412,7 +429,7 @@ class Neo4jRepository:
                 return UUID(record["uuid"])
             return uuid.uuid4()
 
-    def create_or_get_album(self, name: str, artist: Optional[str] = None) -> UUID:
+    def create_or_get_album(self, name: str, artist: str | None = None) -> UUID:
         """Create or get an Album node.
 
         Args:
@@ -422,7 +439,6 @@ class Neo4jRepository:
         Returns:
             UUID of the album node
         """
-        import uuid
 
         with self.driver.session() as session:
             if artist:
@@ -460,7 +476,6 @@ class Neo4jRepository:
         Returns:
             UUID of the genre node
         """
-        import uuid
 
         with self.driver.session() as session:
             result = session.run(
@@ -478,7 +493,11 @@ class Neo4jRepository:
             return uuid.uuid4()
 
     def create_relationship(
-        self, from_id: UUID, to_id: UUID, relationship_type: str, properties: Optional[Dict[str, Any]] = None
+        self,
+        from_id: UUID,
+        to_id: UUID,
+        relationship_type: str,
+        properties: dict[str, Any] | None = None,
     ) -> None:
         """Create a relationship between two nodes.
 
@@ -511,7 +530,7 @@ class Neo4jRepository:
                     to_uuid=str(to_id),
                 )
 
-    def update_recording_properties(self, recording_id: UUID, properties: Dict[str, Any]) -> None:
+    def update_recording_properties(self, recording_id: UUID, properties: dict[str, Any]) -> None:
         """Update properties of a Recording node.
 
         Args:
@@ -521,6 +540,9 @@ class Neo4jRepository:
         with self.driver.session() as session:
             session.run(
                 """
+import uuid
+
+import uuid
                 MATCH (r:Recording {uuid: $uuid})
                 SET r += $props
                 """,

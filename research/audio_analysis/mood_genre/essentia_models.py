@@ -4,21 +4,24 @@ Essentia Pre-trained Models Evaluation
 Tests mood and genre classification using Essentia's pre-trained models.
 """
 
+from __future__ import annotations
+
 import os
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any
 
 import essentia.standard as es
 import numpy as np
 import pandas as pd
+import psutil
 from tqdm import tqdm
 
 
 class EssentiaModelEvaluator:
     """Evaluate Essentia's pre-trained models for mood and genre classification."""
 
-    def __init__(self, models_dir: Optional[str] = None):
+    def __init__(self, models_dir: str | None = None):
         """
         Initialize model evaluator.
 
@@ -27,7 +30,7 @@ class EssentiaModelEvaluator:
                        If None, will attempt to download models.
         """
         self.models_dir = models_dir or self._get_default_models_dir()
-        self.models_loaded: Dict[str, object] = {}
+        self.models_loaded: dict[str, object] = {}
 
     def _get_default_models_dir(self) -> str:
         """Get default models directory."""
@@ -36,7 +39,7 @@ class EssentiaModelEvaluator:
         models_dir.mkdir(parents=True, exist_ok=True)
         return str(models_dir)
 
-    def download_models(self) -> Dict[str, str]:
+    def download_models(self) -> dict[str, str]:
         """
         Download Essentia pre-trained models.
 
@@ -75,7 +78,7 @@ class EssentiaModelEvaluator:
 
         return model_urls
 
-    def analyze_with_musicnn(self, audio_path: str, model_name: str = "musicnn_mtt") -> Dict:
+    def analyze_with_musicnn(self, audio_path: str, model_name: str = "musicnn_mtt") -> dict[str, Any]:
         """
         Analyze audio using MusiCNN model.
 
@@ -87,7 +90,7 @@ class EssentiaModelEvaluator:
             Dictionary with predictions and metadata
         """
         start_time = time.time()
-        result = {
+        result: dict[str, Any] = {
             "model": model_name,
             "audio_file": Path(audio_path).name,
         }
@@ -107,27 +110,32 @@ class EssentiaModelEvaluator:
 
             # Simulate model predictions (replace with actual model inference)
             if "mood" in model_name:
-                result["mood_scores"] = {
-                    "happy": np.random.random(),
-                    "sad": np.random.random(),
-                    "relaxed": np.random.random(),
-                    "aggressive": np.random.random(),
+                mood_scores = {
+                    "happy": float(np.random.default_rng().random()),
+                    "sad": float(np.random.default_rng().random()),
+                    "relaxed": float(np.random.default_rng().random()),
+                    "aggressive": float(np.random.default_rng().random()),
                 }
-                result["predicted_mood"] = max(result["mood_scores"], key=result["mood_scores"].get)
+                result["mood_scores"] = mood_scores
+                result["predicted_mood"] = max(mood_scores, key=lambda k: mood_scores[k])
 
             elif "genre" in model_name:
                 genres = ["rock", "pop", "electronic", "jazz", "classical", "hip-hop"]
-                result["genre_scores"] = {g: np.random.random() for g in genres}
-                result["predicted_genre"] = max(result["genre_scores"], key=result["genre_scores"].get)
+                genre_scores = {g: float(np.random.default_rng().random()) for g in genres}
+                result["genre_scores"] = genre_scores
+                result["predicted_genre"] = max(genre_scores, key=lambda k: genre_scores[k])
 
             elif "danceability" in model_name:
-                result["danceability_score"] = np.random.random()
-                result["is_danceable"] = result["danceability_score"] > 0.5
+                danceability_score = float(np.random.default_rng().random())
+                result["danceability_score"] = danceability_score
+                result["is_danceable"] = danceability_score > 0.5
 
             elif "voice" in model_name:
-                result["instrumental_score"] = np.random.random()
-                result["voice_score"] = 1 - result["instrumental_score"]
-                result["has_voice"] = result["voice_score"] > 0.5
+                instrumental_score = float(np.random.default_rng().random())
+                voice_score = 1 - instrumental_score
+                result["instrumental_score"] = instrumental_score
+                result["voice_score"] = voice_score
+                result["has_voice"] = voice_score > 0.5
 
             result["features"] = features
             result["processing_time"] = time.time() - start_time
@@ -139,9 +147,9 @@ class EssentiaModelEvaluator:
 
         return result
 
-    def _extract_audio_features(self, audio: np.ndarray) -> Dict:
+    def _extract_audio_features(self, audio: np.ndarray) -> dict[str, Any]:
         """Extract audio features for analysis."""
-        features = {}
+        features: dict[str, Any] = {}
 
         try:
             # Spectral features
@@ -155,7 +163,8 @@ class EssentiaModelEvaluator:
 
             # MFCC
             mfcc = es.MFCC()(spectrum)
-            features["mfcc_mean"] = [float(x) for x in np.mean(mfcc[1], axis=0)]
+            mfcc_coeffs = mfcc[1]
+            features["mfcc_mean"] = [float(x) for x in np.mean(mfcc_coeffs, axis=0)]
 
             # Rhythm features
             rhythm_extractor = es.RhythmExtractor2013()
@@ -172,9 +181,7 @@ class EssentiaModelEvaluator:
 
         return features
 
-    def evaluate_genre_classification(
-        self, audio_files: List[str], ground_truth: Optional[Dict] = None
-    ) -> pd.DataFrame:
+    def evaluate_genre_classification(self, audio_files: list[str], ground_truth: dict | None = None) -> pd.DataFrame:
         """
         Evaluate genre classification on multiple files.
 
@@ -203,7 +210,7 @@ class EssentiaModelEvaluator:
 
         return pd.DataFrame(results)
 
-    def evaluate_mood_classification(self, audio_files: List[str], ground_truth: Optional[Dict] = None) -> pd.DataFrame:
+    def evaluate_mood_classification(self, audio_files: list[str], ground_truth: dict | None = None) -> pd.DataFrame:
         """
         Evaluate mood classification on multiple files.
 
@@ -232,7 +239,7 @@ class EssentiaModelEvaluator:
 
         return pd.DataFrame(results)
 
-    def measure_model_performance(self, model_name: str, test_file: str) -> Dict:
+    def measure_model_performance(self, model_name: str, test_file: str) -> dict[str, Any]:
         """
         Measure model loading time, memory usage, and inference speed.
 
@@ -243,7 +250,6 @@ class EssentiaModelEvaluator:
         Returns:
             Performance metrics dictionary
         """
-        import psutil
 
         process = psutil.Process(os.getpid())
 
@@ -255,10 +261,7 @@ class EssentiaModelEvaluator:
 
         # Simulate model loading (in production, load actual TensorFlow model)
         model_path = Path(self.models_dir) / f"{model_name}.pb"
-        if model_path.exists():
-            model_size_mb = model_path.stat().st_size / 1024 / 1024
-        else:
-            model_size_mb = 0
+        model_size_mb = model_path.stat().st_size / 1024 / 1024 if model_path.exists() else 0
 
         load_time = time.time() - load_start
 
@@ -274,7 +277,7 @@ class EssentiaModelEvaluator:
                 inference_times.append(result["processing_time"])
 
         # Calculate statistics
-        metrics = {
+        return {
             "model_name": model_name,
             "model_size_mb": model_size_mb,
             "load_time_sec": load_time,
@@ -282,8 +285,6 @@ class EssentiaModelEvaluator:
             "avg_inference_time": np.mean(inference_times) if inference_times else None,
             "std_inference_time": np.std(inference_times) if inference_times else None,
         }
-
-        return metrics
 
 
 def test_essentia_features():
@@ -348,9 +349,7 @@ def main():
     print("GENRE CLASSIFICATION TEST")
     print("=" * 60)
 
-    genre_results = evaluator.evaluate_genre_classification(
-        [str(f) for f in audio_files[:5]]  # Test first 5 files
-    )
+    genre_results = evaluator.evaluate_genre_classification([str(f) for f in audio_files[:5]])  # Test first 5 files
 
     if not genre_results.empty:
         print("\nGenre Classification Results:")

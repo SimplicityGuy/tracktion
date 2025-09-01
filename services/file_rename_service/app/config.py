@@ -20,7 +20,10 @@ class Settings(BaseSettings):
     app_name: str = "File Rename Service"
     app_version: str = "0.1.0"
     debug: bool = Field(default=False, description="Debug mode")
-    environment: str = Field(default="development", description="Environment (development, staging, production)")
+    environment: str = Field(
+        default="development",
+        description="Environment (development, staging, production)",
+    )
 
     # Server settings
     host: str = Field(default="0.0.0.0", description="Server host")

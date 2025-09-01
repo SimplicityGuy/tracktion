@@ -174,12 +174,26 @@ class TestTimingService:
         """Test scaling tracks when they exceed duration."""
         tracks = [
             TrackEntry(
-                position=1, start_time=timedelta(minutes=0), end_time=timedelta(minutes=10), artist="A1", title="T1"
+                position=1,
+                start_time=timedelta(minutes=0),
+                end_time=timedelta(minutes=10),
+                artist="A1",
+                title="T1",
             ),
             TrackEntry(
-                position=2, start_time=timedelta(minutes=10), end_time=timedelta(minutes=20), artist="A2", title="T2"
+                position=2,
+                start_time=timedelta(minutes=10),
+                end_time=timedelta(minutes=20),
+                artist="A2",
+                title="T2",
             ),
-            TrackEntry(position=3, start_time=timedelta(minutes=20), end_time=None, artist="A3", title="T3"),
+            TrackEntry(
+                position=3,
+                start_time=timedelta(minutes=20),
+                end_time=None,
+                artist="A3",
+                title="T3",
+            ),
         ]
 
         audio_duration = timedelta(minutes=10)  # Half the expected duration
@@ -231,7 +245,11 @@ class TestTimingService:
         """Test detecting tracks exceeding audio duration."""
         tracks = [
             TrackEntry(
-                position=1, start_time=timedelta(minutes=0), end_time=timedelta(minutes=5), artist="A1", title="T1"
+                position=1,
+                start_time=timedelta(minutes=0),
+                end_time=timedelta(minutes=5),
+                artist="A1",
+                title="T1",
             ),
             TrackEntry(
                 position=2,
@@ -261,7 +279,11 @@ class TestTimingService:
                 title="T1",
             ),
             TrackEntry(
-                position=2, start_time=timedelta(seconds=15), end_time=timedelta(minutes=5), artist="A2", title="T2"
+                position=2,
+                start_time=timedelta(seconds=15),
+                end_time=timedelta(minutes=5),
+                artist="A2",
+                title="T2",
             ),
         ]
 

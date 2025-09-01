@@ -2,15 +2,16 @@
 
 import json
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Dict, List, Any
-import redis.asyncio as redis
+from typing import Any
 
+import redis.asyncio as redis
 from fastapi import Request
 
+from src.auth.models import User
+
 from .models import AbuseScore, AbuseType
-from ..auth.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 class AbuseDetector:
     """Advanced abuse detection using behavioral analysis."""
 
-    def __init__(self, redis_client: redis.Redis[str]):
+    def __init__(self, redis_client: redis.Redis):
         """Initialize abuse detector.
 
         Args:
@@ -67,14 +68,20 @@ class AbuseDetector:
             if freq_abuse:
                 abuse_types.append(AbuseType.HIGH_FREQUENCY)
             total_score += freq_score
-            details["frequency"] = {"score": str(freq_score), "rpm": behavior_data.get("requests_per_minute", 0)}
+            details["frequency"] = {
+                "score": str(freq_score),
+                "rpm": behavior_data.get("requests_per_minute", 0),
+            }
 
             # 2. Suspicious pattern detection
             pattern_score, pattern_abuse = await self._detect_suspicious_patterns(user, behavior_data)
             if pattern_abuse:
                 abuse_types.append(AbuseType.SUSPICIOUS_PATTERN)
             total_score += pattern_score
-            details["patterns"] = {"score": str(pattern_score), "anomalies": behavior_data.get("pattern_anomalies", [])}
+            details["patterns"] = {
+                "score": str(pattern_score),
+                "anomalies": behavior_data.get("pattern_anomalies", []),
+            }
 
             # 3. Invalid request detection
             invalid_score, invalid_abuse = await self._detect_invalid_requests(user, behavior_data)
@@ -101,7 +108,10 @@ class AbuseDetector:
             if quota_abuse:
                 abuse_types.append(AbuseType.QUOTA_EXHAUSTION)
             total_score += quota_score
-            details["quota"] = {"score": str(quota_score), "quota_usage": behavior_data.get("quota_usage_percent", 0)}
+            details["quota"] = {
+                "score": str(quota_score),
+                "quota_usage": behavior_data.get("quota_usage_percent", 0),
+            }
 
             # Normalize score to 0-1 range
             final_score = min(total_score, Decimal("1.0"))
@@ -135,13 +145,13 @@ class AbuseDetector:
                 recommendation="Error occurred during analysis",
             )
 
-    async def _collect_behavior_data(self, user: User, request: Request) -> Dict[str, Any]:
+    async def _collect_behavior_data(self, user: User, request: Request) -> dict[str, Any]:
         """Collect behavioral data for analysis."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         hour_start = now.replace(minute=0, second=0, microsecond=0)
         minute_start = now.replace(second=0, microsecond=0)
 
-        behavior_data: Dict[str, Any] = {
+        behavior_data: dict[str, Any] = {
             "timestamp": now.isoformat(),
             "ip_address": self._get_client_ip(request),
             "user_agent": request.headers.get("user-agent", ""),
@@ -190,7 +200,7 @@ class AbuseDetector:
 
         return behavior_data
 
-    async def _detect_high_frequency(self, user: User, data: Dict[str, Any]) -> tuple[Decimal, bool]:
+    async def _detect_high_frequency(self, user: User, data: dict[str, Any]) -> tuple[Decimal, bool]:
         """Detect high frequency abuse."""
         rpm = data.get("requests_per_minute", 0)
         threshold = self.thresholds["high_frequency_rpm"]
@@ -202,7 +212,7 @@ class AbuseDetector:
 
         return Decimal("0.0"), False
 
-    async def _detect_suspicious_patterns(self, user: User, data: Dict[str, Any]) -> tuple[Decimal, bool]:
+    async def _detect_suspicious_patterns(self, user: User, data: dict[str, Any]) -> tuple[Decimal, bool]:
         """Detect suspicious request patterns."""
         anomalies = data.get("pattern_anomalies", [])
 
@@ -224,7 +234,7 @@ class AbuseDetector:
 
         return Decimal("0.0"), False
 
-    async def _detect_invalid_requests(self, user: User, data: Dict[str, Any]) -> tuple[Decimal, bool]:
+    async def _detect_invalid_requests(self, user: User, data: dict[str, Any]) -> tuple[Decimal, bool]:
         """Detect invalid request abuse."""
         error_rate = data.get("error_rate", 0)
         threshold = self.thresholds["invalid_requests_ratio"]
@@ -235,7 +245,7 @@ class AbuseDetector:
 
         return Decimal("0.0"), False
 
-    async def _detect_resource_abuse(self, user: User, data: Dict[str, Any]) -> tuple[Decimal, bool]:
+    async def _detect_resource_abuse(self, user: User, data: dict[str, Any]) -> tuple[Decimal, bool]:
         """Detect resource abuse."""
         data_usage_mb = data.get("data_usage_mb", 0)
         threshold_mb = self.thresholds["resource_abuse_size"] / (1024 * 1024)
@@ -246,7 +256,7 @@ class AbuseDetector:
 
         return Decimal("0.0"), False
 
-    async def _detect_quota_exhaustion(self, user: User, data: Dict[str, Any]) -> tuple[Decimal, bool]:
+    async def _detect_quota_exhaustion(self, user: User, data: dict[str, Any]) -> tuple[Decimal, bool]:
         """Detect quota exhaustion abuse."""
         quota_usage = data.get("quota_usage_percent", 0)
         threshold = self.thresholds["quota_exhaustion_ratio"]
@@ -259,7 +269,7 @@ class AbuseDetector:
 
         return Decimal("0.0"), False
 
-    def _should_block_user(self, score: Decimal, abuse_types: List[AbuseType], data: Dict[str, Any]) -> bool:
+    def _should_block_user(self, score: Decimal, abuse_types: list[AbuseType], data: dict[str, Any]) -> bool:
         """Determine if user should be automatically blocked."""
         # High score threshold
         if score >= Decimal("0.8"):
@@ -274,18 +284,15 @@ class AbuseDetector:
             return True
 
         # Very high error rate
-        if data.get("error_rate", 0) > 0.8:
-            return True
+        return bool(float(data.get("error_rate", 0)) > 0.8)
 
-        return False
-
-    def _generate_recommendation(self, score: Decimal, abuse_types: List[AbuseType], details: Dict[str, Any]) -> str:
+    def _generate_recommendation(self, score: Decimal, abuse_types: list[AbuseType], details: dict[str, Any]) -> str:
         """Generate recommendation based on analysis."""
         if score < Decimal("0.2"):
             return "Normal behavior - no action needed"
-        elif score < Decimal("0.5"):
+        if score < Decimal("0.5"):
             return "Monitor user activity - low risk"
-        elif score < Decimal("0.8"):
+        if score < Decimal("0.8"):
             recommendations = []
 
             if AbuseType.HIGH_FREQUENCY in abuse_types:
@@ -298,8 +305,7 @@ class AbuseDetector:
                 recommendations.append("verify legitimate usage")
 
             return f"Medium risk - consider: {', '.join(recommendations)}"
-        else:
-            return "High risk - recommend immediate blocking or manual review"
+        return "High risk - recommend immediate blocking or manual review"
 
     async def _count_requests_in_window(self, user: User, start: datetime, end: datetime) -> int:
         """Count requests in time window."""
@@ -343,14 +349,13 @@ class AbuseDetector:
             request_count = await self._count_requests_in_window(user, start, end)
 
             # Estimate average 10KB per request
-            estimated_bytes = request_count * 10 * 1024
-            return estimated_bytes
+            return request_count * 10 * 1024
 
         except Exception as e:
             logger.warning(f"Error estimating data usage for user {user.id}: {e}")
             return 0
 
-    async def _analyze_request_patterns(self, user: User, start: datetime, end: datetime) -> List[str]:
+    async def _analyze_request_patterns(self, user: User, start: datetime, end: datetime) -> list[str]:
         """Analyze request patterns for anomalies."""
         try:
             # Simulate pattern analysis
@@ -372,12 +377,12 @@ class AbuseDetector:
             logger.warning(f"Error analyzing patterns for user {user.id}: {e}")
             return []
 
-    async def _analyze_geographic_patterns(self, user: User, start: datetime, end: datetime) -> List[str]:
+    async def _analyze_geographic_patterns(self, user: User, start: datetime, end: datetime) -> list[str]:
         """Analyze geographic access patterns."""
         try:
             # Simulate geo analysis
             # In reality, would track IP addresses and geolocate them
-            anomalies: List[str] = []
+            anomalies: list[str] = []
 
             # This is a placeholder - real implementation would:
             # 1. Track IP addresses used by user
@@ -403,22 +408,21 @@ class AbuseDetector:
             limit = tier_limits.get(user.tier.value, 1000)
 
             # Estimate usage based on recent requests
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             monthly_requests = await self._count_requests_in_window(user, month_start, now)
 
-            usage_percent = min(monthly_requests / limit, 1.0)
-            return usage_percent
+            return min(monthly_requests / limit, 1.0)
 
         except Exception as e:
             logger.warning(f"Error estimating quota usage for user {user.id}: {e}")
             return 0.0
 
-    async def _store_behavior_point(self, user: User, data: Dict[str, Any]) -> None:
+    async def _store_behavior_point(self, user: User, data: dict[str, Any]) -> None:
         """Store behavior data point for future analysis."""
         try:
             user_key = f"{self.behavior_key}:{user.id}"
-            timestamp = int(datetime.now(timezone.utc).timestamp())
+            timestamp = int(datetime.now(UTC).timestamp())
 
             # Store in sorted set for time-based queries
             await self.redis.zadd(user_key, {json.dumps(data): timestamp})
@@ -437,7 +441,11 @@ class AbuseDetector:
             logger.warning(f"Error storing behavior point for user {user.id}: {e}")
 
     async def _store_abuse_score(
-        self, user: User, score: Decimal, abuse_types: List[AbuseType], details: Dict[str, Any]
+        self,
+        user: User,
+        score: Decimal,
+        abuse_types: list[AbuseType],
+        details: dict[str, Any],
     ) -> None:
         """Store abuse score for tracking."""
         try:
@@ -446,11 +454,11 @@ class AbuseDetector:
                 "score": str(score),
                 "abuse_types": [t.value for t in abuse_types],
                 "details": details,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
 
             score_key = f"{self.scores_key}:{user.id}"
-            timestamp = int(datetime.now(timezone.utc).timestamp())
+            timestamp = int(datetime.now(UTC).timestamp())
 
             await self.redis.zadd(score_key, {json.dumps(score_data): timestamp})
 
@@ -478,7 +486,7 @@ class AbuseDetector:
 
         return "unknown"
 
-    async def get_user_abuse_history(self, user: User, days: int = 7) -> List[AbuseScore]:
+    async def get_user_abuse_history(self, user: User, days: int = 7) -> list[AbuseScore]:
         """Get abuse score history for user.
 
         Args:
@@ -490,7 +498,7 @@ class AbuseDetector:
         """
         try:
             score_key = f"{self.scores_key}:{user.id}"
-            cutoff_time = datetime.now(timezone.utc) - timedelta(days=days)
+            cutoff_time = datetime.now(UTC) - timedelta(days=days)
             cutoff_ts = int(cutoff_time.timestamp())
 
             # Get scores from Redis

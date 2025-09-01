@@ -8,17 +8,21 @@ with proper error handling, retry logic, and message acknowledgments.
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Dict, Any, Optional, Callable, List
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import aio_pika
-from aio_pika import Message, IncomingMessage, ExchangeType
-from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractExchange
+from aio_pika import ExchangeType, Message
+from aio_pika.abc import AbstractIncomingMessage
 
-from ..config import get_config
-from ..exceptions import MessageQueueError
-from ..models.tracklist import ImportTracklistRequest
+from src.config import get_config
+from src.exceptions import MessageQueueError
+from src.models.tracklist import ImportTracklistRequest
+
+if TYPE_CHECKING:
+    from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractExchange
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +37,7 @@ class ImportJobMessage:
     retry_count: int = 0
     priority: int = 5
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "correlation_id": self.correlation_id,
@@ -44,7 +48,7 @@ class ImportJobMessage:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ImportJobMessage":
+    def from_dict(cls, data: dict[str, Any]) -> "ImportJobMessage":
         """Create from dictionary."""
         return cls(
             correlation_id=data["correlation_id"],
@@ -61,12 +65,12 @@ class ImportResultMessage:
 
     correlation_id: str
     success: bool
-    tracklist_id: Optional[str] = None
-    error: Optional[str] = None
-    processing_time_ms: Optional[int] = None
-    completed_at: Optional[str] = None
+    tracklist_id: str | None = None
+    error: str | None = None
+    processing_time_ms: int | None = None
+    completed_at: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "correlation_id": self.correlation_id,
@@ -74,14 +78,14 @@ class ImportResultMessage:
             "tracklist_id": self.tracklist_id,
             "error": self.error,
             "processing_time_ms": self.processing_time_ms,
-            "completed_at": self.completed_at or datetime.now(timezone.utc).isoformat(),
+            "completed_at": self.completed_at or datetime.now(UTC).isoformat(),
         }
 
 
 class ImportMessageHandler:
     """RabbitMQ message handler for import operations."""
 
-    def __init__(self, connection_url: Optional[str] = None):
+    def __init__(self, connection_url: str | None = None):
         """
         Initialize the import message handler.
 
@@ -92,9 +96,9 @@ class ImportMessageHandler:
         self.connection_url = connection_url or self.config.message_queue.rabbitmq_url
 
         # Connection objects
-        self.connection: Optional[AbstractConnection] = None
-        self.channel: Optional[AbstractChannel] = None
-        self.exchange: Optional[AbstractExchange] = None
+        self.connection: AbstractConnection | None = None
+        self.channel: AbstractChannel | None = None
+        self.exchange: AbstractExchange | None = None
 
         # Queue names
         self.import_queue = "tracklist_import_queue"
@@ -106,7 +110,7 @@ class ImportMessageHandler:
         self.exchange_name = self.config.message_queue.exchange_name
 
         # Message handlers
-        self.import_handlers: List[Callable[[ImportJobMessage], None]] = []
+        self.import_handlers: list[Callable[[ImportJobMessage], None]] = []
 
     async def connect(self) -> None:
         """Establish connection to RabbitMQ."""
@@ -114,7 +118,8 @@ class ImportMessageHandler:
             logger.info(f"Connecting to RabbitMQ at {self.connection_url}")
 
             self.connection = await aio_pika.connect_robust(
-                self.connection_url, client_properties={"service": "tracklist_import_handler"}
+                self.connection_url,
+                client_properties={"service": "tracklist_import_handler"},
             )
 
             self.channel = await self.connection.channel()
@@ -130,7 +135,7 @@ class ImportMessageHandler:
 
         except Exception as e:
             logger.error(f"Failed to connect to RabbitMQ: {e}")
-            raise MessageQueueError(f"Failed to connect to message queue: {str(e)}", queue_name="connection")
+            raise MessageQueueError(f"Failed to connect to message queue: {e!s}", queue_name="connection") from e
 
     async def disconnect(self) -> None:
         """Close connection to RabbitMQ."""
@@ -146,6 +151,9 @@ class ImportMessageHandler:
         if not self.channel:
             raise MessageQueueError("Channel not initialized")
 
+        if not self.exchange:
+            raise MessageQueueError("Exchange not initialized")
+
         # Import queue (main processing queue)
         import_queue = await self.channel.declare_queue(
             self.import_queue,
@@ -159,7 +167,7 @@ class ImportMessageHandler:
         )
 
         # Bind to exchange
-        await import_queue.bind(self.exchange, routing_key="tracklist.import")  # type: ignore[arg-type]
+        await import_queue.bind(self.exchange, routing_key="tracklist.import")
 
         # Result queue (for publishing results)
         result_queue = await self.channel.declare_queue(
@@ -170,7 +178,7 @@ class ImportMessageHandler:
                 "x-max-length": 5000,  # Max 5000 results
             },
         )
-        await result_queue.bind(self.exchange, routing_key="tracklist.import.result")  # type: ignore[arg-type]
+        await result_queue.bind(self.exchange, routing_key="tracklist.import.result")
 
         # Retry queue (for failed imports)
         retry_queue = await self.channel.declare_queue(
@@ -181,7 +189,7 @@ class ImportMessageHandler:
                 "x-max-length": 500,  # Max 500 retries
             },
         )
-        await retry_queue.bind(self.exchange, routing_key="tracklist.import.retry")  # type: ignore[arg-type]
+        await retry_queue.bind(self.exchange, routing_key="tracklist.import.retry")
 
         # Dead letter queue (for permanently failed imports)
         await self.channel.declare_queue(self.import_dlq, durable=True)
@@ -208,8 +216,11 @@ class ImportMessageHandler:
                 message_body,
                 priority=job_message.priority,
                 correlation_id=job_message.correlation_id,
-                timestamp=datetime.now(timezone.utc),
-                headers={"retry_count": job_message.retry_count, "created_at": job_message.created_at},
+                timestamp=datetime.now(UTC),
+                headers={
+                    "retry_count": job_message.retry_count,
+                    "created_at": job_message.created_at,
+                },
             )
 
             await self.exchange.publish(message, routing_key="tracklist.import")
@@ -226,12 +237,15 @@ class ImportMessageHandler:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to publish import job: {e}", extra={"correlation_id": job_message.correlation_id})
+            logger.error(
+                f"Failed to publish import job: {e}",
+                extra={"correlation_id": job_message.correlation_id},
+            )
             raise MessageQueueError(
-                f"Failed to publish import job: {str(e)}",
+                f"Failed to publish import job: {e!s}",
                 queue_name=self.import_queue,
                 correlation_id=job_message.correlation_id,
-            )
+            ) from e
 
     async def publish_import_result(self, result_message: ImportResultMessage) -> bool:
         """
@@ -252,8 +266,11 @@ class ImportMessageHandler:
             message = Message(
                 message_body,
                 correlation_id=result_message.correlation_id,
-                timestamp=datetime.now(timezone.utc),
-                headers={"success": result_message.success, "completed_at": result_message.completed_at},
+                timestamp=datetime.now(UTC),
+                headers={
+                    "success": result_message.success,
+                    "completed_at": result_message.completed_at,
+                },
             )
 
             await self.exchange.publish(message, routing_key="tracklist.import.result")
@@ -271,7 +288,8 @@ class ImportMessageHandler:
 
         except Exception as e:
             logger.error(
-                f"Failed to publish import result: {e}", extra={"correlation_id": result_message.correlation_id}
+                f"Failed to publish import result: {e}",
+                extra={"correlation_id": result_message.correlation_id},
             )
             return False
 
@@ -282,7 +300,7 @@ class ImportMessageHandler:
 
         import_queue = await self.channel.get_queue(self.import_queue)
 
-        async def process_import_message(message: IncomingMessage) -> None:
+        async def process_import_message(message: AbstractIncomingMessage) -> None:
             """Process a single import message."""
             async with message.process():
                 try:
@@ -316,7 +334,7 @@ class ImportMessageHandler:
                     # Message will be rejected and potentially retried
                     raise
 
-        await import_queue.consume(process_import_message)  # type: ignore[arg-type]
+        await import_queue.consume(process_import_message)
         logger.info("Started consuming import messages")
 
     def register_import_handler(self, handler: Callable[[ImportJobMessage], None]) -> None:
@@ -339,14 +357,13 @@ class ImportMessageHandler:
         try:
             if self.connection and not self.connection.is_closed:
                 return True
-            else:
-                # Try to establish connection
-                await self.connect()
-                return True
+            # Try to establish connection
+            await self.connect()
+            return True
         except Exception:
             return False
 
-    async def get_queue_stats(self) -> Dict[str, Dict[str, int | None | str]]:
+    async def get_queue_stats(self) -> dict[str, dict[str, int | str | None]]:
         """
         Get statistics for all queues.
 
@@ -356,20 +373,30 @@ class ImportMessageHandler:
         if not self.channel:
             raise MessageQueueError("Channel not initialized")
 
-        stats = {}
+        stats: dict[str, dict[str, int | str | None]] = {}
 
-        for queue_name in [self.import_queue, self.import_result_queue, self.import_retry_queue, self.import_dlq]:
+        for queue_name in [
+            self.import_queue,
+            self.import_result_queue,
+            self.import_retry_queue,
+            self.import_dlq,
+        ]:
             try:
                 queue = await self.channel.get_queue(queue_name)
                 stats[queue_name] = {
                     "message_count": queue.declaration_result.message_count,
                     "consumer_count": queue.declaration_result.consumer_count,
+                    "error": None,
                 }
             except Exception as e:
                 logger.warning(f"Could not get stats for queue {queue_name}: {e}")
-                stats[queue_name] = {"error": str(e)}  # type: ignore[dict-item]
+                stats[queue_name] = {
+                    "message_count": None,
+                    "consumer_count": None,
+                    "error": str(e),
+                }
 
-        return stats  # type: ignore[return-value]
+        return stats
 
 
 # Global instance for easy access

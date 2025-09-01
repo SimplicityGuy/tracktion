@@ -4,9 +4,10 @@ import logging
 import os
 import queue
 import threading
-from concurrent.futures import ThreadPoolExecutor, Future
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +48,8 @@ class BatchProcessor:
 
     def __init__(
         self,
-        process_func: Callable[[str, str, Optional[str]], Dict[str, Any]],
-        config: Optional[BatchConfig] = None,
+        process_func: Callable[[str, str, str | None], dict[str, Any]],
+        config: BatchConfig | None = None,
     ) -> None:
         """Initialize the batch processor.
 
@@ -67,7 +68,7 @@ class BatchProcessor:
         self.worker_count = worker_count
 
         # Batch management
-        self.current_batch: List[Tuple[str, str, Optional[str]]] = []
+        self.current_batch: list[tuple[str, str, str | None]] = []
         self.batch_lock = threading.Lock()
         self.batch_event = threading.Event()
 
@@ -86,7 +87,7 @@ class BatchProcessor:
         self,
         file_path: str,
         recording_id: str,
-        correlation_id: Optional[str] = None,
+        correlation_id: str | None = None,
     ) -> None:
         """Add a file to the current batch.
 
@@ -102,7 +103,7 @@ class BatchProcessor:
             if len(self.current_batch) >= self.config.batch_size:
                 self._process_current_batch()
 
-    def _process_current_batch(self) -> List[Future]:
+    def _process_current_batch(self) -> list[Future]:
         """Process the current batch of files.
 
         Returns:
@@ -135,8 +136,8 @@ class BatchProcessor:
         self,
         file_path: str,
         recording_id: str,
-        correlation_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
         """Process a single file with error handling.
 
         Args:
@@ -148,7 +149,10 @@ class BatchProcessor:
             Processing results or error information
         """
         try:
-            logger.debug(f"Processing file: {file_path}", extra={"correlation_id": correlation_id})
+            logger.debug(
+                f"Processing file: {file_path}",
+                extra={"correlation_id": correlation_id},
+            )
 
             # Call the actual processing function
             results = self.process_func(file_path, recording_id, correlation_id)
@@ -168,7 +172,10 @@ class BatchProcessor:
             return results
 
         except Exception as e:
-            logger.error(f"Error processing file {file_path}: {e}", extra={"correlation_id": correlation_id})
+            logger.error(
+                f"Error processing file {file_path}: {e}",
+                extra={"correlation_id": correlation_id},
+            )
 
             # Update error statistics
             with self.stats_lock:
@@ -182,9 +189,9 @@ class BatchProcessor:
 
     def process_batch(
         self,
-        files: List[Tuple[str, str]],
-        correlation_ids: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        files: list[tuple[str, str]],
+        correlation_ids: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """Process a batch of files and wait for completion.
 
         Args:
@@ -199,7 +206,7 @@ class BatchProcessor:
 
         # Submit all files for processing
         futures = []
-        for (file_path, recording_id), correlation_id in zip(files, correlation_ids):
+        for (file_path, recording_id), correlation_id in zip(files, correlation_ids, strict=False):
             future = self.executor.submit(
                 self._process_single_file,
                 file_path,
@@ -220,7 +227,7 @@ class BatchProcessor:
 
         return results
 
-    def flush_batch(self) -> List[Future]:
+    def flush_batch(self) -> list[Future]:
         """Force processing of any pending items in the current batch.
 
         Returns:
@@ -228,7 +235,7 @@ class BatchProcessor:
         """
         return self._process_current_batch()
 
-    def adjust_worker_count(self, new_count: int, metrics_collector: Optional[Any] = None) -> None:
+    def adjust_worker_count(self, new_count: int, metrics_collector: Any | None = None) -> None:
         """Adjust the number of worker threads.
 
         Args:
@@ -255,7 +262,7 @@ class BatchProcessor:
         # Shutdown old executor gracefully
         old_executor.shutdown(wait=False)
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """Get processing statistics.
 
         Returns:

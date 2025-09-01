@@ -1,6 +1,6 @@
 """Unit tests for file rename proposal integration."""
 
-from datetime import UTC
+from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -8,6 +8,10 @@ import pytest
 
 from services.analysis_service.src.file_rename_proposal.config import FileRenameProposalConfig
 from services.analysis_service.src.file_rename_proposal.integration import FileRenameProposalIntegration
+from services.analysis_service.src.file_rename_proposal.message_interface import (
+    MessageTypes,
+    RenameProposalMessageInterface,
+)
 
 
 class TestFileRenameProposalIntegration:
@@ -209,7 +213,6 @@ class TestFileRenameProposalIntegration:
 
     def test_get_proposal_status_with_proposals(self, integration, mock_repos):
         """Test getting proposal status with existing proposals."""
-        from datetime import datetime
 
         proposal_repo, _ = mock_repos
 
@@ -328,15 +331,11 @@ class TestRenameExecutorIntegration:
     @pytest.fixture
     def message_interface(self, mock_components):
         """Create a message interface with mocked components."""
-        from services.analysis_service.src.file_rename_proposal.message_interface import (
-            RenameProposalMessageInterface,
-        )
 
         return RenameProposalMessageInterface(**mock_components)
 
     def test_execute_rename_message_success(self, message_interface, mock_components):
         """Test successful rename execution through message interface."""
-        from services.analysis_service.src.file_rename_proposal.message_interface import MessageTypes
 
         proposal_id = str(uuid4())
 
@@ -365,7 +364,6 @@ class TestRenameExecutorIntegration:
 
     def test_execute_rename_message_failure(self, message_interface, mock_components):
         """Test failed rename execution through message interface."""
-        from services.analysis_service.src.file_rename_proposal.message_interface import MessageTypes
 
         proposal_id = str(uuid4())
 
@@ -392,7 +390,6 @@ class TestRenameExecutorIntegration:
 
     def test_rollback_rename_message_success(self, message_interface, mock_components):
         """Test successful rollback through message interface."""
-        from services.analysis_service.src.file_rename_proposal.message_interface import MessageTypes
 
         proposal_id = str(uuid4())
 
@@ -419,7 +416,6 @@ class TestRenameExecutorIntegration:
 
     def test_execute_rename_missing_proposal_id(self, message_interface):
         """Test execute rename with missing proposal_id."""
-        from services.analysis_service.src.file_rename_proposal.message_interface import MessageTypes
 
         message = {
             "type": MessageTypes.EXECUTE_RENAME,
@@ -434,10 +430,6 @@ class TestRenameExecutorIntegration:
 
     def test_execute_rename_no_executor_configured(self, mock_components):
         """Test execute rename when executor is not configured."""
-        from services.analysis_service.src.file_rename_proposal.message_interface import (
-            MessageTypes,
-            RenameProposalMessageInterface,
-        )
 
         # Create interface without executor
         interface = RenameProposalMessageInterface(

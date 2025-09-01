@@ -2,25 +2,31 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Set
 from asyncio import Task
-from uuid import UUID
+from datetime import UTC, datetime, timedelta
 from enum import Enum
+from typing import Any
+from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.tracklist_service.src.models.tracklist import TracklistDB
 from services.tracklist_service.src.models.synchronization import (
     SyncConfiguration,
     SyncEvent,
 )
-from services.tracklist_service.src.services.tracklists_sync_service import TracklistsSyncService
-from services.tracklist_service.src.services.conflict_resolution_service import ConflictResolutionService
-from services.tracklist_service.src.services.cue_regeneration_service import CueRegenerationService
-from services.tracklist_service.src.services.version_service import VersionService
+from services.tracklist_service.src.models.tracklist import TracklistDB
 from services.tracklist_service.src.services.audit_service import AuditService
+from services.tracklist_service.src.services.conflict_resolution_service import (
+    ConflictResolutionService,
+)
+from services.tracklist_service.src.services.cue_regeneration_service import (
+    CueRegenerationService,
+)
+from services.tracklist_service.src.services.tracklists_sync_service import (
+    TracklistsSyncService,
+)
+from services.tracklist_service.src.services.version_service import VersionService
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +67,11 @@ class SynchronizationService:
     def __init__(
         self,
         session: AsyncSession,
-        tracklists_sync_service: Optional[TracklistsSyncService] = None,
-        conflict_service: Optional[ConflictResolutionService] = None,
-        cue_service: Optional[CueRegenerationService] = None,
-        version_service: Optional[VersionService] = None,
-        audit_service: Optional[AuditService] = None,
+        tracklists_sync_service: TracklistsSyncService | None = None,
+        conflict_service: ConflictResolutionService | None = None,
+        cue_service: CueRegenerationService | None = None,
+        version_service: VersionService | None = None,
+        audit_service: AuditService | None = None,
     ):
         """Initialize synchronization service.
 
@@ -85,10 +91,10 @@ class SynchronizationService:
         self.audit_service = audit_service or AuditService(session)
 
         # Track active sync operations to prevent concurrent syncs
-        self.active_syncs: Set[UUID] = set()
+        self.active_syncs: set[UUID] = set()
 
         # Scheduled sync tasks
-        self.scheduled_tasks: Dict[UUID, Task[Any]] = {}
+        self.scheduled_tasks: dict[UUID, Task[Any]] = {}
 
     async def trigger_manual_sync(
         self,
@@ -96,7 +102,7 @@ class SynchronizationService:
         source: SyncSource = SyncSource.ALL,
         force: bool = False,
         actor: str = "user",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Trigger manual synchronization for a tracklist.
 
         Args:
@@ -125,7 +131,7 @@ class SynchronizationService:
 
             # Check if force sync is needed
             if not force and config.last_sync_at:
-                time_since_sync = datetime.now(timezone.utc) - config.last_sync_at
+                time_since_sync = datetime.now(UTC) - config.last_sync_at
                 if time_since_sync < timedelta(minutes=5):
                     return {
                         "status": SyncStatus.COMPLETED.value,
@@ -151,12 +157,12 @@ class SynchronizationService:
                 }
 
             # Update sync event
-            sync_event.status = "completed" if result.get("status") == SyncStatus.COMPLETED.value else "failed"  # type: ignore[assignment]
-            sync_event.completed_at = datetime.now(timezone.utc)  # type: ignore[assignment]
-            sync_event.changes = result  # type: ignore[assignment]
+            sync_event.status = "completed" if result.get("status") == SyncStatus.COMPLETED.value else "failed"
+            sync_event.completed_at = datetime.now(UTC)
+            sync_event.changes = result
 
             # Update config
-            config.last_sync_at = datetime.now(timezone.utc)  # type: ignore[assignment]
+            config.last_sync_at = datetime.now(UTC)
 
             await self.session.commit()
 
@@ -178,7 +184,7 @@ class SynchronizationService:
         tracklist_id: UUID,
         sync_event: SyncEvent,
         config: SyncConfiguration,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Sync from 1001tracklists.
 
         Args:
@@ -212,8 +218,8 @@ class SynchronizationService:
 
             if conflicts and config.conflict_resolution == "manual":
                 # Queue for manual resolution
-                sync_event.status = "conflict"  # type: ignore[assignment]
-                sync_event.conflict_data = {  # type: ignore[assignment]
+                sync_event.status = "conflict"
+                sync_event.conflict_data = {
                     "conflicts": conflicts,
                     "proposed_changes": updates["changes"],
                 }
@@ -297,7 +303,7 @@ class SynchronizationService:
         tracklist_id: UUID,
         frequency: SyncFrequency,
         source: SyncSource = SyncSource.ALL,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Schedule automatic synchronization for a tracklist.
 
         Args:
@@ -313,9 +319,9 @@ class SynchronizationService:
             config = await self._get_or_create_sync_config(tracklist_id)
 
             # Update configuration
-            config.sync_enabled = True  # type: ignore[assignment]
-            config.sync_frequency = frequency.value  # type: ignore[assignment]
-            config.sync_sources = [source.value]  # type: ignore[assignment]
+            config.sync_enabled = True
+            config.sync_frequency = frequency.value
+            config.sync_sources = [source.value]
 
             await self.session.commit()
 
@@ -400,7 +406,7 @@ class SynchronizationService:
                 logger.error(f"Error in scheduled sync for {tracklist_id}: {e}")
                 # Continue the loop despite errors
 
-    async def cancel_scheduled_sync(self, tracklist_id: UUID) -> Dict[str, Any]:
+    async def cancel_scheduled_sync(self, tracklist_id: UUID) -> dict[str, Any]:
         """Cancel scheduled synchronization for a tracklist.
 
         Args:
@@ -412,8 +418,8 @@ class SynchronizationService:
         try:
             # Update configuration
             config = await self._get_or_create_sync_config(tracklist_id)
-            config.sync_enabled = False  # type: ignore[assignment]
-            config.sync_frequency = SyncFrequency.MANUAL.value  # type: ignore[assignment]
+            config.sync_enabled = False
+            config.sync_frequency = SyncFrequency.MANUAL.value
 
             await self.session.commit()
 
@@ -440,7 +446,7 @@ class SynchronizationService:
         tracklist_id: UUID,
         error: str,
         retry_count: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Handle synchronization failures with retry logic.
 
         Args:
@@ -459,7 +465,13 @@ class SynchronizationService:
 
             logger.info(f"Scheduling retry {retry_count + 1} for {tracklist_id} in {delay} seconds")
 
-            asyncio.create_task(self._retry_sync(tracklist_id, retry_count + 1, delay))
+            # Store task reference to prevent garbage collection
+            retry_task = asyncio.create_task(self._retry_sync(tracklist_id, retry_count + 1, delay))
+            # Store the task so it doesn't get garbage collected
+            task_key = f"retry_{tracklist_id}_{retry_count}"
+            if not hasattr(self, "_retry_tasks"):
+                self._retry_tasks: dict[str, Task[Any]] = {}
+            self._retry_tasks[task_key] = retry_task
 
             return {
                 "status": "retry_scheduled",
@@ -467,24 +479,23 @@ class SynchronizationService:
                 "retry_count": retry_count + 1,
                 "retry_in": delay,
             }
-        else:
-            # Max retries reached, log failure
-            await self.audit_service.log_tracklist_change(
-                tracklist_id=tracklist_id,
-                action="sync_failed",
-                actor="system",
-                metadata={
-                    "error": error,
-                    "retry_count": retry_count,
-                },
-            )
-
-            return {
-                "status": "failed",
-                "tracklist_id": str(tracklist_id),
+        # Max retries reached, log failure
+        await self.audit_service.log_tracklist_change(
+            tracklist_id=tracklist_id,
+            action="sync_failed",
+            actor="system",
+            metadata={
                 "error": error,
                 "retry_count": retry_count,
-            }
+            },
+        )
+
+        return {
+            "status": "failed",
+            "tracklist_id": str(tracklist_id),
+            "error": error,
+            "retry_count": retry_count,
+        }
 
     async def _retry_sync(
         self,
@@ -518,7 +529,7 @@ class SynchronizationService:
     async def get_sync_status(
         self,
         tracklist_id: UUID,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get current synchronization status for a tracklist.
 
         Args:
@@ -553,17 +564,19 @@ class SynchronizationService:
                 "sync_enabled": config.sync_enabled,
                 "sync_frequency": config.sync_frequency,
                 "sync_sources": config.sync_sources,
-                "last_sync_at": config.last_sync_at.isoformat() if config.last_sync_at else None,
+                "last_sync_at": (config.last_sync_at.isoformat() if config.last_sync_at else None),
                 "auto_accept_threshold": config.auto_accept_threshold,
                 "conflict_resolution": config.conflict_resolution,
-                "latest_event": {
-                    "event_type": latest_event.event_type,
-                    "status": latest_event.status,
-                    "created_at": latest_event.created_at.isoformat(),
-                    "completed_at": latest_event.completed_at.isoformat() if latest_event.completed_at else None,
-                }
-                if latest_event
-                else None,
+                "latest_event": (
+                    {
+                        "event_type": latest_event.event_type,
+                        "status": latest_event.status,
+                        "created_at": latest_event.created_at.isoformat(),
+                        "completed_at": (latest_event.completed_at.isoformat() if latest_event.completed_at else None),
+                    }
+                    if latest_event
+                    else None
+                ),
             }
 
         except Exception as e:
@@ -577,8 +590,8 @@ class SynchronizationService:
     async def update_sync_configuration(
         self,
         tracklist_id: UUID,
-        config_updates: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        config_updates: dict[str, Any],
+    ) -> dict[str, Any]:
         """Update synchronization configuration for a tracklist.
 
         Args:
@@ -639,8 +652,8 @@ class SynchronizationService:
     async def coordinate_multi_source_sync(
         self,
         tracklist_id: UUID,
-        sources: List[SyncSource],
-    ) -> Dict[str, Any]:
+        sources: list[SyncSource],
+    ) -> dict[str, Any]:
         """Coordinate synchronization from multiple sources.
 
         Args:
@@ -650,7 +663,7 @@ class SynchronizationService:
         Returns:
             Aggregated sync results
         """
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "tracklist_id": str(tracklist_id),
             "sources_processed": [],
             "total_changes": 0,
@@ -710,7 +723,7 @@ class SynchronizationService:
         """
         query = select(SyncConfiguration).where(SyncConfiguration.tracklist_id == tracklist_id)
         result = await self.session.execute(query)
-        config = result.scalar_one_or_none()
+        config: SyncConfiguration | None = result.scalar_one_or_none()
 
         if not config:
             config = SyncConfiguration(
@@ -746,7 +759,7 @@ class SynchronizationService:
             event_type="sync",
             source=source,
             status="processing",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             changes={"actor": actor},  # Store actor info in changes field
         )
         self.session.add(event)

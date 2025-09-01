@@ -9,21 +9,17 @@ import hashlib
 import json
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from ..models.tracklist_models import (
-    Tracklist,
-    TracklistRequest,
-    TracklistResponse,
-)
-from ..scraper.tracklist_scraper import TracklistScraper
-from ..cache.redis_cache import RedisCache
-from ..messaging.simple_handler import MessageHandler
+from src.cache.redis_cache import RedisCache
+from src.messaging.simple_handler import MessageHandler
+from src.models.tracklist_models import Tracklist, TracklistRequest, TracklistResponse
+from src.scraper.tracklist_scraper import TracklistScraper
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +49,7 @@ async def process_tracklist_async(request: TracklistRequest) -> None:
     message = {
         "type": "tracklist_retrieval",
         "request": request.model_dump(),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
     await message_handler.publish("tracklist.retrieval", message)
 
@@ -97,7 +93,7 @@ async def get_tracklist_by_id(
         processing_time = int((time.time() - start_time) * 1000)
         return TracklistResponse(
             success=False,
-            error=f"Internal server error: {str(e)}",
+            error=f"Internal server error: {e!s}",
             tracklist=None,
             processing_time_ms=processing_time,
             correlation_id=correlation_id,
@@ -213,7 +209,7 @@ async def retrieve_tracklist(
         processing_time = int((time.time() - start_time) * 1000)
         return TracklistResponse(
             success=False,
-            error=f"Failed to retrieve tracklist: {str(e)}",
+            error=f"Failed to retrieve tracklist: {e!s}",
             tracklist=None,
             processing_time_ms=processing_time,
             correlation_id=request.correlation_id,
@@ -255,7 +251,7 @@ async def get_tracklist_status(correlation_id: UUID) -> JSONResponse:
 
 @router.delete("/tracklist/cache")
 async def clear_tracklist_cache(
-    url: Optional[str] = Query(None, description="Specific URL to clear from cache"),
+    url: str | None = Query(None, description="Specific URL to clear from cache"),
 ) -> JSONResponse:
     """
     Clear tracklist cache.
@@ -278,22 +274,21 @@ async def clear_tracklist_cache(
                     "entries_cleared": deleted,
                 }
             )
-        else:
-            # Clear all tracklist cache entries
-            # This would need implementation in RedisCache
-            return JSONResponse(
-                content={
-                    "success": False,
-                    "message": "Bulk cache clearing not yet implemented",
-                }
-            )
+        # Clear all tracklist cache entries
+        # This would need implementation in RedisCache
+        return JSONResponse(
+            content={
+                "success": False,
+                "message": "Bulk cache clearing not yet implemented",
+            }
+        )
 
     except Exception as e:
         return JSONResponse(
             status_code=500,
             content={
                 "success": False,
-                "error": f"Failed to clear cache: {str(e)}",
+                "error": f"Failed to clear cache: {e!s}",
             },
         )
 
@@ -306,10 +301,10 @@ async def health_check() -> JSONResponse:
     Returns:
         JSON response with service health status
     """
-    health_status: Dict[str, Any] = {
+    health_status: dict[str, Any] = {
         "service": "tracklist_api",
         "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "components": {},
     }
 
@@ -318,7 +313,7 @@ async def health_check() -> JSONResponse:
         await cache.ping()
         health_status["components"]["cache"] = "healthy"
     except Exception as e:
-        health_status["components"]["cache"] = f"unhealthy: {str(e)}"
+        health_status["components"]["cache"] = f"unhealthy: {e!s}"
         health_status["status"] = "degraded"
 
     # Check message queue connection
@@ -326,7 +321,7 @@ async def health_check() -> JSONResponse:
         await message_handler.ping()
         health_status["components"]["message_queue"] = "healthy"
     except Exception as e:
-        health_status["components"]["message_queue"] = f"unhealthy: {str(e)}"
+        health_status["components"]["message_queue"] = f"unhealthy: {e!s}"
         health_status["status"] = "degraded"
 
     # Check scraper functionality
@@ -335,7 +330,7 @@ async def health_check() -> JSONResponse:
         TracklistScraper()
         health_status["components"]["scraper"] = "healthy"
     except Exception as e:
-        health_status["components"]["scraper"] = f"unhealthy: {str(e)}"
+        health_status["components"]["scraper"] = f"unhealthy: {e!s}"
         health_status["status"] = "unhealthy"
 
     status_code = 200 if health_status["status"] == "healthy" else 503

@@ -4,20 +4,22 @@ Async search scraper for 1001tracklists.com.
 Implements async search functionality for DJs, events, and tracks with circuit breaker support.
 """
 
+import asyncio
+import re
 import time
-from typing import List, Optional, Union
 from urllib.parse import urlencode, urljoin
 
 import structlog
-from bs4 import BeautifulSoup, Tag, PageElement, NavigableString  # type: ignore[attr-defined]
+from bs4 import BeautifulSoup, NavigableString, PageElement, Tag
 
-from ..models.search_models import (
+from src.models.search import (
     PaginationInfo,
     SearchRequest,
-    SearchResult,
     SearchResponse,
+    SearchResult,
     SearchType,
 )
+
 from .async_base_scraper import AsyncScraperBase
 
 logger = structlog.get_logger(__name__)
@@ -112,7 +114,6 @@ class AsyncSearchScraper(AsyncScraperBase):
         Raises:
             httpx.HTTPError: If any search fails
         """
-        import asyncio
 
         semaphore = asyncio.Semaphore(max_concurrent)
 
@@ -176,7 +177,7 @@ class AsyncSearchScraper(AsyncScraperBase):
 
         return url
 
-    def _parse_search_results(self, soup: BeautifulSoup, search_type: SearchType) -> List[SearchResult]:
+    def _parse_search_results(self, soup: BeautifulSoup, search_type: SearchType) -> list[SearchResult]:
         """Parse search results from HTML.
 
         Args:
@@ -206,8 +207,8 @@ class AsyncSearchScraper(AsyncScraperBase):
         return results
 
     def _parse_single_result(
-        self, container: Union[Tag, PageElement, NavigableString], search_type: SearchType
-    ) -> Optional[SearchResult]:
+        self, container: Tag | PageElement | NavigableString, search_type: SearchType
+    ) -> SearchResult | None:
         """Parse a single search result.
 
         Args:
@@ -233,7 +234,8 @@ class AsyncSearchScraper(AsyncScraperBase):
                 title_elem = container.find("a")
                 if title_elem:
                     title = title_elem.get_text(strip=True)
-                    url = title_elem.get("href", "")  # type: ignore[attr-defined]
+                    href = title_elem.get("href", "") if isinstance(title_elem, Tag) else ""
+                    url = href if isinstance(href, str) else ""
 
             elif search_type == SearchType.EVENT:
                 title_elem = container.find("h4")
@@ -241,7 +243,8 @@ class AsyncSearchScraper(AsyncScraperBase):
                     title = title_elem.get_text(strip=True)
                 link_elem = container.find("a")
                 if link_elem:
-                    url = link_elem.get("href", "")  # type: ignore[attr-defined]
+                    href = link_elem.get("href", "") if isinstance(link_elem, Tag) else ""
+                    url = href if isinstance(href, str) else ""
 
             elif search_type == SearchType.TRACK:
                 title_elem = container.find("span", class_="trackName")
@@ -292,7 +295,6 @@ class AsyncSearchScraper(AsyncScraperBase):
         if pagination_elem and isinstance(pagination_elem, Tag):
             # Look for total results count
             results_text = pagination_elem.get_text()
-            import re
 
             match = re.search(r"(\d+)\s+results?", results_text, re.IGNORECASE)
             if match:
@@ -306,10 +308,9 @@ class AsyncSearchScraper(AsyncScraperBase):
             last_link = pagination_elem.find_all("a")
             if last_link:
                 for link in reversed(last_link):
-                    href = link.get("href", "")  # type: ignore[attr-defined]
+                    href_attr = link.get("href", "") if isinstance(link, Tag) else ""
+                    href = href_attr if isinstance(href_attr, str) else ""
                     if "page=" in href:
-                        import re
-
                         match = re.search(r"page=(\d+)", href)
                         if match:
                             total_pages = int(match.group(1))

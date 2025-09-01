@@ -11,7 +11,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "services" / "file_watcher" / "src"))
+sys.path.insert(
+    0,
+    str(Path(__file__).parent.parent.parent.parent / "services" / "file_watcher" / "src"),
+)
 from main import FileWatcherService
 
 
@@ -119,7 +122,12 @@ class TestFileWatcherService:
     @patch("main.Observer")
     @patch("main.TracktionEventHandler")
     def test_start_with_successful_connection(
-        self, mock_handler_class, mock_observer_class, mock_publisher_class, mock_signal, mock_env
+        self,
+        mock_handler_class,
+        mock_observer_class,
+        mock_publisher_class,
+        mock_signal,
+        mock_env,
     ):
         """Test successful service start."""
         # Setup mocks

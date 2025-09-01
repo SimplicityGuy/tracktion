@@ -1,17 +1,17 @@
 """Batch job queue management for tracklist processing."""
 
+import hashlib
 import json
 import logging
 import uuid
-from dataclasses import dataclass, asdict
-from datetime import datetime, UTC
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from enum import Enum
-from typing import List, Dict, Any, Optional
-import hashlib
+from typing import Any
 
-import pika  # type: ignore[import-untyped]
-from redis import Redis
+import pika
 from croniter import croniter  # type: ignore[import-untyped]
+from redis import Redis
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class Job:
     created_at: datetime
     status: str = "pending"
     retry_count: int = 0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class BatchJobQueue:
@@ -62,8 +62,8 @@ class BatchJobQueue:
         self.redis = Redis(host=redis_host, port=redis_port, decode_responses=True)
 
         # Setup RabbitMQ connection
-        self.connection: Optional[pika.BlockingConnection] = None
-        self.channel: Optional[pika.channel.Channel] = None
+        self.connection: pika.BlockingConnection | None = None
+        self.channel: pika.channel.Channel | None = None
         self._setup_rabbitmq()
 
     def _setup_rabbitmq(self) -> None:
@@ -98,7 +98,7 @@ class BatchJobQueue:
             logger.error(f"Failed to setup RabbitMQ: {e}")
             raise
 
-    def enqueue_batch(self, urls: List[str], priority: str = "normal", user_id: str = "") -> str:
+    def enqueue_batch(self, urls: list[str], priority: str = "normal", user_id: str = "") -> str:
         """Enqueue a batch of URLs for processing.
 
         Args:
@@ -140,7 +140,7 @@ class BatchJobQueue:
             "status": "queued",
         }
         # Convert to proper types for Redis
-        redis_data: Dict[str, str] = {k: str(v) for k, v in batch_metadata.items()}
+        redis_data: dict[str, str] = {k: str(v) for k, v in batch_metadata.items()}
         self.redis.hset(f"batch:{batch_id}", mapping=redis_data)
         self.redis.expire(f"batch:{batch_id}", 86400)  # 24 hour TTL
 
@@ -162,7 +162,7 @@ class BatchJobQueue:
             # Track job in Redis
             job_dict = asdict(job)
             # Convert to proper types for Redis
-            redis_job_data: Dict[str, str] = {k: str(v) for k, v in job_dict.items()}
+            redis_job_data: dict[str, str] = {k: str(v) for k, v in job_dict.items()}
             self.redis.hset(f"job:{job.id}", mapping=redis_job_data)
             self.redis.sadd(f"batch:{batch_id}:jobs", job.id)
 
@@ -170,7 +170,7 @@ class BatchJobQueue:
 
         return batch_id
 
-    def deduplicate_jobs(self, jobs: List[Job]) -> List[Job]:
+    def deduplicate_jobs(self, jobs: list[Job]) -> list[Job]:
         """Remove duplicate jobs based on URL hash.
 
         Args:
@@ -191,7 +191,7 @@ class BatchJobQueue:
 
             if existing_job_id:
                 # Check if existing job is still active
-                existing_job = self.redis.hgetall(f"job:{existing_job_id}")
+                existing_job: dict[str, Any] = self.redis.hgetall(f"job:{existing_job_id}")
                 if existing_job:
                     status = existing_job.get("status")
                     if status and status in ["pending", "processing"]:
@@ -208,7 +208,7 @@ class BatchJobQueue:
         logger.info(f"Deduplicated {len(jobs)} jobs to {len(deduplicated)}")
         return deduplicated
 
-    def schedule_batch(self, urls: List[str], cron_expression: str, user_id: str = "") -> str:
+    def schedule_batch(self, urls: list[str], cron_expression: str, user_id: str = "") -> str:
         """Schedule a batch for execution based on cron expression.
 
         Args:
@@ -241,7 +241,7 @@ class BatchJobQueue:
         }
 
         # Convert to proper types for Redis
-        redis_schedule_data: Dict[str, str] = {k: str(v) for k, v in schedule_data.items()}
+        redis_schedule_data: dict[str, str] = {k: str(v) for k, v in schedule_data.items()}
         self.redis.hset(f"schedule:{schedule_id}", mapping=redis_schedule_data)
         self.redis.zadd("scheduled_batches", {schedule_id: next_run.timestamp()})
 
@@ -249,7 +249,7 @@ class BatchJobQueue:
 
         return schedule_id
 
-    def get_batch_status(self, batch_id: str) -> Dict[str, Any]:
+    def get_batch_status(self, batch_id: str) -> dict[str, Any]:
         """Get status of a batch job.
 
         Args:
@@ -275,10 +275,10 @@ class BatchJobQueue:
                         # Handle both bytes and string keys
                         status_value = None
                         # Check if the keys are bytes or strings
-                        if any(isinstance(k, bytes) for k in job_data.keys()):
+                        if any(isinstance(k, bytes) for k in job_data):
                             # Keys are bytes, so check for b"status"
-                            if b"status" in job_data:  # type: ignore[comparison-overlap]
-                                status_value = job_data[b"status"]  # type: ignore[index]
+                            if b"status" in job_data:
+                                status_value = job_data[b"status"]
                         elif "status" in job_data:
                             status_value = job_data["status"]
 
@@ -317,9 +317,9 @@ class BatchJobQueue:
         self.redis.hset(f"batch:{batch_id}", "status", "cancelled")
 
         # Cancel pending jobs
-        job_ids = self.redis.smembers(f"batch:{batch_id}:jobs")
+        job_ids: set[Any] = self.redis.smembers(f"batch:{batch_id}:jobs")
         for job_id in job_ids:
-            job_data = self.redis.hgetall(f"job:{job_id}")
+            job_data: dict[str, Any] = self.redis.hgetall(f"job:{job_id}")
             if job_data and job_data.get("status") == "pending":
                 self.redis.hset(f"job:{job_id}", "status", "cancelled")
 

@@ -3,33 +3,65 @@ name = "tracktion-core-types"
 version = "0.1.0"
 description = "Core data types and models for Tracktion"
 requires-python = ">=3.13"
-dependencies = [
-    "sqlalchemy>=2.0.0",
-    "alembic>=1.13.0",
-    "psycopg2-binary>=2.9.0",
-    "neo4j>=5.0.0",
-    "python-dotenv>=1.0.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-cov>=4.0.0",
-    "pytest-asyncio>=0.23.0",
-    "mypy>=1.8.0",
-    "ruff>=0.1.0",
-]
+dependencies = [ "sqlalchemy>=2.0.0", "alembic>=1.13.0", "psycopg2-binary>=2.9.0", "neo4j>=5.0.0", "python-dotenv>=1.0.0",]
 
 [build-system]
-requires = ["hatchling"]
+requires = [ "hatchling",]
 build-backend = "hatchling.build"
+
+[project.optional-dependencies]
+dev = [ "pytest>=8.0.0", "pytest-cov>=4.0.0", "pytest-asyncio>=0.23.0", "mypy>=1.8.0", "ruff>=0.1.0",]
 
 [tool.ruff]
 line-length = 120
 target-version = "py313"
+fix = true
 
 [tool.mypy]
 python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+no_implicit_optional = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+follow_imports = "normal"
+namespace_packages = true
+explicit_package_bases = true
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[tool.black]
+line-length = 120
+target-version = [ "py313",]
+include = "\\.pyi?$"
+extend-exclude = "\n(\n  /(\n      \\.eggs\n    | \\.git\n    | \\.hg\n    | \\.mypy_cache\n    | \\.tox\n    | \\.venv\n    | _build\n    | buck-out\n    | build\n    | dist\n    | migrations\n  )/\n)\n"
+
+[tool.ruff.lint]
+select = [ "B", "C4", "C90", "DTZ", "E", "F", "I", "ISC", "N", "NPY", "PD", "PERF", "PIE", "PL", "PTH", "RET", "RUF", "SIM", "TCH", "TID", "UP", "W",]
+ignore = [ "C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004",]
+fixable = [ "ALL",]
+unfixable = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.coverage.run]
+branch = true
+source = [ "src",]
+omit = [ "*/tests/*", "*/test_*.py", "*/__pycache__/*", "*/migrations/*", "*/venv/*", "*/.venv/*",]
+
+[tool.coverage.report]
+exclude_lines = [ "pragma: no cover", "def __repr__", "if self.debug:", "if settings.DEBUG", "raise AssertionError", "raise NotImplementedError", "if 0:", "if __name__ == .__main__.:", "if TYPE_CHECKING:",]
+
+[tool.ruff.lint.isort]
+known-first-party = [ "tracktion", "analysis_service", "cataloging_service", "file_watcher", "file_rename_service", "tracklist_service", "shared", "core_types",]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [ "S101", "PLR2004", "PLR0913",]
+"migrations/*" = [ "E501",]

@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from typing import Optional
+import sys
 
 import pika
 import pika.exceptions
@@ -44,11 +44,11 @@ class LifecycleEventConsumer:
         self.queue_name = queue_name
         self.exchange_name = exchange_name
         self.routing_key = routing_key
-        self.connection: Optional[pika.BlockingConnection] = None
-        self.channel: Optional[BlockingChannel] = None
+        self.connection: pika.BlockingConnection | None = None
+        self.channel: BlockingChannel | None = None
 
         # Initialize cache handler for cleanup
-        self.cache: Optional[AudioCache] = None
+        self.cache: AudioCache | None = None
         if enable_cache:
             self.cache = AudioCache(
                 redis_host=redis_host,
@@ -57,7 +57,7 @@ class LifecycleEventConsumer:
             )
 
         # Initialize storage handler for Neo4j cleanup
-        self.storage_handler: Optional[StorageHandler] = None
+        self.storage_handler: StorageHandler | None = None
         self._init_storage_handler()
 
     def _init_storage_handler(self) -> None:
@@ -160,7 +160,7 @@ class LifecycleEventConsumer:
             # Handle different event types
             if event_type == "deleted":
                 self.handle_file_deleted(file_path, correlation_id)
-            elif event_type == "moved" or event_type == "renamed":
+            elif event_type in {"moved", "renamed"}:
                 # Both moved and renamed events use old_path field
                 old_path = message.get("old_path", "")
                 if old_path:
@@ -360,7 +360,6 @@ class LifecycleEventConsumer:
 
 def main() -> None:
     """Main entry point for lifecycle event consumer."""
-    import sys
 
     # Set up logging
     logging.basicConfig(

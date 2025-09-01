@@ -64,9 +64,7 @@ class TestPerformanceBenchmarks:
         # Check 95th percentile response time
         if len(event_times) > 1:
             event_times.sort()
-            response_times = []
-            for i in range(1, len(event_times)):
-                response_times.append(event_times[i] - event_times[i - 1])
+            response_times = [event_times[i] - event_times[i - 1] for i in range(1, len(event_times))]
 
             response_times.sort()
             p95_index = int(len(response_times) * 0.95)
@@ -101,14 +99,19 @@ class TestPerformanceBenchmarks:
             mock_publisher.connect = AsyncMock()
 
             # Create service and perform scan
-            with patch.dict("os.environ", {"DATA_DIR": str(test_dir)}):
-                with patch("src.async_file_watcher.AsyncMessagePublisher", return_value=mock_publisher):
-                    service = AsyncFileWatcherService()
-                    service.publisher = mock_publisher
+            with (
+                patch.dict("os.environ", {"DATA_DIR": str(test_dir)}),
+                patch(
+                    "src.async_file_watcher.AsyncMessagePublisher",
+                    return_value=mock_publisher,
+                ),
+            ):
+                service = AsyncFileWatcherService()
+                service.publisher = mock_publisher
 
-                    start_time = time.time()
-                    await service.scan_existing_files()
-                    scan_time = time.time() - start_time
+                start_time = time.time()
+                await service.scan_existing_files()
+                scan_time = time.time() - start_time
 
             # Verify performance
             assert publish_count == 500, f"Expected 500 events, got {publish_count}"
@@ -190,14 +193,20 @@ class TestPerformanceBenchmarks:
             await asyncio.gather(*tasks)
             elapsed = time.time() - start_time
 
-            results.append({"concurrency": max_concurrent, "time": elapsed, "throughput": 200 / elapsed})
+            results.append(
+                {
+                    "concurrency": max_concurrent,
+                    "time": elapsed,
+                    "throughput": 200 / elapsed,
+                },
+            )
 
         print("\nConcurrency Optimization Results:")
         for result in results:
             print(
                 f"  Concurrency {result['concurrency']:3d}: "
                 f"{result['time']:.2f}s, "
-                f"{result['throughput']:.1f} events/sec"
+                f"{result['throughput']:.1f} events/sec",
             )
 
         # Verify that higher concurrency improves performance (to a point)

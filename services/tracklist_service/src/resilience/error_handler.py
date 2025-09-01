@@ -8,8 +8,9 @@ import asyncio
 import functools
 import logging
 import time
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,12 @@ T = TypeVar("T")
 class TracklistError(Exception):
     """Base exception for tracklist service errors."""
 
-    def __init__(self, message: str, error_code: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
         """Initialize tracklist error."""
         super().__init__(message)
         self.error_code = error_code or "TRACKLIST_ERROR"
@@ -29,7 +35,7 @@ class TracklistError(Exception):
 class TracklistNotFoundError(TracklistError):
     """Raised when a tracklist cannot be found."""
 
-    def __init__(self, url: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(self, url: str, details: dict[str, Any] | None = None):
         """Initialize not found error."""
         super().__init__(
             f"Tracklist not found at URL: {url}",
@@ -41,7 +47,12 @@ class TracklistNotFoundError(TracklistError):
 class ParseError(TracklistError):
     """Raised when tracklist parsing fails."""
 
-    def __init__(self, message: str, element: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        element: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
         """Initialize parse error."""
         error_details = details or {}
         if element:
@@ -57,7 +68,12 @@ class ParseError(TracklistError):
 class ScrapingError(TracklistError):
     """Raised when scraping fails."""
 
-    def __init__(self, message: str, url: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        url: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
         """Initialize scraping error."""
         error_details = details or {}
         if url:
@@ -73,14 +89,18 @@ class ScrapingError(TracklistError):
 class RateLimitError(TracklistError):
     """Raised when rate limit is exceeded."""
 
-    def __init__(self, retry_after: Optional[int] = None, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        retry_after: int | None = None,
+        details: dict[str, Any] | None = None,
+    ):
         """Initialize rate limit error."""
         error_details = details or {}
         if retry_after:
             error_details["retry_after"] = retry_after
 
         super().__init__(
-            f"Rate limit exceeded. Retry after {retry_after} seconds" if retry_after else "Rate limit exceeded",
+            (f"Rate limit exceeded. Retry after {retry_after} seconds" if retry_after else "Rate limit exceeded"),
             error_code="RATE_LIMIT_EXCEEDED",
             details=error_details,
         )
@@ -101,7 +121,7 @@ class CircuitBreaker:
         self,
         failure_threshold: int = 5,
         recovery_timeout: int = 60,
-        expected_exception: Type[Exception] = Exception,
+        expected_exception: type[Exception] = Exception,
     ):
         """
         Initialize circuit breaker.
@@ -115,7 +135,7 @@ class CircuitBreaker:
         self.recovery_timeout = recovery_timeout
         self.expected_exception = expected_exception
         self.failure_count = 0
-        self.last_failure_time: Optional[float] = None
+        self.last_failure_time: float | None = None
         self.state = CircuitBreakerState.CLOSED
 
     def call(self, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
@@ -215,7 +235,7 @@ def retry(
     max_attempts: int = 3,
     delay: float = 1.0,
     backoff: float = 2.0,
-    exceptions: Tuple[Type[Exception], ...] = (Exception,),
+    exceptions: tuple[type[Exception], ...] = (Exception,),
 ) -> Callable[..., Any]:
     """
     Decorator for retry logic with exponential backoff.
@@ -254,6 +274,7 @@ def retry(
 
             if last_exception:
                 raise last_exception
+            return None
 
         return wrapper
 
@@ -264,7 +285,7 @@ def async_retry(
     max_attempts: int = 3,
     delay: float = 1.0,
     backoff: float = 2.0,
-    exceptions: Tuple[Type[Exception], ...] = (Exception,),
+    exceptions: tuple[type[Exception], ...] = (Exception,),
 ) -> Callable[..., Any]:
     """
     Decorator for async retry logic with exponential backoff.
@@ -303,6 +324,7 @@ def async_retry(
 
             if last_exception:
                 raise last_exception
+            return None
 
         return wrapper
 
@@ -313,7 +335,7 @@ class PartialExtractor:
     """Helper for partial data extraction on parse errors."""
 
     @staticmethod
-    def extract_tracks_partial(soup: Any, max_errors: int = 5) -> List[Dict[str, Any]]:
+    def extract_tracks_partial(soup: Any, max_errors: int = 5) -> list[dict[str, Any]]:
         """
         Extract tracks with partial failure tolerance.
 
@@ -350,7 +372,7 @@ class PartialExtractor:
         return tracks
 
 
-def with_correlation_id(correlation_id: Optional[str] = None) -> Callable[..., Any]:
+def with_correlation_id(correlation_id: str | None = None) -> Callable[..., Any]:
     """
     Decorator to add correlation ID to log messages.
 
@@ -384,7 +406,7 @@ class HealthCheck:
 
     def __init__(self) -> None:
         """Initialize health check."""
-        self.checks: Dict[str, Callable[[], bool]] = {}
+        self.checks: dict[str, Callable[[], bool]] = {}
 
     def register_check(self, name: str, check_func: Callable[[], bool]) -> None:
         """
@@ -396,7 +418,7 @@ class HealthCheck:
         """
         self.checks[name] = check_func
 
-    async def run_checks(self) -> Dict[str, Any]:
+    async def run_checks(self) -> dict[str, Any]:
         """
         Run all health checks.
 
@@ -420,7 +442,7 @@ class HealthCheck:
                     overall_status = "degraded"
 
             except Exception as e:
-                results[name] = f"error: {str(e)}"
+                results[name] = f"error: {e!s}"
                 overall_status = "unhealthy"
 
         return {

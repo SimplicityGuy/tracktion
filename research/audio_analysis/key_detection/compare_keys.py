@@ -4,9 +4,11 @@ Musical Key Detection Comparison Script
 Evaluates key detection accuracy across different libraries and algorithms.
 """
 
+from __future__ import annotations
+
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import ClassVar
 
 import essentia.standard as es
 import librosa
@@ -19,7 +21,7 @@ class KeyDetector:
     """Base class for key detection methods."""
 
     # Mapping of keys to Camelot notation and circle of fifths
-    KEY_MAPPINGS = {
+    KEY_MAPPINGS: ClassVar[dict[str, dict[str, str | int]]] = {
         "C major": {"camelot": "8B", "fifths": 0},
         "G major": {"camelot": "9B", "fifths": 1},
         "D major": {"camelot": "10B", "fifths": 2},
@@ -49,7 +51,7 @@ class KeyDetector:
     def __init__(self, name: str):
         self.name = name
 
-    def detect(self, audio_path: str) -> Dict:
+    def detect(self, audio_path: str) -> dict:
         """Detect key from audio file."""
         raise NotImplementedError
 
@@ -84,7 +86,7 @@ class EssentiaKeyDetector(KeyDetector):
     def __init__(self):
         super().__init__("Essentia_KeyExtractor")
 
-    def detect(self, audio_path: str) -> Dict:
+    def detect(self, audio_path: str) -> dict:
         """Detect key using Essentia's KeyExtractor."""
         start_time = time.time()
 
@@ -108,7 +110,11 @@ class EssentiaKeyDetector(KeyDetector):
             windowing = es.Windowing(type="blackmanharris62")
             spectrum = es.Spectrum()
             spectral_peaks = es.SpectralPeaks(
-                orderBy="magnitude", magnitudeThreshold=0.00001, minFrequency=20, maxFrequency=3500, maxPeaks=60
+                orderBy="magnitude",
+                magnitudeThreshold=0.00001,
+                minFrequency=20,
+                maxFrequency=3500,
+                maxPeaks=60,
             )
             hpcp = es.HPCP()
             key_from_hpcp = es.Key()
@@ -163,9 +169,22 @@ class LibrosaKeyDetector(KeyDetector):
         self.major_profile = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
         self.minor_profile = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
 
-        self.key_names = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+        self.key_names = [
+            "C",
+            "C#",
+            "D",
+            "Eb",
+            "E",
+            "F",
+            "F#",
+            "G",
+            "Ab",
+            "A",
+            "Bb",
+            "B",
+        ]
 
-    def detect(self, audio_path: str) -> Dict:
+    def detect(self, audio_path: str) -> dict:
         """Detect key using Librosa's chroma features."""
         start_time = time.time()
 
@@ -195,18 +214,18 @@ class LibrosaKeyDetector(KeyDetector):
                 minor_corrs.append(minor_corr)
 
             # Find best match
-            major_corrs = np.array(major_corrs)
-            minor_corrs = np.array(minor_corrs)
+            major_corrs_array = np.array(major_corrs)
+            minor_corrs_array = np.array(minor_corrs)
 
-            max_major = np.max(major_corrs)
-            max_minor = np.max(minor_corrs)
+            max_major = np.max(major_corrs_array)
+            max_minor = np.max(minor_corrs_array)
 
             if max_major > max_minor:
-                key_idx = np.argmax(major_corrs)
+                key_idx = np.argmax(major_corrs_array)
                 scale = "major"
                 confidence = max_major
             else:
-                key_idx = np.argmax(minor_corrs)
+                key_idx = np.argmax(minor_corrs_array)
                 scale = "minor"
                 confidence = max_minor
 
@@ -242,7 +261,7 @@ class LibrosaKeyDetector(KeyDetector):
             }
 
 
-def compare_key_detection(audio_files: List[str], ground_truth: Optional[Dict] = None) -> pd.DataFrame:
+def compare_key_detection(audio_files: list[str], ground_truth: dict | None = None) -> pd.DataFrame:
     """
     Compare key detection across multiple methods.
 
@@ -338,7 +357,7 @@ def check_parallel_keys(key1: str, key2: str) -> bool:
     return tonic1 == tonic2 and mode1 != mode2
 
 
-def analyze_key_detection_results(df: pd.DataFrame) -> Dict:
+def analyze_key_detection_results(df: pd.DataFrame) -> dict:
     """Analyze key detection results."""
     summary = {}
 
@@ -349,7 +368,7 @@ def analyze_key_detection_results(df: pd.DataFrame) -> Dict:
         summary[detector] = {
             "success_rate": len(valid_df) / len(detector_df) * 100,
             "avg_processing_time": valid_df["processing_time"].mean(),
-            "avg_confidence": valid_df["confidence"].mean() if "confidence" in valid_df else None,
+            "avg_confidence": (valid_df["confidence"].mean() if "confidence" in valid_df else None),
         }
 
         # If ground truth is available
@@ -379,7 +398,7 @@ def main():
         return
 
     # Get all audio files
-    audio_files = []
+    audio_files: list[Path] = []
     for ext in ["*.mp3", "*.wav", "*.flac", "*.m4a"]:
         audio_files.extend(sample_dir.glob(ext))
 
@@ -395,7 +414,7 @@ def main():
     if ground_truth_file.exists():
         gt_df = pd.read_csv(ground_truth_file)
         if "actual_key" in gt_df.columns:
-            ground_truth = dict(zip(gt_df["filename"], gt_df["actual_key"]))
+            ground_truth = dict(zip(gt_df["filename"], gt_df["actual_key"], strict=False))
             print(f"Loaded ground truth for {len(ground_truth)} files")
 
     # Run comparison

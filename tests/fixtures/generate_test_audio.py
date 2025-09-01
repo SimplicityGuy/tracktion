@@ -10,6 +10,9 @@ from pathlib import Path
 
 import numpy as np
 
+# Create a random number generator
+rng = np.random.default_rng()
+
 
 def generate_click_track(
     bpm: float,
@@ -91,10 +94,10 @@ def generate_drum_pattern(
 
     snare_samples = int(snare_duration * sample_rate)
     t_snare = np.linspace(0, snare_duration, snare_samples)
-    snare = (np.sin(2 * np.pi * snare_freq * t_snare) + np.random.normal(0, 0.1, snare_samples)) * np.exp(-t_snare * 30)
+    snare = (np.sin(2 * np.pi * snare_freq * t_snare) + rng.normal(0, 0.1, snare_samples)) * np.exp(-t_snare * 30)
 
     hihat_samples = int(hihat_duration * sample_rate)
-    hihat = np.random.normal(0, 0.05, hihat_samples) * np.exp(-np.linspace(0, hihat_duration, hihat_samples) * 50)
+    hihat = rng.normal(0, 0.05, hihat_samples) * np.exp(-np.linspace(0, hihat_duration, hihat_samples) * 50)
 
     if pattern == "basic":
         # Basic 4/4 pattern: kick on 1&3, snare on 2&4
@@ -196,18 +199,17 @@ def generate_noise(duration_seconds: float = 5.0, sample_rate: int = 44100, nois
     num_samples = int(duration_seconds * sample_rate)
 
     if noise_type == "white":
-        return np.random.normal(0, 0.1, num_samples).astype(np.float32)
-    elif noise_type == "pink":
+        return rng.normal(0, 0.1, num_samples).astype(np.float32)
+    if noise_type == "pink":
         # Simple pink noise approximation
-        white = np.random.normal(0, 0.1, num_samples)
+        white = rng.normal(0, 0.1, num_samples)
         # Apply simple lowpass filter
         pink = np.zeros_like(white)
         pink[0] = white[0]
         for i in range(1, len(white)):
             pink[i] = pink[i - 1] * 0.9 + white[i] * 0.1
         return pink.astype(np.float32)
-    else:
-        raise ValueError(f"Unknown noise type: {noise_type}")
+    raise ValueError(f"Unknown noise type: {noise_type}")
 
 
 def save_wav(audio: np.ndarray, filename: str, sample_rate: int = 44100) -> None:

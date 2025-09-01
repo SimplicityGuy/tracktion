@@ -7,8 +7,14 @@ from unittest.mock import patch
 
 import pytest
 
-from services.tracklist_service.src.models.tracklist_models import CuePoint, Track, TracklistMetadata
-from services.tracklist_service.src.models.tracklist_models import Tracklist as ScrapedTracklist
+from services.tracklist_service.src.models.tracklist_models import (
+    CuePoint,
+    Track,
+    TracklistMetadata,
+)
+from services.tracklist_service.src.models.tracklist_models import (
+    Tracklist as ScrapedTracklist,
+)
 from services.tracklist_service.src.services.matching_service import MatchingService
 
 
@@ -172,11 +178,13 @@ class TestMatchingService:
 
     def test_validate_audio_file_exists(self, matching_service):
         """Test audio file validation with existing file."""
-        with patch("os.path.exists", return_value=True):
-            with patch("os.access", return_value=True):
-                with patch("os.path.getsize", return_value=10_000_000):  # 10MB
-                    result = matching_service.validate_audio_file("/path/to/audio.mp3")
-                    assert result is True
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("os.access", return_value=True),
+            patch("os.path.getsize", return_value=10_000_000),
+        ):  # 10MB
+            result = matching_service.validate_audio_file("/path/to/audio.mp3")
+            assert result is True
 
     def test_validate_audio_file_not_exists(self, matching_service):
         """Test audio file validation with non-existent file."""
@@ -186,22 +194,29 @@ class TestMatchingService:
 
     def test_validate_audio_file_not_readable(self, matching_service):
         """Test audio file validation with non-readable file."""
-        with patch("os.path.exists", return_value=True):
-            with patch("os.access", return_value=False):
-                result = matching_service.validate_audio_file("/path/to/audio.mp3")
-                assert result is False
+        with patch("os.path.exists", return_value=True), patch("os.access", return_value=False):
+            result = matching_service.validate_audio_file("/path/to/audio.mp3")
+            assert result is False
 
     def test_validate_audio_file_too_small(self, matching_service):
         """Test audio file validation with file that's too small."""
-        with patch("os.path.exists", return_value=True):
-            with patch("os.access", return_value=True):
-                with patch("os.path.getsize", return_value=500_000):  # 500KB - too small
-                    result = matching_service.validate_audio_file("/path/to/audio.mp3")
-                    assert result is False
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("os.access", return_value=True),
+            patch("os.path.getsize", return_value=500_000),
+        ):  # 500KB - too small
+            result = matching_service.validate_audio_file("/path/to/audio.mp3")
+            assert result is False
 
     def test_calculate_weighted_confidence(self, matching_service):
         """Test weighted confidence calculation."""
-        scores = [("title", 0.8), ("artist", 0.9), ("duration", 1.0), ("date", 0.7), ("event", 0.6)]
+        scores = [
+            ("title", 0.8),
+            ("artist", 0.9),
+            ("duration", 1.0),
+            ("date", 0.7),
+            ("event", 0.6),
+        ]
 
         confidence = matching_service._calculate_weighted_confidence(scores)
 

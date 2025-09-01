@@ -139,7 +139,10 @@ class PatternMatcher:
             ),
             # Artist patterns (common bands and artist indicators)
             Pattern(
-                regex=r"\b(Phish|GratefulDead|Grateful Dead|Radiohead|Dylan|Bob Dylan|Miles Davis|Beatles|Pink Floyd|Led Zeppelin|Artist|BandName)\b",
+                regex=(
+                    r"\b(Phish|GratefulDead|Grateful Dead|Radiohead|Dylan|Bob Dylan|"
+                    r"Miles Davis|Beatles|Pink Floyd|Led Zeppelin|Artist|BandName)\b"
+                ),
                 category=TokenCategory.ARTIST,
                 priority=95,
                 description="Known artist names",
