@@ -431,9 +431,9 @@ class AsyncFFTProcessor:
                 for i in range(0, len(data) - fft_size, hop_size):
                     frame = data[i : i + fft_size]
                     windowed_data = windowing(frame)
-                    windowed_array = np.array(windowed_data, dtype=np.complex64)  # Explicit conversion for mypy
+                    windowed_array = np.array(windowed_data, dtype=np.float32)  # FFT expects real input
                     spectrum_data = fft(windowed_array)
-                    spectrum_array = np.array(spectrum_data, dtype=np.complex64)  # Explicit conversion for mypy
+                    spectrum_array = np.array(spectrum_data, dtype=np.complex64)  # FFT output is complex
                     frames.append(np.abs(spectrum_array[: fft_size // 2 + 1]))
 
                 return np.array(frames, dtype=np.float32)

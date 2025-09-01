@@ -37,7 +37,7 @@ Tracktion is a microservices-based application designed to automatically catalog
 ## Prerequisites
 
 - Docker and Docker Compose
-- Python 3.13+ (for local development)
+- Python 3.12+ (for local development)
 - uv (Python package manager)
 
 ## Quick Start

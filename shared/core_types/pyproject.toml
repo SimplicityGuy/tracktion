@@ -2,7 +2,7 @@
 name = "tracktion-core-types"
 version = "0.1.0"
 description = "Core data types and models for Tracktion"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [ "sqlalchemy>=2.0.0", "alembic>=1.13.0", "psycopg2-binary>=2.9.0", "neo4j>=5.0.0", "python-dotenv>=1.0.0",]
 
 [build-system]

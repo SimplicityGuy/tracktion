@@ -8,7 +8,7 @@ The development workflow enforces quality at every stage through automated check
 
 ## Prerequisites
 
-- Python 3.13 installed
+- Python 3.12+ installed
 - `uv` package manager installed
 - Pre-commit hooks installed: `uv run pre-commit install`
 - Virtual environment activated: `uv venv && source .venv/bin/activate`

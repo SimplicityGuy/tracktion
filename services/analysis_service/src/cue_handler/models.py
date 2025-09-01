@@ -9,7 +9,7 @@ class InvalidTimeFormatError(Exception):
     """Raised when a time string cannot be parsed."""
 
 
-@dataclass(frozen=True, eq=True, unsafe_hash=True)
+@dataclass(frozen=True, eq=True)
 class CueTime:
     """Represents a time in CUE format (MM:SS:FF where FF is frames at 75fps)."""
 

@@ -3,7 +3,7 @@ name = "file-rename-service"
 version = "0.1.0"
 description = "Standalone service for intelligent file renaming"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [ "aio-pika>=9.3.0", "alembic>=1.13.0", "fastapi>=0.104.0", "httpx>=0.25.0", "psycopg2-binary>=2.9.0", "pydantic>=2.5.0", "pydantic-settings>=2.1.0", "python-multipart>=0.0.6", "redis>=5.0.0", "scikit-learn>=1.3.0", "sqlalchemy>=2.0.0", "uvicorn[standard]>=0.24.0",]
 [[project.authors]]
 name = "Tracktion Team"

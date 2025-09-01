@@ -4,7 +4,7 @@ These standards are mandatory for all AI agents and developers working on the **
 
 ### **Core Standards**
 
-  * **Languages & Runtimes:** Python 3.13 (always use latest stable version)
+  * **Languages & Runtimes:** Python 3.12+ (compatible with current stable ecosystem)
   * **Package Management:** All Python package management MUST use `uv`:
     - Use `uv pip install` instead of `pip install` or `pip3 install`
     - Use `uv run python` instead of `python` or `python3`

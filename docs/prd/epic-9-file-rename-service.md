@@ -52,7 +52,7 @@ An intelligent, learning-based file rename service will:
 - New API endpoints for rename operations
 
 #### Technology Stack
-- Python 3.13 for service implementation
+- Python 3.12+ for service implementation
 - scikit-learn or TensorFlow for ML
 - FastAPI for service API
 - PostgreSQL for pattern/model storage
