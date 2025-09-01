@@ -27,12 +27,7 @@ import logging
 import re
 from pathlib import Path
 
-try:
-    import chardet
-
-    HAS_CHARDET = True
-except ImportError:
-    HAS_CHARDET = False
+import chardet
 
 from .exceptions import (
     CueParsingError,
@@ -95,23 +90,10 @@ class CueParser:
         try:
             # Auto-detect encoding if not specified
             if encoding is None:
-                if HAS_CHARDET:
-                    with Path(path).open("rb") as f:
-                        raw_data = f.read()
-                        detected = chardet.detect(raw_data)
-                        encoding = detected["encoding"] or "utf-8"
-                else:
-                    # Try common encodings
-                    for enc in ["utf-8", "latin-1", "cp1252", "ascii"]:
-                        try:
-                            with Path(path).open(encoding=enc) as f:
-                                f.read()
-                            encoding = enc
-                            break
-                        except UnicodeDecodeError:
-                            continue
-                    else:
-                        encoding = "utf-8"  # Default fallback
+                with Path(path).open("rb") as f:
+                    raw_data = f.read()
+                    detected = chardet.detect(raw_data)
+                    encoding = detected["encoding"] or "utf-8"
 
             with Path(path).open(encoding=encoding) as f:
                 content = f.read()

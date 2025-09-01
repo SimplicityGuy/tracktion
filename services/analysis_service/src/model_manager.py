@@ -14,13 +14,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 from urllib.request import Request, urlopen
 
-try:
-    import tensorflow as tf
-
-    HAS_TENSORFLOW = True
-except ImportError:
-    HAS_TENSORFLOW = False
-    tf = None
+import tensorflow as tf
 
 logger = logging.getLogger(__name__)
 
@@ -296,10 +290,6 @@ class ModelManager:
         if not model_path:
             return None
 
-        if not HAS_TENSORFLOW:
-            logger.error(f"TensorFlow not installed. Cannot load model {model_id}")
-            return None
-
         try:
             # Load the model
             logger.info(f"Loading model {model_id} from {model_path}")
@@ -310,9 +300,6 @@ class ModelManager:
 
             return model
 
-        except ImportError:
-            logger.error("TensorFlow not installed. Install with: uv pip install tensorflow")
-            return None
         except Exception as e:
             logger.error(f"Failed to load model {model_id}: {e!s}")
             return None

@@ -6,23 +6,16 @@ import gzip
 import hashlib
 import json
 import logging
-import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+import redis.asyncio as redis
 from pydantic import BaseModel
 
-logger = logging.getLogger(__name__)
-
-try:
-    import redis.asyncio as redis
+if TYPE_CHECKING:
     from redis.asyncio import Redis
 
-    REDIS_AVAILABLE = True
-except ImportError:
-    logger.warning("Redis not available, using in-memory cache fallback")
-    REDIS_AVAILABLE = False
-    Redis = type("Redis", (), {})  # Fallback when redis not available
+logger = logging.getLogger(__name__)
 
 
 class CacheConfig(BaseModel):
@@ -51,9 +44,25 @@ class CacheConfig(BaseModel):
     cache_warming_enabled: bool = True
     popular_formats: list[str] = ["standard", "cdj", "traktor"]
 
-    # Fallback settings
-    memory_cache_max_size: int = 1000  # Max items in memory cache
-    memory_cache_ttl: int = 300  # 5 minutes for memory cache
+
+class MemoryCache:
+    """Fallback in-memory cache implementation."""
+
+    def __init__(self, max_size: int = 1000, default_ttl: int = 300):
+        """Initialize memory cache."""
+        self.max_size = max_size
+        self.default_ttl = default_ttl
+        self._cache: dict[str, tuple[Any, float]] = {}  # key -> (value, expiry_time)
+        self._access_order: list[str] = []  # For LRU eviction
+
+    def size(self) -> int:
+        """Get number of items in cache."""
+        return len(self._cache)
+
+    def clear(self) -> None:
+        """Clear all cache entries."""
+        self._cache.clear()
+        self._access_order.clear()
 
 
 class CacheMetrics(BaseModel):
@@ -85,91 +94,8 @@ class CacheMetrics(BaseModel):
         }
 
 
-class MemoryCache:
-    """Fallback in-memory cache implementation."""
-
-    def __init__(self, max_size: int = 1000, default_ttl: int = 300):
-        """Initialize memory cache."""
-        self.max_size = max_size
-        self.default_ttl = default_ttl
-        self._cache: dict[str, tuple[Any, float]] = {}  # key -> (value, expiry_time)
-        self._access_order: list[str] = []  # For LRU eviction
-
-    def _evict_expired(self) -> None:
-        """Remove expired entries."""
-        current_time = time.time()
-        expired_keys = [key for key, (_, expiry) in self._cache.items() if expiry < current_time]
-        for key in expired_keys:
-            self._remove_key(key)
-
-    def _remove_key(self, key: str) -> None:
-        """Remove a key from cache and access order."""
-        if key in self._cache:
-            del self._cache[key]
-        if key in self._access_order:
-            self._access_order.remove(key)
-
-    def _evict_lru(self) -> None:
-        """Evict least recently used entries if over max size."""
-        while len(self._cache) >= self.max_size and self._access_order:
-            lru_key = self._access_order.pop(0)
-            if lru_key in self._cache:
-                del self._cache[lru_key]
-
-    def get(self, key: str) -> Any | None:
-        """Get value from cache."""
-        self._evict_expired()
-
-        if key not in self._cache:
-            return None
-
-        value, expiry = self._cache[key]
-        if expiry < time.time():
-            self._remove_key(key)
-            return None
-
-        # Update access order
-        if key in self._access_order:
-            self._access_order.remove(key)
-        self._access_order.append(key)
-
-        return value
-
-    def set(self, key: str, value: Any, ttl: int | None = None) -> bool:
-        """Set value in cache."""
-        self._evict_expired()
-        self._evict_lru()
-
-        ttl = ttl or self.default_ttl
-        expiry_time = time.time() + ttl
-
-        self._cache[key] = (value, expiry_time)
-
-        if key in self._access_order:
-            self._access_order.remove(key)
-        self._access_order.append(key)
-
-        return True
-
-    def delete(self, key: str) -> bool:
-        """Delete key from cache."""
-        if key in self._cache:
-            self._remove_key(key)
-            return True
-        return False
-
-    def clear(self) -> None:
-        """Clear all cache entries."""
-        self._cache.clear()
-        self._access_order.clear()
-
-    def size(self) -> int:
-        """Get current cache size."""
-        return len(self._cache)
-
-
 class CacheService:
-    """CUE generation caching service with Redis backend and memory fallback."""
+    """CUE generation caching service with Redis backend."""
 
     def __init__(self, config: CacheConfig):
         """
@@ -180,16 +106,12 @@ class CacheService:
         """
         self.config = config
         self.redis_client: Redis | None = None
-        self.memory_cache = MemoryCache(max_size=config.memory_cache_max_size, default_ttl=config.memory_cache_ttl)
         self.metrics = CacheMetrics()
+        self.memory_cache = MemoryCache(max_size=config.memory_cache_max_size, default_ttl=config.memory_cache_ttl)
         self._redis_available = False
 
     async def connect(self) -> None:
-        """Connect to Redis if available."""
-        if not REDIS_AVAILABLE:
-            logger.info("Redis not available, using memory cache only")
-            return
-
+        """Connect to Redis."""
         try:
             self.redis_client = redis.Redis(
                 host=self.config.redis_host,
@@ -210,9 +132,10 @@ class CacheService:
             logger.info("Connected to Redis successfully")
 
         except Exception as e:
-            logger.warning(f"Failed to connect to Redis: {e}, using memory cache fallback")
+            logger.error(f"Failed to connect to Redis: {e}")
             self.redis_client = None
             self._redis_available = False
+            raise
 
     async def disconnect(self) -> None:
         """Disconnect from Redis."""
@@ -234,7 +157,7 @@ class CacheService:
 
     async def _set_redis(self, key: str, value: Any, ttl: int) -> bool:
         """Set value in Redis with compression if enabled."""
-        if not self._redis_available or not self.redis_client:
+        if not self.redis_client:
             return False
 
         try:
@@ -256,7 +179,7 @@ class CacheService:
 
     async def _get_redis(self, key: str) -> Any | None:
         """Get value from Redis with decompression if needed."""
-        if not self._redis_available or not self.redis_client:
+        if not self.redis_client:
             return None
 
         try:
@@ -286,7 +209,7 @@ class CacheService:
 
     async def _delete_redis(self, key: str) -> bool:
         """Delete key from Redis including compressed variants."""
-        if not self._redis_available or not self.redis_client:
+        if not self.redis_client:
             return False
 
         try:
@@ -312,18 +235,10 @@ class CacheService:
         """
         key = self._generate_cache_key("cue_content", tracklist_id, cue_format)
 
-        # Try Redis first
         content = await self._get_redis(key)
         if content:
             self.metrics.hits += 1
-            logger.debug(f"Cache hit (Redis) for CUE content: {key}")
-            return str(content)
-
-        # Try memory cache
-        content = self.memory_cache.get(key)
-        if content:
-            self.metrics.hits += 1
-            logger.debug(f"Cache hit (memory) for CUE content: {key}")
+            logger.debug(f"Cache hit for CUE content: {key}")
             return str(content)
 
         self.metrics.misses += 1
@@ -344,13 +259,8 @@ class CacheService:
         """
         key = self._generate_cache_key("cue_content", tracklist_id, cue_format)
 
-        # Set in Redis
-        redis_success = await self._set_redis(key, content, self.config.cue_content_ttl)
-
-        # Set in memory cache
-        memory_success = self.memory_cache.set(key, content, self.config.memory_cache_ttl)
-
-        if redis_success or memory_success:
+        success = await self._set_redis(key, content, self.config.cue_content_ttl)
+        if success:
             self.metrics.sets += 1
             logger.debug(f"Cached CUE content: {key}")
             return True
@@ -376,14 +286,7 @@ class CacheService:
         else:
             key = self._generate_cache_key("validation", cue_file_id)
 
-        # Try Redis first
         result = await self._get_redis(key)
-        if result:
-            self.metrics.hits += 1
-            return dict(result) if isinstance(result, dict) else result
-
-        # Try memory cache
-        result = self.memory_cache.get(key)
         if result:
             self.metrics.hits += 1
             return dict(result) if isinstance(result, dict) else result
@@ -414,10 +317,8 @@ class CacheService:
         else:
             key = self._generate_cache_key("validation", cue_file_id)
 
-        redis_success = await self._set_redis(key, result, self.config.validation_ttl)
-        memory_success = self.memory_cache.set(key, result, self.config.memory_cache_ttl)
-
-        if redis_success or memory_success:
+        success = await self._set_redis(key, result, self.config.validation_ttl)
+        if success:
             self.metrics.sets += 1
             return True
 
@@ -435,14 +336,7 @@ class CacheService:
         """
         key = self._generate_cache_key("format_capabilities", cue_format)
 
-        # Try Redis first
         capabilities = await self._get_redis(key)
-        if capabilities:
-            self.metrics.hits += 1
-            return dict(capabilities) if isinstance(capabilities, dict) else capabilities
-
-        # Try memory cache
-        capabilities = self.memory_cache.get(key)
         if capabilities:
             self.metrics.hits += 1
             return dict(capabilities) if isinstance(capabilities, dict) else capabilities
@@ -463,10 +357,8 @@ class CacheService:
         """
         key = self._generate_cache_key("format_capabilities", cue_format)
 
-        redis_success = await self._set_redis(key, capabilities, self.config.format_capabilities_ttl)
-        memory_success = self.memory_cache.set(key, capabilities, self.config.memory_cache_ttl)
-
-        if redis_success or memory_success:
+        success = await self._set_redis(key, capabilities, self.config.format_capabilities_ttl)
+        if success:
             self.metrics.sets += 1
             return True
 
@@ -482,10 +374,8 @@ class CacheService:
         Returns:
             Number of keys invalidated
         """
-        if not self._redis_available or not self.redis_client:
-            # For memory cache, we'd need to iterate through all keys
-            # which is expensive, so we'll just clear entries as they're accessed
-            logger.debug(f"Invalidating memory cache for tracklist {tracklist_id} (lazy)")
+        if not self.redis_client:
+            logger.debug(f"Redis not available for invalidating tracklist {tracklist_id}")
             return 0
 
         try:
@@ -561,9 +451,7 @@ class CacheService:
         """
         stats = {
             "cache_service": "healthy",
-            "redis_available": self._redis_available,
-            "memory_cache_size": self.memory_cache.size(),
-            "memory_cache_max_size": self.config.memory_cache_max_size,
+            "redis_available": self.redis_client is not None,
             "metrics": self.metrics.to_dict(),
             "config": {
                 "compression_enabled": self.config.enable_compression,
@@ -572,7 +460,7 @@ class CacheService:
             },
         }
 
-        if self._redis_available and self.redis_client:
+        if self.redis_client:
             try:
                 info = await self.redis_client.info()
                 stats["redis_info"] = {
@@ -607,13 +495,8 @@ class CacheService:
         """
         cleared = 0
 
-        # Clear memory cache
-        if not pattern:
-            self.memory_cache.clear()
-            cleared += 1  # Count as one operation for memory cache
-
         # Clear Redis cache
-        if self._redis_available and self.redis_client:
+        if self.redis_client:
             try:
                 if pattern:
                     keys = await self.redis_client.keys(pattern)

@@ -17,23 +17,20 @@ from src.utils.time_utils import timedelta_to_milliseconds
 analysis_service_path = Path(__file__).parent.parent.parent.parent / "analysis_service" / "src"
 sys.path.insert(0, str(analysis_service_path))
 
-try:
-    from cue_handler import (
-        ConversionMode,
-        CueConverter,
-        CueDisc,
-        CueFile,
-        CueGenerator,
-        CueTrack,
-        CueValidator,
-        get_generator,
-    )
-    from cue_handler import (
-        CueFormat as CueHandlerFormat,
-    )
-    from cue_handler.models import CueTime
-except ImportError as e:
-    raise ImportError(f"Could not import CUE handler components: {e}") from e
+from cue_handler import (  # noqa: E402  # Path modification required before import
+    ConversionMode,
+    CueConverter,
+    CueDisc,
+    CueFile,
+    CueGenerator,
+    CueTrack,
+    CueValidator,
+    get_generator,
+)
+from cue_handler import (  # noqa: E402  # Path modification required before import
+    CueFormat as CueHandlerFormat,
+)
+from cue_handler.models import CueTime  # noqa: E402  # Path modification required before import
 
 
 def get_format_capabilities(cue_format: CueHandlerFormat) -> dict[str, Any]:
