@@ -38,18 +38,18 @@ if change_report.has_breaking_changes:
 ### 2. Alert Manager
 **File**: `services/tracklist_service/src/monitoring/alert_manager.py`
 
-Provides comprehensive alerting and health monitoring capabilities with multiple notification channels.
+Provides comprehensive alerting and health monitoring capabilities with Discord notifications.
 
 #### Key Features
-- **Multi-Channel Alerts**: Log, Slack, Email, Dashboard notifications
+- **Discord Alerts**: Log, Discord, Dashboard notifications
 - **Health Monitoring**: Parser success rate tracking and anomaly detection
 - **Severity-Based Routing**: Automatic channel selection based on alert severity
 - **Custom Anomaly Detectors**: Extensible framework for custom monitoring logic
 
 #### Alert Severities & Channels
 - **INFO/WARNING**: Log + Dashboard
-- **ERROR**: Log + Dashboard + Slack
-- **CRITICAL**: Log + Dashboard + Slack + Email
+- **ERROR**: Log + Dashboard + Discord
+- **CRITICAL**: Log + Dashboard + Discord
 
 #### Usage
 ```python
@@ -57,8 +57,7 @@ from services.tracklist_service.src.monitoring.alert_manager import AlertManager
 
 alert_manager = AlertManager(
     redis_client=redis_client,
-    slack_webhook_url="https://hooks.slack.com/...",
-    email_config={"smtp_server": "smtp.example.com"}
+    discord_webhook_url="https://discord.com/api/webhooks/..."
 )
 
 # Monitor parser health
@@ -67,7 +66,7 @@ if health.requires_alert:
     await alert_manager.send_health_alert(health, "tracklist")
 
 # Send custom alerts
-await alert_manager.send_alert("error", "Extraction failed", ["slack", "log"])
+await alert_manager.send_alert("error", "Extraction failed", ["discord", "log"])
 ```
 
 #### Custom Anomaly Detection
@@ -258,9 +257,7 @@ REDIS_URL=redis://localhost:6379
 REDIS_PASSWORD=your_password
 
 # Alert Configuration
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-EMAIL_SMTP_SERVER=smtp.gmail.com
-EMAIL_SMTP_PORT=587
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
 # Monitoring Configuration
 STRUCTURE_CHECK_INTERVAL=3600
@@ -327,7 +324,7 @@ GET /api/metrics/{page_type}?period=24h
 5. **Version Control**: Maintain parser version history for rollback capability
 
 ### Operations
-1. **Monitor Alert Channels**: Ensure Slack/email notifications are working
+1. **Monitor Alert Channels**: Ensure Discord notifications are working
 2. **Review Cache Performance**: Monitor hit rates and adjust TTL settings
 3. **Update Patterns Regularly**: Review learned patterns and promote successful ones
 4. **Capacity Planning**: Monitor Redis usage and scale as needed

@@ -49,8 +49,7 @@ redis_client = Redis(host="localhost", port=6379, decode_responses=True)
 # Create core components
 alert_manager = AlertManager(
     redis_client=redis_client,
-    slack_webhook_url="https://hooks.slack.com/services/...",
-    email_config={"smtp_server": "smtp.gmail.com", "smtp_port": 587}
+    discord_webhook_url="https://discord.com/api/webhooks/..."
 )
 
 structure_monitor = StructureMonitor()
@@ -215,11 +214,7 @@ REDIS_URL=redis://localhost:6379
 REDIS_PASSWORD=your_password
 
 # Alert Configuration
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-EMAIL_SMTP_SERVER=smtp.gmail.com
-EMAIL_SMTP_PORT=587
-EMAIL_USERNAME=your_email@example.com
-EMAIL_PASSWORD=your_password
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
 # Monitoring Thresholds
 HEALTH_CHECK_INTERVAL=300
