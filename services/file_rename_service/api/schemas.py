@@ -156,3 +156,113 @@ class ErrorResponse(BaseModel):
     error: str = Field(description="Error message")
     detail: str | None = Field(default=None, description="Detailed error information")
     status_code: int = Field(description="HTTP status code")
+
+
+# New schemas for proposal endpoints
+
+
+class BatchProposalRequest(BaseModel):
+    """Request schema for batch rename proposals."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "filenames": ["track01.mp3", "track02.mp3"],
+                "file_paths": ["/music/album/", "/music/album/"],
+                "metadata_list": [
+                    {"title": "Song 1", "artist": "Artist", "track": 1},
+                    {"title": "Song 2", "artist": "Artist", "track": 2},
+                ],
+                "use_ml": True,
+            }
+        }
+    )
+
+    filenames: list[str] = Field(..., min_length=1, description="List of filenames to process")
+    file_paths: list[str] | None = Field(default=None, description="List of file paths (optional)")
+    metadata_list: list[dict[str, Any]] | None = Field(default=None, description="List of metadata for each file")
+    use_ml: bool = Field(default=True, description="Use ML models for proposals")
+    pattern_type: PatternType | None = Field(default=None, description="Preferred pattern type")
+    max_concurrent: int = Field(default=10, ge=1, le=50, description="Maximum concurrent processing tasks")
+
+
+class BatchProposalResponse(BaseModel):
+    """Response schema for batch rename proposals."""
+
+    successful_proposals: list[RenameProposalResponse] = Field(description="Successfully generated proposals")
+    failed_files: list[str] = Field(description="Files that failed processing")
+    total_files: int = Field(description="Total number of files processed")
+    success_rate: float = Field(description="Success rate percentage")
+    processing_time: float = Field(description="Total processing time in seconds")
+    errors: dict[str, str] = Field(default_factory=dict, description="Error messages for failed files")
+
+
+class TemplateRequest(BaseModel):
+    """Request schema for creating/updating a template."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Concert Recording",
+                "pattern": "{artist} - {date} - {venue} - {quality}",
+                "description": "Template for concert recordings",
+                "user_id": "user123",
+            }
+        }
+    )
+
+    name: str = Field(..., min_length=1, max_length=255, description="Template name")
+    pattern: str = Field(..., description="Template pattern string")
+    description: str | None = Field(default=None, description="Template description")
+    user_id: str = Field(..., description="User ID who owns the template")
+
+
+class TemplateResponse(BaseModel):
+    """Response schema for template information."""
+
+    id: str = Field(description="Template ID")
+    name: str = Field(description="Template name")
+    pattern: str = Field(description="Template pattern")
+    user_id: str = Field(description="User ID who owns the template")
+    description: str | None = Field(default=None, description="Template description")
+    usage_count: int = Field(description="Number of times used")
+    is_active: bool = Field(description="Whether template is active")
+    created_at: datetime = Field(description="Creation timestamp")
+
+
+class ValidateRequest(BaseModel):
+    """Request schema for validation endpoint."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "proposed_names": ["Artist - 2023-01-01 - Venue.mp3", "Artist - Song Title.mp3"],
+                "existing_files": ["existing_file.mp3", "another_file.mp3"],
+                "check_filesystem": True,
+            }
+        }
+    )
+
+    proposed_names: list[str] = Field(..., min_length=1, description="List of proposed filenames to validate")
+    existing_files: list[str] = Field(default_factory=list, description="List of existing filenames to check against")
+    check_filesystem: bool = Field(default=False, description="Whether to check actual filesystem for conflicts")
+
+
+class ValidationResult(BaseModel):
+    """Schema for individual validation result."""
+
+    filename: str = Field(description="The filename that was validated")
+    is_valid: bool = Field(description="Whether the filename is valid")
+    conflicts: list[str] = Field(default_factory=list, description="List of conflicting files")
+    issues: list[str] = Field(default_factory=list, description="List of validation issues")
+    suggested_resolution: str | None = Field(default=None, description="Suggested resolution if conflicts exist")
+
+
+class ValidateResponse(BaseModel):
+    """Response schema for validation endpoint."""
+
+    results: list[ValidationResult] = Field(description="Validation results for each filename")
+    overall_valid: bool = Field(description="Whether all filenames are valid")
+    conflicts_detected: int = Field(description="Number of conflicts detected")
+    invalid_count: int = Field(description="Number of invalid filenames")
+    suggestions: list[str] = Field(default_factory=list, description="General suggestions for resolution")
