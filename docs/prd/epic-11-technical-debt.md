@@ -28,19 +28,29 @@ Addressing technical debt ensures:
    - Fix underlying issues instead of suppressing warnings
    - Document any pragmas that must remain with clear justification
 
-2. **Incomplete Story Items**
+2. **Notification System Cleanup - Discord Only**
+   - Remove ALL Slack implementations and references
+   - Remove ALL email/SMTP implementations and references
+   - Implement Discord-only notification system
+   - Create unique Discord channels for each alert type
+   - Define channel-specific Discord webhook environment variables
+   - Update all notification code to use Discord exclusively
+   - Remove Slack and email tests, add Discord-specific tests
+   - Update all documentation to reflect Discord-only approach
+
+3. **Incomplete Story Items**
    - Review all completed stories for unfinished tasks
    - Complete any skipped or deferred items
    - Update story documentation with completion status
    - Verify all acceptance criteria are met
 
-3. **Test Suite Completion**
+4. **Test Suite Completion**
    - Ensure all tests are passing
    - Add missing test coverage
    - Fix flaky or skipped tests
    - Achieve 80%+ coverage across all services
 
-4. **Static Analysis Compliance**
+5. **Static Analysis Compliance**
    - Fix all mypy type checking errors
    - Resolve all ruff linting issues
    - Remove pragma suppressions where possible
@@ -77,7 +87,29 @@ Addressing technical debt ensures:
 - Create pragma usage guidelines for exceptional cases only
 - Zero new pragmas without explicit justification
 
-#### Story 11.2: Complete Unfinished Story Tasks
+#### Story 11.2: Discord-Only Notification System
+**As a** development team
+**I want** a single, consistent Discord notification system
+**So that** we have clear, maintainable alerting without multi-channel complexity
+
+**Acceptance Criteria:**
+- Remove ALL Slack code, tests, and references
+- Remove ALL email/SMTP code, tests, and references
+- Implement Discord-only AlertChannel enum
+- Create channel-specific Discord webhook URLs
+- Define clear environment variables for each alert type:
+  - DISCORD_WEBHOOK_GENERAL - General notifications
+  - DISCORD_WEBHOOK_ERRORS - Error alerts
+  - DISCORD_WEBHOOK_CRITICAL - Critical system alerts
+  - DISCORD_WEBHOOK_TRACKLIST - Tracklist generation notifications
+  - DISCORD_WEBHOOK_MONITORING - System monitoring alerts
+  - DISCORD_WEBHOOK_SECURITY - Security-related alerts
+- Update AlertManager to support channel routing
+- Remove multi-channel complexity from alert routing
+- Update all tests to verify Discord-only behavior
+- Update all documentation with Discord configuration
+
+#### Story 11.3: Complete Unfinished Story Tasks
 **As a** product owner
 **I want** all story tasks actually completed
 **So that** we deliver what was promised
@@ -90,7 +122,7 @@ Addressing technical debt ensures:
 - Verify acceptance criteria
 - Create completion checklist
 
-#### Story 11.3: Test Suite Hardening
+#### Story 11.4: Test Suite Hardening
 **As a** QA engineer
 **I want** comprehensive and reliable tests
 **So that** we can confidently deploy changes
@@ -103,7 +135,7 @@ Addressing technical debt ensures:
 - Test execution time optimized
 - Flaky test elimination
 
-#### Story 11.4: Static Analysis Compliance
+#### Story 11.5: Static Analysis Compliance
 **As a** code reviewer
 **I want** full static analysis compliance
 **So that** code quality is consistently high
@@ -116,7 +148,7 @@ Addressing technical debt ensures:
 - Clean pre-commit runs
 - CI/CD pipeline fully green
 
-#### Story 11.5: Documentation Completeness
+#### Story 11.6: Documentation Completeness
 **As a** new developer
 **I want** complete and accurate documentation
 **So that** I can understand and contribute to the project
@@ -138,7 +170,16 @@ Addressing technical debt ensures:
 4. Check static analysis results
 5. Create prioritized fix list
 
-### Phase 2: Pragma Cleanup (Days 3-5)
+### Phase 2: Notification Cleanup (Days 3-4)
+1. Remove all Slack-related code and tests
+2. Remove all email/SMTP-related code and tests
+3. Implement Discord-only AlertChannel
+4. Create channel-specific webhook configurations
+5. Update AlertManager for Discord routing
+6. Update all notification tests
+7. Update documentation with Discord setup
+
+### Phase 3: Pragma Cleanup (Days 5-7)
 1. Audit ALL mypy type: ignore pragmas for validity
 2. Audit ALL ruff noqa pragmas for validity
 3. Fix type checking issues where solutions exist
@@ -147,28 +188,79 @@ Addressing technical debt ensures:
 6. Document required pragmas with technical justification
 7. Update coding standards for exceptional pragma usage
 
-### Phase 3: Story Completion (Days 6-8)
+### Phase 4: Story Completion (Days 8-9)
 1. Review each epic's stories
 2. Complete unfinished tasks
 3. Verify acceptance criteria
 4. Update documentation
 5. Close all open items
 
-### Phase 4: Test Suite (Days 9-10)
+### Phase 5: Test Suite (Days 10-11)
 1. Fix failing tests
 2. Add missing coverage
 3. Eliminate flaky tests
 4. Optimize test runtime
 5. Document test strategy
 
-### Phase 5: Final Validation (Days 11-12)
+### Phase 6: Final Validation (Days 12-14)
 1. Full static analysis run
 2. Complete test suite execution
 3. Documentation review
 4. Performance validation
 5. Release readiness check
 
+## Discord Notification Configuration
+
+### Environment Variables
+```bash
+# Discord Webhook URLs for different alert types
+DISCORD_WEBHOOK_GENERAL=https://discord.com/api/webhooks/...    # General notifications
+DISCORD_WEBHOOK_ERRORS=https://discord.com/api/webhooks/...     # Error alerts
+DISCORD_WEBHOOK_CRITICAL=https://discord.com/api/webhooks/...   # Critical system alerts
+DISCORD_WEBHOOK_TRACKLIST=https://discord.com/api/webhooks/...  # Tracklist generation
+DISCORD_WEBHOOK_MONITORING=https://discord.com/api/webhooks/... # System monitoring
+DISCORD_WEBHOOK_SECURITY=https://discord.com/api/webhooks/...   # Security alerts
+
+# Optional Discord configuration
+DISCORD_RATE_LIMIT=10            # Messages per minute per channel
+DISCORD_RETRY_ATTEMPTS=3          # Retry failed sends
+DISCORD_TIMEOUT_SECONDS=10        # Request timeout
+```
+
+### Alert Type Routing
+```python
+class AlertType(Enum):
+    GENERAL = "general"
+    ERROR = "error"
+    CRITICAL = "critical"
+    TRACKLIST = "tracklist"
+    MONITORING = "monitoring"
+    SECURITY = "security"
+
+# Route alerts to appropriate Discord channels
+alert_channel_map = {
+    AlertType.GENERAL: os.getenv("DISCORD_WEBHOOK_GENERAL"),
+    AlertType.ERROR: os.getenv("DISCORD_WEBHOOK_ERRORS"),
+    AlertType.CRITICAL: os.getenv("DISCORD_WEBHOOK_CRITICAL"),
+    AlertType.TRACKLIST: os.getenv("DISCORD_WEBHOOK_TRACKLIST"),
+    AlertType.MONITORING: os.getenv("DISCORD_WEBHOOK_MONITORING"),
+    AlertType.SECURITY: os.getenv("DISCORD_WEBHOOK_SECURITY"),
+}
+```
+
 ## Audit Methodology
+
+### Notification Cleanup Pattern
+```bash
+# Find all Slack references
+rg "slack|Slack|SLACK" --type py
+
+# Find all email/SMTP references
+rg "email|Email|EMAIL|smtp|SMTP" --type py
+
+# Find notification-related tests
+find . -name "*test*alert*" -o -name "*test*notification*"
+```
 
 ### Pragma Search Pattern
 ```bash
@@ -194,6 +286,9 @@ uv run pytest --cov=services --cov-report=html
 
 ## Success Metrics
 - Zero unnecessary pragmas
+- Discord-only notification system implemented
+- All Slack and email code removed
+- Channel-specific Discord webhooks configured
 - 100% story task completion
 - All tests passing (0 failures, 0 skips)
 - 80%+ code coverage
@@ -239,6 +334,11 @@ uv run pytest --cov=services --cov-report=html
 
 ## Definition of Done
 - [ ] All unnecessary pragmas removed
+- [ ] All Slack code and references removed
+- [ ] All email/SMTP code and references removed
+- [ ] Discord-only notification system implemented
+- [ ] Channel-specific Discord webhooks configured and documented
+- [ ] All notification tests updated for Discord-only
 - [ ] All story tasks completed
 - [ ] Test suite 100% passing
 - [ ] 80%+ code coverage achieved
