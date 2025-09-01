@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # PostgreSQL for integration testing
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: tracktion-postgres-test
+    environment:
+      POSTGRES_USER: tracktion_user
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: test_feedback
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracktion_user -d test_feedback"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis for integration testing
+  redis-test:
+    image: redis:7-alpine
+    container_name: tracktion-redis-test
+    ports:
+      - "6380:6379"  # Different port to avoid conflicts
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Test runner service (optional - for containerized testing)
+  test-runner:
+    build:
+      context: ../../..
+      dockerfile: Dockerfile.test
+    container_name: tracktion-test-runner
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    environment:
+      TEST_POSTGRES_DSN: postgresql://tracktion_user:changeme@postgres-test:5432/test_feedback
+      TEST_REDIS_URL: redis://redis-test:6379/1
+      PYTHONPATH: /app
+    volumes:
+      - ../../../:/app
+    working_dir: /app
+    command: ["uv", "run", "pytest", "tests/integration/", "-v", "--tb=short"]
+
+volumes:
+  postgres_test_data:
+    name: tracktion_postgres_test_data
+  redis_test_data:
+    name: tracktion_redis_test_data
+
+networks:
+  default:
+    name: tracktion-test-network
