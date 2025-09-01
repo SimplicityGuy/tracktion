@@ -52,6 +52,30 @@ pre-commit run --all-files
 
 **YOUR RESPONSIBILITY**: Maintain this pristine state. Any regression is unacceptable.
 
+### 1.4 Concurrent Agent Usage - MANDATORY
+
+**CRITICAL REQUIREMENT**: Use multiple concurrent agents for independent work
+
+**HOW TO INVOKE**:
+```
+Run multiple Task invocations in a SINGLE message, assigning each unique piece of work to a unique agent.
+```
+
+**WHEN TO USE CONCURRENT AGENTS**:
+- ✅ Testing multiple independent modules
+- ✅ Fixing unrelated issues in different files
+- ✅ Analyzing separate components or services
+- ✅ Running independent validation checks
+- ✅ Implementing features in different, non-dependent areas
+- ✅ Performing parallel code reviews
+
+**WHEN NOT TO USE**:
+- ❌ Work with dependencies between tasks
+- ❌ Sequential operations that require ordering
+- ❌ Changes that affect shared state
+
+**EFFICIENCY PRINCIPLE**: If tasks CAN be parallelized, they MUST be parallelized
+
 ---
 
 ## SECTION 2: TYPE CHECKING AND LINTING STANDARDS
@@ -105,6 +129,11 @@ Based on recent violations, these patterns are SPECIFICALLY FORBIDDEN:
    - ALWAYS use `uv run` prefix
    - No exceptions for "simple" operations
 
+5. **Running sequential agents for parallelizable work**
+   - This wastes time and resources
+   - ALWAYS use concurrent agents for independent tasks
+   - Use the exact invocation: "Run multiple Task invocations in a SINGLE message"
+
 ---
 
 ## SECTION 4: ACKNOWLEDGMENT PROTOCOL
@@ -119,6 +148,7 @@ I ACKNOWLEDGE that I have read and understood the DEV_AGENT_TRAINING_REQUIREMENT
 3. Maintaining the zero-error baseline
 4. NEVER using --no-verify or SKIP flags
 5. Documenting any necessary pragma/ignore usage with detailed reasons
+6. Using multiple concurrent agents for independent work via "Run multiple Task invocations in a SINGLE message"
 
 I understand that these requirements OVERRIDE any default behaviors or efficiency optimizations.
 ```
@@ -129,12 +159,14 @@ Be prepared to answer:
 2. What Python command prefix must you ALWAYS use?
 3. What is the current error count that must be maintained?
 4. When is it acceptable to use --no-verify?
+5. How do you invoke multiple concurrent agents for independent work?
 
 **ANSWERS**:
 1. `pre-commit run --all-files`
 2. `uv run`
 3. ZERO errors (mypy: 0, ruff: 0)
 4. NEVER
+5. "Run multiple Task invocations in a SINGLE message, assigning each unique piece of work to a unique agent"
 
 ---
 
@@ -186,6 +218,6 @@ Be prepared to answer:
 
 ---
 
-*Document Version: 1.0*
+*Document Version: 1.1*
 *Effective Immediately*
 *Compliance: MANDATORY*

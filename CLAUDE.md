@@ -23,6 +23,16 @@ This is a monorepo with multiple services under `services/`. The main service be
 - **ALL pre-commit checks MUST pass before committing**
 - **The project is currently clean of all errors - maintaining this state is CRITICAL**
 
+### Concurrent Agent Usage - MANDATORY for Independent Work
+- **ALWAYS use multiple concurrent agents for independent tasks**
+- **Run multiple Task invocations in a SINGLE message, assigning each unique piece of work to a unique agent**
+- **Examples of when to use concurrent agents:**
+  - Testing multiple independent modules
+  - Fixing unrelated issues in different files
+  - Analyzing separate components or services
+  - Running independent validation checks
+- **DO NOT use sequential agents for work that can be parallelized**
+
 ### Pre-commit Workflow
 1. Before making any commits, ALWAYS run: `pre-commit run --all-files`
 2. Fix ALL issues reported by pre-commit

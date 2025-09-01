@@ -8,6 +8,12 @@
 
 ## During Development
 
+### Work Distribution
+- [ ] Identify independent tasks that can be parallelized
+- [ ] Use concurrent agents for parallel work: "Run multiple Task invocations in a SINGLE message"
+- [ ] Assign each unique piece of work to a unique agent
+- [ ] Avoid sequential processing of independent tasks
+
 ### Code Changes
 - [ ] Using `uv run` for ALL Python commands (no bare `python` or `pip`)
 - [ ] Running tests frequently: `uv run pytest tests/unit/`
@@ -50,6 +56,7 @@
 - ⛔ Thinking "it's just a small change"
 - ⛔ Assuming pre-commit will catch it during CI
 - ⛔ Using bare `python` instead of `uv run`
+- ⛔ Running sequential agents for work that could be parallelized
 
 ## Escalation Protocol
 If unable to resolve pre-commit failures:
@@ -63,6 +70,7 @@ If unable to resolve pre-commit failures:
 ✅ **MUST USE**: `uv run` for all Python execution
 ✅ **MUST MAINTAIN**: Zero-error baseline
 ✅ **MUST DOCUMENT**: Any pragma/ignore usage with detailed reasons
+✅ **MUST PARALLELIZE**: Use concurrent agents for independent work
 
 ---
 *Remember: We currently have ZERO errors. Every commit must maintain this standard.*
