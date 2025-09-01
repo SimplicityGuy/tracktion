@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Generator
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -53,7 +54,7 @@ def get_db() -> Generator[Session]:
 )
 async def analyze_patterns(
     request: RenameAnalyzeRequest,
-    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
+    db: Annotated[Session, Depends(get_db)],
 ) -> RenameAnalyzeResponse:
     """
     Analyze filename patterns.
@@ -106,7 +107,7 @@ async def analyze_patterns(
 )
 async def propose_rename(
     request: RenameProposalRequest,
-    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
+    db: Annotated[Session, Depends(get_db)],
 ) -> RenameProposalResponse:
     """
     Generate rename proposals.
@@ -171,7 +172,7 @@ async def propose_rename(
 )
 async def submit_feedback(
     request: RenameFeedbackRequest,
-    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
+    db: Annotated[Session, Depends(get_db)],
 ) -> RenameFeedbackResponse:
     """
     Submit user feedback on rename operations.
@@ -256,11 +257,11 @@ async def submit_feedback(
     responses={400: {"model": ErrorResponse}},
 )
 async def get_patterns(
-    category: str | None = Query(default=None, description="Filter by category"),
-    pattern_type: str | None = Query(default=None, description="Filter by pattern type"),
-    skip: int = Query(default=0, ge=0, description="Number of records to skip"),
-    limit: int = Query(default=100, ge=1, le=1000, description="Number of records to return"),
-    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
+    db: Annotated[Session, Depends(get_db)],
+    category: Annotated[str | None, Query(description="Filter by category")] = None,
+    pattern_type: Annotated[str | None, Query(description="Filter by pattern type")] = None,
+    skip: Annotated[int, Query(ge=0, description="Number of records to skip")] = 0,
+    limit: Annotated[int, Query(ge=1, le=1000, description="Number of records to return")] = 100,
 ) -> list[PatternResponse]:
     """
     Retrieve learned patterns.
@@ -306,10 +307,10 @@ async def get_patterns(
     responses={400: {"model": ErrorResponse}},
 )
 async def get_history(
-    was_accepted: bool | None = Query(default=None, description="Filter by acceptance status"),
-    skip: int = Query(default=0, ge=0, description="Number of records to skip"),
-    limit: int = Query(default=100, ge=1, le=1000, description="Number of records to return"),
-    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
+    db: Annotated[Session, Depends(get_db)],
+    was_accepted: Annotated[bool | None, Query(description="Filter by acceptance status")] = None,
+    skip: Annotated[int, Query(ge=0, description="Number of records to skip")] = 0,
+    limit: Annotated[int, Query(ge=1, le=1000, description="Number of records to return")] = 100,
 ) -> list[RenameHistoryResponse]:
     """
     Get rename history.

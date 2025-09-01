@@ -7,17 +7,30 @@ import logging
 import re
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from services.file_rename_service.app.config import get_settings
 
-if TYPE_CHECKING:
-    import redis.asyncio as redis
-else:
-    try:
-        import redis.asyncio as redis
-    except ImportError:
-        redis = None  # type: ignore[assignment]
+# Handle optional dependencies properly
+HAS_REDIS = False
+redis = None
+try:
+    import redis.asyncio as redis_lib
+
+    redis = redis_lib
+    HAS_REDIS = True
+except ImportError:
+    pass
+
+HAS_MODELS = False
+RenameProposal = None
+try:
+    from services.file_rename_service.app.proposal.models import RenameProposal as ProposalModel
+
+    RenameProposal = ProposalModel
+    HAS_MODELS = True
+except ImportError:
+    pass
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -274,14 +287,10 @@ class ProposalCache:
                 proposal_data = json.loads(cached_data)
                 proposal_dict = proposal_data["data"]
 
-                # Import and validate RenameProposal when needed
-                try:
-                    from services.file_rename_service.app.proposal.models import (  # noqa: PLC0415 - Dynamic import for optional dependency
-                        RenameProposal,
-                    )
-
+                # Validate RenameProposal if available
+                if HAS_MODELS and RenameProposal is not None:
                     proposal = RenameProposal.model_validate(proposal_dict)
-                except ImportError:
+                else:
                     # If models can't be imported, return raw dict
                     proposal = proposal_dict
 

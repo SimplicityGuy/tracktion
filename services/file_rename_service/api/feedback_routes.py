@@ -3,7 +3,7 @@
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
@@ -174,7 +174,7 @@ async def get_storage() -> FeedbackStorage:
     return storage
 
 
-async def get_processor(storage: FeedbackStorage = Depends(get_storage)) -> FeedbackProcessor:  # noqa: B008
+async def get_processor(storage: Annotated[FeedbackStorage, Depends(get_storage)]) -> FeedbackProcessor:
     """Get feedback processor instance."""
     return FeedbackProcessor(
         storage=storage,
@@ -184,17 +184,17 @@ async def get_processor(storage: FeedbackStorage = Depends(get_storage)) -> Feed
     )
 
 
-async def get_metrics_tracker(storage: FeedbackStorage = Depends(get_storage)) -> MetricsTracker:  # noqa: B008
+async def get_metrics_tracker(storage: Annotated[FeedbackStorage, Depends(get_storage)]) -> MetricsTracker:
     """Get metrics tracker instance."""
     return MetricsTracker(storage=storage)
 
 
-async def get_experiment_manager(storage: FeedbackStorage = Depends(get_storage)) -> ExperimentManager:  # noqa: B008
+async def get_experiment_manager(storage: Annotated[FeedbackStorage, Depends(get_storage)]) -> ExperimentManager:
     """Get experiment manager instance."""
     return ExperimentManager(storage=storage)
 
 
-async def get_online_learner(storage: FeedbackStorage = Depends(get_storage)) -> OnlineLearner:  # noqa: B008
+async def get_online_learner(storage: Annotated[FeedbackStorage, Depends(get_storage)]) -> OnlineLearner:
     """Get online learner instance."""
     return OnlineLearner(
         storage=storage,
@@ -209,9 +209,9 @@ async def get_online_learner(storage: FeedbackStorage = Depends(get_storage)) ->
 async def approve_proposal(
     request: Request,
     feedback_request: FeedbackSubmitRequest,
-    processor: FeedbackProcessor = Depends(get_processor),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_api_key),  # noqa: B008
+    processor: Annotated[FeedbackProcessor, Depends(get_processor)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_api_key)],
 ) -> FeedbackResponse:
     """Approve a rename proposal."""
     try:
@@ -257,9 +257,9 @@ async def approve_proposal(
 async def reject_proposal(
     request: Request,
     feedback_request: FeedbackSubmitRequest,
-    processor: FeedbackProcessor = Depends(get_processor),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_api_key),  # noqa: B008
+    processor: Annotated[FeedbackProcessor, Depends(get_processor)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_api_key)],
 ) -> FeedbackResponse:
     """Reject a rename proposal."""
     try:
@@ -305,9 +305,9 @@ async def reject_proposal(
 async def modify_proposal(
     request: Request,
     feedback_request: FeedbackSubmitRequest,
-    processor: FeedbackProcessor = Depends(get_processor),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_api_key),  # noqa: B008
+    processor: Annotated[FeedbackProcessor, Depends(get_processor)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_api_key)],
 ) -> FeedbackResponse:
     """Submit user-modified filename."""
     if not feedback_request.user_filename:
@@ -361,12 +361,12 @@ async def modify_proposal(
 @metrics_rate_limit
 async def get_feedback_metrics(
     request: Request,
-    model_version: str | None = Query(None, description="Filter by model version"),
-    start_date: datetime | None = Query(None, description="Start date"),  # noqa: B008
-    end_date: datetime | None = Query(None, description="End date"),  # noqa: B008
-    tracker: MetricsTracker = Depends(get_metrics_tracker),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_api_key),  # noqa: B008
+    tracker: Annotated[MetricsTracker, Depends(get_metrics_tracker)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_api_key)],
+    model_version: Annotated[str | None, Query(description="Filter by model version")] = None,
+    start_date: Annotated[datetime | None, Query(description="Start date")] = None,
+    end_date: Annotated[datetime | None, Query(description="End date")] = None,
 ) -> MetricsResponse:
     """Get feedback metrics."""
     try:
@@ -408,9 +408,9 @@ async def get_feedback_metrics(
 @metrics_rate_limit
 async def get_dashboard_metrics(
     request: Request,
-    tracker: MetricsTracker = Depends(get_metrics_tracker),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_api_key),  # noqa: B008
+    tracker: Annotated[MetricsTracker, Depends(get_metrics_tracker)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_api_key)],
 ) -> MetricsResponse:
     """Get dashboard metrics data."""
     try:
@@ -436,11 +436,11 @@ async def get_dashboard_metrics(
 @metrics_rate_limit
 async def get_improvement_metrics(
     request: Request,
-    baseline_version: str = Query(..., description="Baseline model version"),
-    current_version: str = Query(..., description="Current model version"),
-    tracker: MetricsTracker = Depends(get_metrics_tracker),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_api_key),  # noqa: B008
+    baseline_version: Annotated[str, Query(description="Baseline model version")],
+    current_version: Annotated[str, Query(description="Current model version")],
+    tracker: Annotated[MetricsTracker, Depends(get_metrics_tracker)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_api_key)],
 ) -> MetricsResponse:
     """Get improvement metrics between model versions."""
     try:
@@ -477,9 +477,9 @@ async def get_improvement_metrics(
 async def create_experiment(
     request: Request,
     experiment_request: ExperimentCreateRequest,
-    manager: ExperimentManager = Depends(get_experiment_manager),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_admin_key),  # noqa: B008
+    manager: Annotated[ExperimentManager, Depends(get_experiment_manager)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_admin_key)],
 ) -> ExperimentResponse:
     """Create new A/B test experiment."""
     try:
@@ -517,9 +517,9 @@ async def create_experiment(
 @admin_rate_limit
 async def get_experiments(
     request: Request,
-    manager: ExperimentManager = Depends(get_experiment_manager),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_admin_key),  # noqa: B008
+    manager: Annotated[ExperimentManager, Depends(get_experiment_manager)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_admin_key)],
 ) -> list[dict[str, Any]]:
     """Get active experiments."""
     try:
@@ -543,9 +543,9 @@ async def get_experiments(
 async def get_experiment_status(
     request: Request,
     experiment_id: str,
-    manager: ExperimentManager = Depends(get_experiment_manager),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_admin_key),  # noqa: B008
+    manager: Annotated[ExperimentManager, Depends(get_experiment_manager)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_admin_key)],
 ) -> ExperimentResponse:
     """Get experiment status."""
     try:
@@ -584,9 +584,9 @@ async def get_experiment_status(
 async def start_experiment(
     request: Request,
     experiment_id: str,
-    manager: ExperimentManager = Depends(get_experiment_manager),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_admin_key),  # noqa: B008
+    manager: Annotated[ExperimentManager, Depends(get_experiment_manager)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_admin_key)],
 ) -> ExperimentResponse:
     """Start an experiment."""
     try:
@@ -622,9 +622,9 @@ async def start_experiment(
 async def conclude_experiment(
     request: Request,
     experiment_id: str,
-    manager: ExperimentManager = Depends(get_experiment_manager),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_admin_key),  # noqa: B008
+    manager: Annotated[ExperimentManager, Depends(get_experiment_manager)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_admin_key)],
 ) -> ExperimentResponse:
     """Conclude an experiment."""
     try:
@@ -661,9 +661,9 @@ async def conclude_experiment(
 async def trigger_learning(
     request: Request,
     learning_request: LearningTriggerRequest,
-    learner: OnlineLearner = Depends(get_online_learner),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_admin_key),  # noqa: B008
+    learner: Annotated[OnlineLearner, Depends(get_online_learner)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_admin_key)],
 ) -> LearningResponse:
     """Trigger model learning/retraining."""
     try:
@@ -711,9 +711,9 @@ async def trigger_learning(
 @admin_rate_limit
 async def get_learning_status(
     request: Request,
-    storage: FeedbackStorage = Depends(get_storage),  # noqa: B008
-    auth_credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
-    user_context: dict[str, Any] = Depends(verify_admin_key),  # noqa: B008
+    storage: Annotated[FeedbackStorage, Depends(get_storage)],
+    auth_credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    user_context: Annotated[dict[str, Any], Depends(verify_admin_key)],
 ) -> LearningResponse:
     """Get learning pipeline status."""
     try:

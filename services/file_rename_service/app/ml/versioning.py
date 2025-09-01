@@ -164,7 +164,7 @@ class ModelVersionManager:
             return None
 
         with self.ab_test_config_file.open() as f:
-            config = json.load(f)
+            config: dict[str, Any] = json.load(f)
 
         # Calculate elapsed time
         start_time = datetime.fromisoformat(config["start_time"])
@@ -181,7 +181,7 @@ class ModelVersionManager:
             else:
                 metrics["approval_rate"] = 0
 
-        return config  # type: ignore[no-any-return]
+        return config
 
     def update_ab_metrics(self, version: str, approved: bool) -> None:
         """Update A/B test metrics for a prediction."""
@@ -278,4 +278,5 @@ class ModelVersionManager:
             return []
 
         with self.deployment_history_file.open() as f:
-            return json.load(f)  # type: ignore[no-any-return]
+            history: list[dict[str, Any]] = json.load(f)
+            return history

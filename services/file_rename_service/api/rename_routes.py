@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Generator
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -57,7 +58,7 @@ def get_db() -> Generator[Session]:
 )
 async def propose_single_rename(
     request: RenameProposalRequest,
-    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
+    db: Annotated[Session, Depends(get_db)],
 ) -> RenameProposalResponse:
     """
     Generate rename proposal for a single file.
@@ -82,10 +83,10 @@ async def propose_single_rename(
 
         # Check cache first
         cache_key = f"proposal:{request.original_name}:{hash(str(request.metadata))}"
-        cached_result = proposal_cache.get(cache_key)
+        cached_result: RenameProposalResponse | None = proposal_cache.get(cache_key)
         if cached_result:
             logger.debug(f"Using cached proposal for: {request.original_name}")
-            return cached_result  # type: ignore[no-any-return]
+            return cached_result
 
         # Initialize proposal generator
         generator = ProposalGenerator()
@@ -162,7 +163,7 @@ async def propose_single_rename(
 )
 async def propose_batch_rename(
     request: BatchProposalRequest,
-    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
+    db: Annotated[Session, Depends(get_db)],
 ) -> BatchProposalResponse:
     """
     Generate rename proposals for multiple files in batch.
@@ -273,9 +274,9 @@ async def propose_batch_rename(
     description="Retrieve available naming templates for the user",
 )
 async def get_templates(
-    user_id: str = Query(..., description="User ID to get templates for"),
-    search: str | None = Query(default=None, description="Search query for template names"),
-    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
+    user_id: Annotated[str, Query(description="User ID to get templates for")],
+    db: Annotated[Session, Depends(get_db)],
+    search: Annotated[str | None, Query(description="Search query for template names")] = None,
 ) -> list[TemplateResponse]:
     """
     Get naming templates for a user.
@@ -337,7 +338,7 @@ async def get_templates(
 )
 async def save_template(
     request: TemplateRequest,
-    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
+    db: Annotated[Session, Depends(get_db)],
 ) -> TemplateResponse:
     """
     Save a custom naming template.
@@ -414,7 +415,7 @@ async def save_template(
 )
 async def validate_filenames(
     request: ValidateRequest,
-    db: Session = Depends(get_db),  # noqa: B008 - FastAPI Depends pattern requires function call in default
+    db: Annotated[Session, Depends(get_db)],
 ) -> ValidateResponse:
     """
     Validate proposed filenames for conflicts and issues.

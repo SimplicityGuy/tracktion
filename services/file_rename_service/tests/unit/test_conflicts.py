@@ -83,7 +83,7 @@ class TestFilenameConflictResolver:
         assert unique_name == "test (1).txt"
 
         # Multiple conflicts
-        existing_with_numbered = existing_files + ["test (1).txt", "test (2).txt"]
+        existing_with_numbered = [*existing_files, "test (1).txt", "test (2).txt"]
         unique_name = self.resolver.generate_unique_name("test.txt", existing_with_numbered)
         assert unique_name == "test (3).txt"
 
