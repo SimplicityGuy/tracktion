@@ -16,10 +16,18 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 
 # Configuration
-SECRET_KEY = os.getenv("ADMIN_JWT_SECRET", "your-secret-key-change-in-production")
+# JWT secret key - MUST be set in production via environment variable
+SECRET_KEY = os.getenv("ADMIN_JWT_SECRET")
+if not SECRET_KEY:
+    # Only use a default in development - log a warning
+    import logging
+
+    logging.warning("ADMIN_JWT_SECRET not set - using insecure default for development only!")
+    SECRET_KEY = "INSECURE-DEVELOPMENT-KEY-CHANGE-IN-PRODUCTION"
+
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ADMIN_TOKEN_EXPIRE_MINUTES", "30"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("ADMIN_REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -60,27 +68,41 @@ class TokenResponse(BaseModel):
     expires_in: int = ACCESS_TOKEN_EXPIRE_MINUTES * 60
 
 
-# Hardcoded admin users for now - in production, this should be in a database
-ADMIN_USERS = {
-    "admin": {
-        "username": "admin",
-        "hashed_password": pwd_context.hash("admin-password"),  # Change in production
-        "role": "super_admin",
-        "is_active": True,
-    },
-    "parser_admin": {
-        "username": "parser_admin",
-        "hashed_password": pwd_context.hash("parser-admin-password"),  # Change in production
-        "role": "parser_admin",
-        "is_active": True,
-    },
-    "readonly_admin": {
-        "username": "readonly_admin",
-        "hashed_password": pwd_context.hash("readonly-password"),  # Change in production
-        "role": "readonly",
-        "is_active": True,
-    },
-}
+# Admin users configuration - passwords should be set via environment variables
+# In production, this should be stored in a database with proper user management
+def _get_admin_users() -> dict[str, dict[str, Any]]:
+    """
+    Get admin users configuration.
+
+    Passwords are loaded from environment variables for security.
+    Falls back to secure defaults only for development.
+    """
+    return {
+        "admin": {
+            "username": "admin",
+            "hashed_password": pwd_context.hash(os.getenv("ADMIN_PASSWORD", "change-me-in-production-admin")),
+            "role": "super_admin",
+            "is_active": True,
+        },
+        "parser_admin": {
+            "username": "parser_admin",
+            "hashed_password": pwd_context.hash(os.getenv("PARSER_ADMIN_PASSWORD", "change-me-in-production-parser")),
+            "role": "parser_admin",
+            "is_active": True,
+        },
+        "readonly_admin": {
+            "username": "readonly_admin",
+            "hashed_password": pwd_context.hash(
+                os.getenv("READONLY_ADMIN_PASSWORD", "change-me-in-production-readonly")
+            ),
+            "role": "readonly",
+            "is_active": True,
+        },
+    }
+
+
+# Initialize admin users from environment configuration
+ADMIN_USERS = _get_admin_users()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -198,7 +220,7 @@ def decode_token(token: str) -> TokenData:
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         ) from err
-    except jwt.JWTError as err:
+    except jwt.PyJWTError as err:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",

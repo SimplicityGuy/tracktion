@@ -8,6 +8,8 @@ import pytest
 from fastapi import HTTPException
 
 from services.tracklist_service.src.auth.admin_auth import (
+    ALGORITHM,
+    SECRET_KEY,
     AdminUser,
     TokenResponse,
     authenticate_admin,
@@ -118,11 +120,11 @@ class TestTokenGeneration:
         assert token is not None
         assert isinstance(token, str)
 
-        # Decode to verify contents
+        # Decode to verify contents using the actual SECRET_KEY from the module
         payload = jwt.decode(
             token,
-            "your-secret-key-change-in-production",
-            algorithms=["HS256"],
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
         )
 
         assert payload["sub"] == "test_user"
@@ -137,11 +139,11 @@ class TestTokenGeneration:
         assert token is not None
         assert isinstance(token, str)
 
-        # Decode to verify contents
+        # Decode to verify contents using the actual SECRET_KEY from the module
         payload = jwt.decode(
             token,
-            "your-secret-key-change-in-production",
-            algorithms=["HS256"],
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
         )
 
         assert payload["sub"] == "test_user"
