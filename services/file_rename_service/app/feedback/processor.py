@@ -10,11 +10,7 @@ from uuid import uuid4
 
 import psutil
 
-from services.file_rename_service.app.feedback.models import (
-    Feedback,
-    FeedbackAction,
-    FeedbackBatch,
-)
+from services.file_rename_service.app.feedback.models import Feedback, FeedbackAction, FeedbackBatch
 from services.file_rename_service.app.feedback.storage import FeedbackStorage
 
 logger = logging.getLogger(__name__)

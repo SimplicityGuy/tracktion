@@ -2,9 +2,7 @@
 
 import pytest
 
-from services.analysis_service.src.file_rename_proposal.confidence_scorer import (
-    ConfidenceScorer,
-)
+from services.analysis_service.src.file_rename_proposal.confidence_scorer import ConfidenceScorer
 
 
 class TestConfidenceScorer:

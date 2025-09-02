@@ -8,11 +8,7 @@ from typing import Any
 import asyncpg
 from redis import asyncio as aioredis
 
-from services.file_rename_service.app.feedback.models import (
-    Feedback,
-    FeedbackBatch,
-    LearningMetrics,
-)
+from services.file_rename_service.app.feedback.models import Feedback, FeedbackBatch, LearningMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +66,8 @@ class FeedbackStorage:
             raise RuntimeError("Database pool not initialized")
         async with self._pg_pool.acquire() as conn:
             # Create feedback table
-            await conn.execute("""
+            await conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS feedback (
                     id UUID PRIMARY KEY,
                     proposal_id VARCHAR(255) NOT NULL,
@@ -88,10 +85,12 @@ class FeedbackStorage:
                     INDEX idx_feedback_timestamp (timestamp),
                     INDEX idx_feedback_model (model_version)
                 )
-            """)
+            """
+            )
 
             # Create feedback batches table
-            await conn.execute("""
+            await conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS feedback_batches (
                     batch_id UUID PRIMARY KEY,
                     feedbacks JSONB NOT NULL,
@@ -102,10 +101,12 @@ class FeedbackStorage:
                     INDEX idx_batch_created (created_at),
                     INDEX idx_batch_processed (processed)
                 )
-            """)
+            """
+            )
 
             # Create learning metrics table
-            await conn.execute("""
+            await conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS learning_metrics (
                     id SERIAL PRIMARY KEY,
                     model_version VARCHAR(100) NOT NULL,
@@ -121,7 +122,8 @@ class FeedbackStorage:
                     INDEX idx_metrics_model (model_version),
                     INDEX idx_metrics_updated (updated_at)
                 )
-            """)
+            """
+            )
 
     async def store_feedback(self, feedback: Feedback) -> None:
         """Store feedback in database.

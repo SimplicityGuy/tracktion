@@ -19,11 +19,7 @@ from typing import Any
 
 import essentia
 import numpy as np
-from essentia.standard import (
-    MonoLoader,
-    TensorflowPredictMusiCNN,
-    TensorflowPredictVGGish,
-)
+from essentia.standard import MonoLoader, TensorflowPredictMusiCNN, TensorflowPredictVGGish
 
 environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 essentia.log.infoActive = False

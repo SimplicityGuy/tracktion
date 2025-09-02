@@ -16,10 +16,7 @@ from services.analysis_service.src.audio_cache import AudioCache
 from services.analysis_service.src.bpm_detector import BPMDetector
 from services.analysis_service.src.config import get_config
 from services.analysis_service.src.message_consumer import MessageConsumer
-from services.analysis_service.src.performance import (
-    MemoryManager,
-    PerformanceOptimizer,
-)
+from services.analysis_service.src.performance import MemoryManager, PerformanceOptimizer
 from services.analysis_service.src.storage_handler import StorageHandler
 from services.analysis_service.src.temporal_analyzer import TemporalAnalyzer
 

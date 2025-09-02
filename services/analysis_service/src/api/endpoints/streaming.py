@@ -3,39 +3,84 @@
 import asyncio
 import json
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from typing import Any
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 
+from services.analysis_service.src.repositories import AsyncRecordingRepository
 from services.analysis_service.src.structured_logging import get_logger
+from shared.core_types.src.async_database import AsyncDatabaseManager
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/v1/streaming", tags=["streaming"])
 
+# Initialize database components
+db_manager = AsyncDatabaseManager()
+recording_repo = AsyncRecordingRepository(db_manager)
 
-async def generate_audio_chunks(file_path: str, chunk_size: int = 8192) -> AsyncGenerator[bytes]:
+
+async def generate_audio_chunks(
+    file_path: str,
+    chunk_size: int = 8192,
+    start_byte: int | None = None,
+    end_byte: int | None = None,
+) -> AsyncGenerator[bytes]:
     """Generate audio file chunks for streaming.
 
     Args:
         file_path: Path to audio file
         chunk_size: Size of each chunk in bytes
+        start_byte: Optional start byte for range requests
+        end_byte: Optional end byte for range requests
 
     Yields:
         Audio file chunks
     """
-    # In real implementation, read from actual file
-    # For demo, generate synthetic data
-    for i in range(10):  # Simulate 10 chunks
-        await asyncio.sleep(0.1)  # Simulate I/O delay
-        chunk = f"Audio chunk {i} of {file_path}".encode() * (chunk_size // 20)
-        yield chunk[:chunk_size]
+    if not Path(file_path).exists():
+        raise FileNotFoundError(f"Audio file not found: {file_path}")
+
+    try:
+        file_size = Path(file_path).stat().st_size
+
+        # Set range boundaries
+        start = start_byte or 0
+        end = min(end_byte or file_size - 1, file_size - 1)
+
+        # Validate range
+        if start >= file_size or start > end:
+            raise ValueError(f"Invalid range: {start}-{end} for file size {file_size}")
+
+        with Path(file_path).open("rb") as f:
+            f.seek(start)
+            bytes_to_read = end - start + 1
+            bytes_read = 0
+
+            while bytes_read < bytes_to_read:
+                chunk_size_to_read = min(chunk_size, bytes_to_read - bytes_read)
+                chunk = f.read(chunk_size_to_read)
+
+                if not chunk:
+                    break
+
+                bytes_read += len(chunk)
+                yield chunk
+
+                # Small delay to prevent overwhelming the client
+                await asyncio.sleep(0.001)
+
+    except Exception as e:
+        logger.error(f"Error streaming file {file_path}: {e}")
+        raise
 
 
 @router.get("/audio/{recording_id}")
 async def stream_audio(
+    request: Request,
     recording_id: str,
     chunk_size: int = Query(8192, description="Chunk size in bytes"),
     start_byte: int | None = Query(None, description="Start byte for range request"),
@@ -44,6 +89,7 @@ async def stream_audio(
     """Stream audio file in chunks.
 
     Args:
+        request: FastAPI request object for range headers
         recording_id: Recording ID to stream
         chunk_size: Size of each chunk
         start_byte: Optional start byte for partial content
@@ -52,30 +98,83 @@ async def stream_audio(
     Returns:
         Streaming audio response
     """
-    # In real implementation, get file path from database
-    file_path = f"/path/to/audio/{recording_id}.wav"
+    # Get recording from database
+    try:
+        recording_uuid = UUID(recording_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid recording ID format") from e
+
+    recording = await recording_repo.get_by_id(recording_uuid)
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
+
+    file_path = recording.file_path
+
+    # Verify file exists
+    if not Path(file_path).exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Audio file not found: {file_path}")
+
+    # Handle Range requests from headers if not in query params
+    range_header = request.headers.get("range")
+    if range_header and not start_byte and not end_byte:
+        try:
+            # Parse "bytes=start-end" header
+            range_match = range_header.replace("bytes=", "")
+            if "-" in range_match:
+                start_str, end_str = range_match.split("-", 1)
+                start_byte = int(start_str) if start_str else None
+                end_byte = int(end_str) if end_str else None
+        except (ValueError, AttributeError):
+            # Invalid range header, ignore
+            pass
+
+    # Get file info
+    file_path_obj = Path(file_path)
+    file_size = file_path_obj.stat().st_size
+    file_ext = file_path_obj.suffix.lower()
+
+    # Determine media type based on file extension
+    media_type_map = {
+        ".wav": "audio/wav",
+        ".mp3": "audio/mpeg",
+        ".flac": "audio/flac",
+        ".ogg": "audio/ogg",
+        ".m4a": "audio/mp4",
+        ".aac": "audio/aac",
+    }
+    media_type = media_type_map.get(file_ext, "audio/octet-stream")
+
+    # Set range boundaries
+    start = start_byte or 0
+    end = min(end_byte or file_size - 1, file_size - 1)
+    content_length = end - start + 1
 
     # Create headers for audio streaming
     headers = {
-        "Content-Type": "audio/wav",
-        "Cache-Control": "no-cache",
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=3600",
         "X-Recording-ID": recording_id,
+        "Content-Length": str(content_length),
     }
 
     # Add range headers if partial content requested
-    if start_byte is not None or end_byte is not None:
-        headers["Accept-Ranges"] = "bytes"
-        if start_byte is not None and end_byte is not None:
-            headers["Content-Range"] = f"bytes {start_byte}-{end_byte}/*"
-        elif start_byte is not None:
-            headers["Content-Range"] = f"bytes {start_byte}-/*"
+    is_partial = start_byte is not None or end_byte is not None or range_header
 
-    return StreamingResponse(
-        generate_audio_chunks(file_path, chunk_size),
-        media_type="audio/wav",
-        headers=headers,
-        status_code=(status.HTTP_206_PARTIAL_CONTENT if start_byte is not None else status.HTTP_200_OK),
-    )
+    if is_partial:
+        headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+        status_code = status.HTTP_206_PARTIAL_CONTENT
+    else:
+        status_code = status.HTTP_200_OK
+
+    try:
+        return StreamingResponse(
+            generate_audio_chunks(file_path, chunk_size, start, end),
+            media_type=media_type,
+            headers=headers,
+            status_code=status_code,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 async def generate_analysis_events(

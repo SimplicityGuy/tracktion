@@ -27,9 +27,7 @@ from services.file_rename_service.api.auth import (
 from services.file_rename_service.app.feedback.experiments import ExperimentManager
 from services.file_rename_service.app.feedback.learning import OnlineLearner
 from services.file_rename_service.app.feedback.metrics import MetricsTracker
-from services.file_rename_service.app.feedback.models import (
-    FeedbackAction,
-)
+from services.file_rename_service.app.feedback.models import FeedbackAction
 from services.file_rename_service.app.feedback.processor import FeedbackProcessor
 from services.file_rename_service.app.feedback.storage import FeedbackStorage
 

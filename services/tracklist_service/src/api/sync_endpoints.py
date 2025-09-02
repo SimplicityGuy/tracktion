@@ -15,11 +15,7 @@ from services.tracklist_service.src.services.conflict_resolution_service import 
     ConflictResolutionService,
     ResolutionStrategy,
 )
-from services.tracklist_service.src.services.sync_service import (
-    SyncFrequency,
-    SynchronizationService,
-    SyncSource,
-)
+from services.tracklist_service.src.services.sync_service import SyncFrequency, SynchronizationService, SyncSource
 from services.tracklist_service.src.services.version_service import VersionService
 
 

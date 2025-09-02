@@ -7,12 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from services.analysis_service.src.cue_handler.exceptions import CueParsingError
-from services.analysis_service.src.cue_handler.models import (
-    CueSheet,
-    CueTime,
-    FileReference,
-    Track,
-)
+from services.analysis_service.src.cue_handler.models import CueSheet, CueTime, FileReference, Track
 from services.analysis_service.src.cue_handler.validator import (
     CueValidator,
     Severity,

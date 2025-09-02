@@ -4,11 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from .format_mappings import (
-    FORMAT_CAPABILITIES,
-    get_format_capabilities,
-    get_lossy_warnings,
-)
+from .format_mappings import FORMAT_CAPABILITIES, get_format_capabilities, get_lossy_warnings
 from .generator import CueFormat
 
 

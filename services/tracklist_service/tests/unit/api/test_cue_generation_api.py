@@ -11,12 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from src.api.cue_generation_api import router
-from src.models.cue_file import (
-    BatchCueGenerationResponse,
-    CueFileDB,
-    CueGenerationResponse,
-    ValidationReport,
-)
+from src.models.cue_file import BatchCueGenerationResponse, CueFileDB, CueGenerationResponse, ValidationReport
 from src.models.tracklist import Track, Tracklist
 
 

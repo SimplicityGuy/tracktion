@@ -13,30 +13,16 @@ from typing import Any
 
 import aio_pika
 from aio_pika import ExchangeType
-from aio_pika.abc import (
-    AbstractChannel,
-    AbstractConnection,
-    AbstractExchange,
-    AbstractIncomingMessage,
-    AbstractQueue,
-)
+from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractExchange, AbstractIncomingMessage, AbstractQueue
 
-from services.analysis_service.src.async_audio_analysis import (
-    AsyncAudioAnalyzer,
-    AudioAnalysisResult,
-)
+from services.analysis_service.src.async_audio_analysis import AsyncAudioAnalyzer, AudioAnalysisResult
 from services.analysis_service.src.async_audio_processor import (
     AsyncAudioProcessor,
     AudioAnalysisScheduler,
     TaskPriority,
 )
-from services.analysis_service.src.async_error_handler import (
-    AsyncErrorHandler,
-)
-from services.analysis_service.src.async_progress_tracker import (
-    AsyncProgressTracker,
-    BatchProgressAggregator,
-)
+from services.analysis_service.src.async_error_handler import AsyncErrorHandler
+from services.analysis_service.src.async_progress_tracker import AsyncProgressTracker, BatchProgressAggregator
 from services.analysis_service.src.async_resource_manager import AsyncResourceManager
 
 logger = logging.getLogger(__name__)

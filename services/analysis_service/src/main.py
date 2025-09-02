@@ -16,12 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
 
 from bpm_detector import BPMDetector
 from config import BPMConfig
-from exceptions import (
-    InvalidAudioFileError,
-    MetadataExtractionError,
-    RetryableError,
-    StorageError,
-)
+from exceptions import InvalidAudioFileError, MetadataExtractionError, RetryableError, StorageError
 from file_rename_proposal.config import FileRenameProposalConfig
 from file_rename_proposal.integration import FileRenameProposalIntegration
 from key_detector import KeyDetector

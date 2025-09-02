@@ -11,13 +11,7 @@ from .async_database import (
     get_async_neo4j_driver,
     get_async_redis_client,
 )
-from .database import (
-    Base,
-    DatabaseManager,
-    db_manager,
-    get_db_session,
-    get_neo4j_driver,
-)
+from .database import Base, DatabaseManager, db_manager, get_db_session, get_neo4j_driver
 
 # Models
 from .models import Metadata, Recording, RenameProposal, Tracklist

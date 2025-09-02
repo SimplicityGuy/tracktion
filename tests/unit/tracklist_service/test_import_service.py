@@ -9,15 +9,9 @@ from uuid import uuid4
 import pytest
 
 from services.tracklist_service.src.models.tracklist import Tracklist
-from services.tracklist_service.src.models.tracklist_models import (
-    CuePoint,
-)
-from services.tracklist_service.src.models.tracklist_models import (
-    Track as ScrapedTrack,
-)
-from services.tracklist_service.src.models.tracklist_models import (
-    Tracklist as ScrapedTracklist,
-)
+from services.tracklist_service.src.models.tracklist_models import CuePoint
+from services.tracklist_service.src.models.tracklist_models import Track as ScrapedTrack
+from services.tracklist_service.src.models.tracklist_models import Tracklist as ScrapedTracklist
 from services.tracklist_service.src.services.import_service import ImportService
 
 

@@ -182,6 +182,64 @@ class Tracklist(Base):
         return True
 
 
+class AnalysisResult(Base):
+    """Model for analysis results."""
+
+    __tablename__ = "analysis_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=func.uuid_generate_v4(),
+    )
+    recording_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("recordings.id"), nullable=False, index=True
+    )
+    analysis_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    result_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    confidence_score: Mapped[float | None] = mapped_column(DECIMAL(5, 4), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    processing_time_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.current_timestamp(),
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=True,
+    )
+
+    # Relationships
+    recording: Mapped["Recording"] = relationship("Recording")
+
+    def __repr__(self) -> str:
+        """String representation of AnalysisResult."""
+        return f"<AnalysisResult(id={self.id}, type={self.analysis_type}, status={self.status})>"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert AnalysisResult to dictionary.
+
+        Returns:
+            Dictionary representation of the analysis result
+        """
+        return {
+            "id": str(self.id),
+            "recording_id": str(self.recording_id),
+            "analysis_type": self.analysis_type,
+            "result_data": self.result_data,
+            "confidence_score": float(self.confidence_score) if self.confidence_score else None,
+            "status": self.status,
+            "error_message": self.error_message,
+            "processing_time_ms": self.processing_time_ms,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class RenameProposal(Base):
     """Model for file rename proposals."""
 

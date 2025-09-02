@@ -7,9 +7,7 @@ import pytest
 from aio_pika import DeliveryMode
 from aio_pika.abc import AbstractIncomingMessage
 
-from services.tracklist_service.src.messaging.message_handler import (
-    TracklistMessageHandler,
-)
+from services.tracklist_service.src.messaging.message_handler import TracklistMessageHandler
 from services.tracklist_service.src.models.search_models import (
     PaginationInfo,
     SearchRequest,

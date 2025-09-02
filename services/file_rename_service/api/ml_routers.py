@@ -7,11 +7,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from services.file_rename_service.app.ml.models import (
-    FeedbackData,
-    ModelAlgorithm,
-    TrainingData,
-)
+from services.file_rename_service.app.ml.models import FeedbackData, ModelAlgorithm, TrainingData
 from services.file_rename_service.app.ml.predictor import Predictor
 from services.file_rename_service.app.ml.trainer import Trainer
 from services.file_rename_service.app.ml.versioning import ModelVersionManager

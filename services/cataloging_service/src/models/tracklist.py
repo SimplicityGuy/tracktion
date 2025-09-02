@@ -1,13 +1,18 @@
 """Tracklist model for the cataloging service."""
 
+from __future__ import annotations
+
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+
+if TYPE_CHECKING:
+    from .recording import Recording
 
 
 class Tracklist(Base):
@@ -22,7 +27,7 @@ class Tracklist(Base):
     tracks: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
 
     # Relationships
-    recording: Mapped["Recording"] = relationship("Recording", back_populates="tracklists")
+    recording: Mapped[Recording] = relationship("Recording", back_populates="tracklists")
 
     def __repr__(self) -> str:
         """String representation of Tracklist."""

@@ -7,11 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import redis.exceptions
 
-from services.analysis_service.src.progress_tracker import (
-    FileProgress,
-    ProcessingStatus,
-    ProgressTracker,
-)
+from services.analysis_service.src.progress_tracker import FileProgress, ProcessingStatus, ProgressTracker
 
 
 class TestFileProgress(unittest.TestCase):

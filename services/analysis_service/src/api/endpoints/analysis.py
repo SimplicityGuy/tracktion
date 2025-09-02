@@ -1,17 +1,30 @@
 """Analysis endpoints for Analysis Service."""
 
-import uuid
+import os
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
+from services.analysis_service.src.api_message_publisher import APIMessagePublisher
+from services.analysis_service.src.repositories import (
+    # AsyncAnalysisResultRepository,  # TODO: Enable when implemented
+    AsyncRecordingRepository,
+)
 from services.analysis_service.src.structured_logging import get_logger
+from shared.core_types.src.async_database import AsyncDatabaseManager
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/v1/analysis", tags=["analysis"])
+
+# Initialize database and message queue components
+db_manager = AsyncDatabaseManager()
+message_publisher = APIMessagePublisher(rabbitmq_url=os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"))
+recording_repo = AsyncRecordingRepository(db_manager)
+# analysis_repo = AsyncAnalysisResultRepository(db_manager)  # TODO: Enable when implemented
 
 
 class AnalysisRequest(BaseModel):
@@ -52,24 +65,47 @@ async def start_analysis(request: AnalysisRequest) -> dict[str, Any]:
     Returns:
         Analysis task confirmation
     """
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(request.recording_id)
+    if not recording:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {request.recording_id}"
+        )
+
+    # Verify file exists
+    if not Path(recording.file_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Audio file not found: {recording.file_path}"
+        )
+
+    # Submit analysis request to message queue
+    correlation_id = await message_publisher.publish_analysis_request(
+        recording_id=request.recording_id,
+        file_path=recording.file_path,
+        analysis_types=request.analysis_types,
+        priority=request.priority,
+    )
+
+    # Update recording status to processing
+    await recording_repo.update_status(request.recording_id, "processing")
+
     logger.info(
-        "Starting analysis",
+        "Analysis started",
         extra={
             "recording_id": str(request.recording_id),
             "types": request.analysis_types,
             "priority": request.priority,
+            "correlation_id": correlation_id,
         },
     )
 
-    # In real implementation, send to processing queue
-    task_id = uuid.uuid4()
-
     return {
-        "task_id": str(task_id),
+        "task_id": correlation_id,
         "recording_id": str(request.recording_id),
         "status": "queued",
         "message": "Analysis started",
         "analysis_types": request.analysis_types,
+        "correlation_id": correlation_id,
     }
 
 
@@ -83,41 +119,34 @@ async def get_analysis_status(recording_id: UUID) -> AnalysisResponse:
     Returns:
         Analysis status and results
     """
-    # In real implementation, fetch from database
-    results = [
-        AnalysisResult(
-            type="bpm",
-            value=128.5,
-            confidence=0.95,
-            metadata={"method": "onset_detection"},
-        ),
-        AnalysisResult(
-            type="key",
-            value="Am",
-            confidence=0.88,
-            metadata={"scale": "minor", "camelot": "8A"},
-        ),
-        AnalysisResult(
-            type="mood",
-            value="energetic",
-            confidence=0.82,
-            metadata={"valence": 0.7, "arousal": 0.8},
-        ),
-        AnalysisResult(
-            type="energy",
-            value=0.75,
-            confidence=0.90,
-            metadata={"peak": 0.85, "average": 0.75},
-        ),
-    ]
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_id)
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
+
+    # TODO: Enable when AsyncAnalysisResultRepository is implemented
+    # Get analysis results from database
+    # analysis_results = await analysis_repo.get_by_recording_id(recording_id)
+
+    # Temporary implementation - return pending status
+    result_items: list[AnalysisResult] = []
+    status_str = "pending"
+    progress = 0.0
+
+    # Get timestamps from recording
+    started_at = recording.created_at.isoformat() if recording.created_at else None
+    completed_at = None
+    # TODO: Enable when analysis results are available
+    # if status_str == "completed" and recording.updated_at:
+    #     completed_at = recording.updated_at.isoformat()
 
     return AnalysisResponse(
         recording_id=recording_id,
-        status="completed",
-        progress=1.0,
-        results=results,
-        started_at="2024-01-01T10:00:00Z",
-        completed_at="2024-01-01T10:05:00Z",
+        status=status_str,
+        progress=progress,
+        results=result_items,
+        started_at=started_at,
+        completed_at=completed_at,
     )
 
 
@@ -131,17 +160,17 @@ async def get_bpm_analysis(recording_id: UUID) -> dict[str, Any]:
     Returns:
         BPM analysis results
     """
-    return {
-        "recording_id": str(recording_id),
-        "bpm": 128.5,
-        "confidence": 0.95,
-        "tempo_stability": 0.92,
-        "beats": {
-            "count": 512,
-            "first_beat": 0.235,
-            "beat_positions": [],  # Would contain actual beat positions
-        },
-    }
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_id)
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
+
+    # TODO: Enable when AsyncAnalysisResultRepository is implemented
+    # Get BPM analysis result from database
+    # bpm_result = await analysis_repo.get_latest_by_type(recording_id, "bpm")
+
+    # Temporary implementation - return not found
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BPM analysis not implemented yet")
 
 
 @router.get("/{recording_id}/key")
@@ -154,18 +183,17 @@ async def get_key_analysis(recording_id: UUID) -> dict[str, Any]:
     Returns:
         Key analysis results
     """
-    return {
-        "recording_id": str(recording_id),
-        "key": "Am",
-        "confidence": 0.88,
-        "scale": "minor",
-        "camelot": "8A",
-        "open_key": "1m",
-        "alternatives": [
-            {"key": "C", "confidence": 0.72},
-            {"key": "F", "confidence": 0.65},
-        ],
-    }
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_id)
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
+
+    # TODO: Enable when AsyncAnalysisResultRepository is implemented
+    # Get key analysis result from database
+    # key_result = await analysis_repo.get_latest_by_type(recording_id, "key")
+
+    # Temporary implementation - return not found
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Key analysis not implemented yet")
 
 
 @router.get("/{recording_id}/mood")
@@ -178,18 +206,17 @@ async def get_mood_analysis(recording_id: UUID) -> dict[str, Any]:
     Returns:
         Mood analysis results
     """
-    return {
-        "recording_id": str(recording_id),
-        "primary_mood": "energetic",
-        "confidence": 0.82,
-        "valence": 0.7,  # Positive/negative
-        "arousal": 0.8,  # Energy level
-        "moods": [
-            {"mood": "energetic", "score": 0.82},
-            {"mood": "uplifting", "score": 0.75},
-            {"mood": "driving", "score": 0.68},
-        ],
-    }
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_id)
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
+
+    # TODO: Enable when AsyncAnalysisResultRepository is implemented
+    # Get mood analysis result from database
+    # mood_result = await analysis_repo.get_latest_by_type(recording_id, "mood")
+
+    # Temporary implementation - return not found
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mood analysis not implemented yet")
 
 
 @router.post("/{recording_id}/waveform")
@@ -210,25 +237,44 @@ async def generate_waveform(
     Returns:
         Waveform generation task confirmation
     """
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_id)
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
+
+    # Verify file exists
+    if not Path(recording.file_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Audio file not found: {recording.file_path}"
+        )
+
+    # Submit waveform generation request to message queue
+    correlation_id = await message_publisher.publish_analysis_request(
+        recording_id=recording_id,
+        file_path=recording.file_path,
+        analysis_types=["waveform"],
+        priority=6,
+        metadata={"width": width, "height": height, "color": color},
+    )
+
     logger.info(
-        "Generating waveform",
+        "Waveform generation started",
         extra={
             "recording_id": str(recording_id),
             "width": width,
             "height": height,
             "color": color,
+            "correlation_id": correlation_id,
         },
     )
 
-    # In real implementation, send to processing queue
-    task_id = uuid.uuid4()
-
     return {
-        "task_id": str(task_id),
+        "task_id": correlation_id,
         "recording_id": str(recording_id),
         "status": "generating",
         "message": "Waveform generation started",
         "parameters": {"width": width, "height": height, "color": color},
+        "correlation_id": correlation_id,
     }
 
 
@@ -250,21 +296,43 @@ async def generate_spectrogram(
     Returns:
         Spectrogram generation task confirmation
     """
-    logger.info(
-        "Generating spectrogram",
-        extra={
-            "recording_id": str(recording_id),
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_id)
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
+
+    # Verify file exists
+    if not Path(recording.file_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Audio file not found: {recording.file_path}"
+        )
+
+    # Submit spectrogram generation request to message queue
+    correlation_id = await message_publisher.publish_analysis_request(
+        recording_id=recording_id,
+        file_path=recording.file_path,
+        analysis_types=["spectrogram"],
+        priority=5,
+        metadata={
             "fft_size": fft_size,
             "hop_size": hop_size,
             "color_map": color_map,
         },
     )
 
-    # In real implementation, send to processing queue
-    task_id = uuid.uuid4()
+    logger.info(
+        "Spectrogram generation started",
+        extra={
+            "recording_id": str(recording_id),
+            "fft_size": fft_size,
+            "hop_size": hop_size,
+            "color_map": color_map,
+            "correlation_id": correlation_id,
+        },
+    )
 
     return {
-        "task_id": str(task_id),
+        "task_id": correlation_id,
         "recording_id": str(recording_id),
         "status": "generating",
         "message": "Spectrogram generation started",
@@ -273,4 +341,5 @@ async def generate_spectrogram(
             "hop_size": hop_size,
             "color_map": color_map,
         },
+        "correlation_id": correlation_id,
     }

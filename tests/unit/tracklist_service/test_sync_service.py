@@ -9,10 +9,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.tracklist_service.src.models.synchronization import (
-    SyncConfiguration,
-    SyncEvent,
-)
+from services.tracklist_service.src.models.synchronization import SyncConfiguration, SyncEvent
 from services.tracklist_service.src.models.tracklist import TracklistDB
 from services.tracklist_service.src.services.sync_service import (
     SyncFrequency,

@@ -7,9 +7,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.tracklist_service.src.services.file_lifecycle_service import (
-    FileLifecycleService,
-)
+from services.tracklist_service.src.services.file_lifecycle_service import FileLifecycleService
 from shared.core_types.src.models import Recording
 
 

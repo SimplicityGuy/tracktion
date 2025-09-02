@@ -1,13 +1,20 @@
 """Recording model for the cataloging service."""
 
+from __future__ import annotations
+
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+
+if TYPE_CHECKING:
+    from .metadata import Metadata
+    from .tracklist import Tracklist
 
 
 class Recording(Base):
@@ -25,10 +32,10 @@ class Recording(Base):
     )
 
     # Relationships
-    metadata_items: Mapped[list["Metadata"]] = relationship(
+    metadata_items: Mapped[list[Metadata]] = relationship(
         "Metadata", back_populates="recording", cascade="all, delete-orphan"
     )
-    tracklists: Mapped[list["Tracklist"]] = relationship(
+    tracklists: Mapped[list[Tracklist]] = relationship(
         "Tracklist", back_populates="recording", cascade="all, delete-orphan"
     )
 

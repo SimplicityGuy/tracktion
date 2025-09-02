@@ -12,11 +12,7 @@ from uuid import UUID, uuid4
 import redis
 from sqlalchemy.orm import Session
 
-from services.tracklist_service.src.models.tracklist import (
-    TrackEntry,
-    Tracklist,
-    TracklistDB,
-)
+from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist, TracklistDB
 
 
 class DraftService:

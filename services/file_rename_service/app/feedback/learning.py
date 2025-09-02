@@ -9,11 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from services.file_rename_service.app.feedback.models import (
-    Feedback,
-    FeedbackAction,
-    LearningMetrics,
-)
+from services.file_rename_service.app.feedback.models import Feedback, FeedbackAction, LearningMetrics
 from services.file_rename_service.app.feedback.storage import FeedbackStorage
 
 

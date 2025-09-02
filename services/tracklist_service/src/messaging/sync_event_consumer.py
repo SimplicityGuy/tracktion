@@ -19,16 +19,9 @@ from services.tracklist_service.src.messaging.sync_message_schemas import (
     SyncTriggerRequest,
     VersionRollbackRequest,
 )
-from services.tracklist_service.src.services.conflict_resolution_service import (
-    ConflictResolutionService,
-)
-from services.tracklist_service.src.services.cue_regeneration_service import (
-    CueRegenerationService,
-)
-from services.tracklist_service.src.services.sync_service import (
-    SynchronizationService,
-    SyncSource,
-)
+from services.tracklist_service.src.services.conflict_resolution_service import ConflictResolutionService
+from services.tracklist_service.src.services.cue_regeneration_service import CueRegenerationService
+from services.tracklist_service.src.services.sync_service import SynchronizationService, SyncSource
 from services.tracklist_service.src.services.version_service import VersionService
 
 logger = logging.getLogger(__name__)

@@ -5,10 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from services.analysis_service.src.metadata_extractor import (
-    InvalidAudioFileError,
-    MetadataExtractor,
-)
+from services.analysis_service.src.metadata_extractor import InvalidAudioFileError, MetadataExtractor
 
 
 class TestOggMetadataExtraction:

@@ -6,13 +6,8 @@ from uuid import uuid4
 
 import pytest
 
-from services.analysis_service.src.file_rename_proposal.batch_processor import (
-    BatchProcessingJob,
-    BatchProcessor,
-)
-from services.analysis_service.src.file_rename_proposal.proposal_generator import (
-    RenameProposal,
-)
+from services.analysis_service.src.file_rename_proposal.batch_processor import BatchProcessingJob, BatchProcessor
+from services.analysis_service.src.file_rename_proposal.proposal_generator import RenameProposal
 
 
 class TestBatchProcessingJob:

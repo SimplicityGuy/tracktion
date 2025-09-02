@@ -17,20 +17,13 @@ from services.analysis_service.src.async_audio_analysis import (
     AsyncFFTProcessor,
     AudioAnalysisResult,
 )
-from services.analysis_service.src.async_audio_processor import (
-    AsyncAudioProcessor,
-    AudioTaskConfig,
-    TaskPriority,
-)
+from services.analysis_service.src.async_audio_processor import AsyncAudioProcessor, AudioTaskConfig, TaskPriority
 from services.analysis_service.src.async_progress_tracker import (
     AsyncProgressTracker,
     BatchProgressAggregator,
     ProgressEventType,
 )
-from services.analysis_service.src.async_resource_manager import (
-    AsyncResourceManager,
-    ResourceLimits,
-)
+from services.analysis_service.src.async_resource_manager import AsyncResourceManager, ResourceLimits
 from services.analysis_service.src.key_detector import KeyDetectionResult
 from services.analysis_service.src.mood_analyzer import MoodAnalysisResult
 

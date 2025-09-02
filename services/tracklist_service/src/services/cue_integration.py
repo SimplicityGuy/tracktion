@@ -17,7 +17,7 @@ from src.utils.time_utils import timedelta_to_milliseconds
 analysis_service_path = Path(__file__).parent.parent.parent.parent / "analysis_service" / "src"
 sys.path.insert(0, str(analysis_service_path))
 
-from cue_handler import (  # noqa: E402  # Path modification required before import
+from cue_handler import (  # noqa: E402  # Path modification required before import  # noqa: E402  # Path modification required before import
     ConversionMode,
     CueConverter,
     CueDisc,
@@ -27,9 +27,7 @@ from cue_handler import (  # noqa: E402  # Path modification required before imp
     CueValidator,
     get_generator,
 )
-from cue_handler import (  # noqa: E402  # Path modification required before import
-    CueFormat as CueHandlerFormat,
-)
+from cue_handler import CueFormat as CueHandlerFormat  # noqa: E402  # Path modification required before import
 from cue_handler.models import CueTime  # noqa: E402  # Path modification required before import
 
 

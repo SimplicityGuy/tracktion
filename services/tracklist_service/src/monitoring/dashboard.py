@@ -7,10 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from services.tracklist_service.src.cache.fallback_cache import FallbackCache
-from services.tracklist_service.src.monitoring.alert_manager import (
-    AlertManager,
-    AlertSeverity,
-)
+from services.tracklist_service.src.monitoring.alert_manager import AlertManager, AlertSeverity
 from services.tracklist_service.src.monitoring.structure_monitor import StructureMonitor
 
 

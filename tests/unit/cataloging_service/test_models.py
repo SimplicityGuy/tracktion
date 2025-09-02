@@ -50,7 +50,9 @@ except (OperationalError, Exception):
 
 pytestmark = pytest.mark.skipif(
     not DB_AVAILABLE,
-    reason="PostgreSQL database not available. Install PostgreSQL and create test_tracktion database to run these tests.",
+    reason=(
+        "PostgreSQL database not available. Install PostgreSQL and create test_tracktion database to run these tests."
+    ),
 )
 
 

@@ -2,7 +2,14 @@
 
 ## Overview
 
-The Tracktion system uses Discord as its exclusive notification channel. Different types of alerts are sent to specific Discord channels for better organization and monitoring.
+The Tracktion system uses Discord as its exclusive notification channel through a unified notification architecture. The system provides:
+
+- Multiple alert types with dedicated Discord channels
+- Automatic rate limiting and retry logic
+- Notification history tracking with Redis persistence
+- Rich embed messages with customizable templates
+- Queue management for high-volume notifications
+- Circuit breaker pattern for failure prevention
 
 ## Discord Webhook Setup
 
@@ -41,10 +48,11 @@ DISCORD_WEBHOOK_TRACKLIST=https://discord.com/api/webhooks/456789012/defghij
 DISCORD_WEBHOOK_MONITORING=https://discord.com/api/webhooks/567890123/efghijk
 DISCORD_WEBHOOK_SECURITY=https://discord.com/api/webhooks/678901234/fghijkl
 
-# Optional settings
-DISCORD_RATE_LIMIT=10        # Messages per minute per channel
-DISCORD_RETRY_ATTEMPTS=3      # Retry failed sends
-DISCORD_TIMEOUT_SECONDS=10    # Request timeout
+# Optional settings (with defaults)
+DISCORD_RATE_LIMIT=30        # Messages per minute per webhook (default: 30)
+DISCORD_RETRY_ATTEMPTS=3      # Number of retry attempts (default: 3)
+DISCORD_TIMEOUT_SECONDS=10    # Request timeout in seconds (default: 10)
+DISCORD_QUEUE_SIZE=100       # Max queued messages per channel (default: 100)
 ```
 
 ## Alert Types and Routing
@@ -96,18 +104,55 @@ Discord notifications include:
 }
 ```
 
-## Testing Your Configuration
+## Usage with the New Notification Service
 
-1. Run the notification test command:
-```bash
-uv run python -m services.tracklist_service.test_notifications
+### Basic Usage
+
+```python
+from services.notification_service import (
+    DiscordNotificationService,
+    AlertType,
+    NotificationMessage,
+)
+
+# Initialize the service
+notification_service = DiscordNotificationService()
+
+# Create and send a notification
+message = NotificationMessage(
+    alert_type=AlertType.GENERAL,
+    title="System Update",
+    message="The system has been successfully updated",
+)
+result = await notification_service.send(message)
 ```
 
-2. Check each Discord channel to verify messages are received
+### Advanced Features
+
+The new system provides several advanced capabilities:
+
+- **Automatic Queuing**: Messages are queued when rate limits are reached
+- **Retry Logic**: Failed messages are retried with exponential backoff
+- **History Tracking**: All notifications are logged for auditing
+- **Health Checks**: Monitor webhook availability
+- **Template System**: Pre-built templates for common scenarios
+
+## Testing Your Configuration
+
+1. Validate webhook configuration:
+```python
+notification_service = DiscordNotificationService()
+is_valid = await notification_service.validate_configuration()
+```
+
+2. Run a health check:
+```python
+is_healthy = await notification_service.health_check()
+```
 
 3. Monitor the logs for any connection errors:
 ```bash
-docker-compose logs -f tracklist_service | grep -i discord
+docker-compose logs -f notification_service | grep -i discord
 ```
 
 ## Troubleshooting
@@ -140,14 +185,44 @@ If you experience timeouts:
 4. **Monitor webhook usage** for suspicious activity
 5. **Test in development** before production deployment
 
-## Migration from Slack/Email
+## Migration from Legacy AlertManager
 
-If migrating from previous notification systems:
+The new `DiscordNotificationService` replaces the old `AlertManager` system:
 
-1. All Slack webhook references should be replaced with Discord webhooks
-2. Email notification code has been removed - no SMTP configuration needed
-3. Update any monitoring dashboards to point to Discord channels
-4. Notify team members of the new Discord channels for alerts
+### Key Changes
+
+1. **No Slack Support**: All Slack references have been removed
+2. **No Email Support**: SMTP/email functionality has been removed
+3. **New Import Path**: Use `services.notification_service` instead of `tracklist_service.monitoring`
+4. **New Enum**: `AlertType` replaces `AlertChannel`
+5. **Structured Messages**: Use `NotificationMessage` objects instead of raw strings
+
+### Migration Example
+
+**Before (AlertManager):**
+```python
+from services.tracklist_service.src.monitoring.alert_manager import AlertManager
+
+alert_manager = AlertManager(slack_webhook_url="...")
+await alert_manager.send_alert("error", "Something went wrong", ["slack"])
+```
+
+**After (DiscordNotificationService):**
+```python
+from services.notification_service import (
+    DiscordNotificationService,
+    AlertType,
+    NotificationMessage,
+)
+
+notification_service = DiscordNotificationService()
+message = NotificationMessage(
+    alert_type=AlertType.ERROR,
+    title="Error Detected",
+    message="Something went wrong",
+)
+result = await notification_service.send(message)
+```
 
 ## Support
 

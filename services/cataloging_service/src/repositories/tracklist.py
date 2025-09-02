@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.tracklist import Tracklist
@@ -82,8 +82,6 @@ class TracklistRepository(BaseRepository[Tracklist]):
         Returns:
             Number of deleted tracklists
         """
-        from sqlalchemy import delete
-
         result = await self.session.execute(delete(Tracklist).where(Tracklist.recording_id == recording_id))
         return cast("int", result.rowcount)
 
@@ -99,8 +97,6 @@ class TracklistRepository(BaseRepository[Tracklist]):
         """
         # Using PostgreSQL JSONB containment operator
         # This searches for tracks where any track's title contains the search pattern
-        from sqlalchemy import func
-
         result = await self.session.execute(
             select(Tracklist)
             .where(func.jsonb_path_exists(Tracklist.tracks, f'$[*] ? (@.title like_regex "{title}" flag "i")'))

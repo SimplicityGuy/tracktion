@@ -27,11 +27,7 @@ from services.file_rename_service.api.feedback_routes import router as feedback_
 from services.file_rename_service.app.feedback.experiments import ExperimentManager
 from services.file_rename_service.app.feedback.learning import OnlineLearner
 from services.file_rename_service.app.feedback.metrics import MetricsTracker
-from services.file_rename_service.app.feedback.models import (
-    ExperimentStatus,
-    Feedback,
-    FeedbackAction,
-)
+from services.file_rename_service.app.feedback.models import ExperimentStatus, Feedback, FeedbackAction
 from services.file_rename_service.app.feedback.processor import (
     BackpressureError,
     BackpressureStrategy,

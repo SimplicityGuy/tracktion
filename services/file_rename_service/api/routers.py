@@ -19,16 +19,8 @@ from services.file_rename_service.api.schemas import (
     RenameProposalRequest,
     RenameProposalResponse,
 )
-from services.file_rename_service.models.database import (
-    Pattern,
-    RenameHistory,
-    UserFeedback,
-    get_session_factory,
-)
-from services.file_rename_service.utils.rabbitmq import (
-    MessageTopics,
-    rabbitmq_manager,
-)
+from services.file_rename_service.models.database import Pattern, RenameHistory, UserFeedback, get_session_factory
+from services.file_rename_service.utils.rabbitmq import MessageTopics, rabbitmq_manager
 
 logger = logging.getLogger(__name__)
 

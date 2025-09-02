@@ -13,12 +13,7 @@ import httpx
 import structlog
 from bs4 import BeautifulSoup
 
-from shared.utils.async_http_client import (
-    AsyncHTTPClient,
-    HTTPClientConfig,
-    RetryHandler,
-    get_global_http_factory,
-)
+from shared.utils.async_http_client import AsyncHTTPClient, HTTPClientConfig, RetryHandler, get_global_http_factory
 from src.config import get_config
 
 logger = structlog.get_logger(__name__)

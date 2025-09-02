@@ -1,16 +1,26 @@
 """Metadata management endpoints for Analysis Service."""
 
+import os
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
+from services.analysis_service.src.api_message_publisher import APIMessagePublisher
+from services.analysis_service.src.repositories import AsyncMetadataRepository, AsyncRecordingRepository
 from services.analysis_service.src.structured_logging import get_logger
+from shared.core_types.src.async_database import AsyncDatabaseManager
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/v1/metadata", tags=["metadata"])
+
+# Initialize database and message queue components
+db_manager = AsyncDatabaseManager()
+message_publisher = APIMessagePublisher(rabbitmq_url=os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"))
+recording_repo = AsyncRecordingRepository(db_manager)
+metadata_repo = AsyncMetadataRepository(db_manager)
 
 
 class MetadataUpdate(BaseModel):
@@ -52,20 +62,53 @@ async def get_metadata(recording_id: UUID) -> MetadataResponse:
     Returns:
         Recording metadata
     """
-    # In real implementation, fetch from database
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_id)
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
+
+    # Get metadata from database
+    metadata_items = await metadata_repo.get_by_recording_id(recording_id)
+    metadata_dict = {item.key: item.value for item in metadata_items}
+
+    # Extract standard metadata fields with defaults
+    def get_metadata_value(key: str, default: Any = None, convert_type: type = str) -> Any:
+        value = metadata_dict.get(key, default)
+        if value is not None and convert_type is not str:
+            try:
+                return convert_type(value)
+            except (ValueError, TypeError):
+                return default
+        return value
+
+    # Build custom fields (non-standard metadata)
+    standard_fields = {
+        "title",
+        "artist",
+        "album",
+        "genre",
+        "year",
+        "duration",
+        "format",
+        "bitrate",
+        "sample_rate",
+        "channels",
+    }
+    custom_fields = {k: v for k, v in metadata_dict.items() if k not in standard_fields}
+
     return MetadataResponse(
         recording_id=recording_id,
-        title="Sample Track",
-        artist="Sample Artist",
-        album="Sample Album",
-        genre="Electronic",
-        year=2024,
-        duration=180.5,
-        format="wav",
-        bitrate=1411200,
-        sample_rate=44100,
-        channels=2,
-        custom_fields={"bpm": 128, "key": "Am"},
+        title=get_metadata_value("title", "Unknown Title"),
+        artist=get_metadata_value("artist", "Unknown Artist"),
+        album=get_metadata_value("album"),
+        genre=get_metadata_value("genre"),
+        year=get_metadata_value("year", convert_type=int),
+        duration=get_metadata_value("duration", 0.0, float),
+        format=get_metadata_value("format", "unknown"),
+        bitrate=get_metadata_value("bitrate", 0, int),
+        sample_rate=get_metadata_value("sample_rate", 0, int),
+        channels=get_metadata_value("channels", 0, int),
+        custom_fields=custom_fields,
     )
 
 
@@ -80,19 +123,40 @@ async def update_metadata(recording_id: UUID, metadata: MetadataUpdate) -> dict[
     Returns:
         Update confirmation
     """
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_id)
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
+
+    # Get updates to apply
+    updates = metadata.model_dump(exclude_none=True)
+
+    # Update each metadata field in database
+    updated_count = 0
+    for key, value in updates.items():
+        if key == "custom_fields" and isinstance(value, dict):
+            # Handle custom fields as separate metadata items
+            for custom_key, custom_value in value.items():
+                await metadata_repo.update_by_key(recording_id=recording_id, key=custom_key, value=str(custom_value))
+                updated_count += 1
+        else:
+            # Handle standard metadata fields
+            await metadata_repo.update_by_key(recording_id=recording_id, key=key, value=str(value))
+            updated_count += 1
+
     logger.info(
-        "Updating metadata",
+        "Metadata updated",
         extra={
             "recording_id": str(recording_id),
-            "updates": metadata.model_dump(exclude_none=True),
+            "updates": updates,
+            "fields_updated": updated_count,
         },
     )
 
-    # In real implementation, update in database
     return {
         "id": str(recording_id),
         "status": "updated",
-        "message": "Metadata updated successfully",
+        "message": f"Metadata updated successfully ({updated_count} fields)",
     }
 
 
@@ -106,13 +170,31 @@ async def extract_metadata(recording_id: UUID) -> dict[str, str]:
     Returns:
         Extraction task confirmation
     """
-    logger.info("Triggering metadata extraction", extra={"recording_id": str(recording_id)})
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_id)
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
 
-    # In real implementation, send extraction message to queue
+    # Submit extraction request to message queue
+    correlation_id = await message_publisher.publish_metadata_extraction(
+        recording_id=recording_id,
+        extraction_types=["id3_tags", "audio_analysis"],
+        priority=6,  # Higher priority for metadata extraction
+    )
+
+    logger.info(
+        "Metadata extraction started",
+        extra={
+            "recording_id": str(recording_id),
+            "correlation_id": correlation_id,
+        },
+    )
+
     return {
         "id": str(recording_id),
         "status": "extracting",
         "message": "Metadata extraction started",
+        "correlation_id": correlation_id,
     }
 
 
@@ -126,11 +208,29 @@ async def enrich_metadata(recording_id: UUID) -> dict[str, str]:
     Returns:
         Enrichment task confirmation
     """
-    logger.info("Triggering metadata enrichment", extra={"recording_id": str(recording_id)})
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_id)
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
 
-    # In real implementation, trigger enrichment workflow
+    # Submit enrichment request to message queue
+    correlation_id = await message_publisher.publish_metadata_extraction(
+        recording_id=recording_id,
+        extraction_types=["external_enrichment", "musicbrainz", "lastfm"],
+        priority=4,  # Lower priority for enrichment
+    )
+
+    logger.info(
+        "Metadata enrichment started",
+        extra={
+            "recording_id": str(recording_id),
+            "correlation_id": correlation_id,
+        },
+    )
+
     return {
         "id": str(recording_id),
         "status": "enriching",
         "message": "Metadata enrichment started",
+        "correlation_id": correlation_id,
     }

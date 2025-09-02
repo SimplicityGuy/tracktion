@@ -7,11 +7,7 @@ from unittest.mock import Mock, call, patch
 import pytest
 from redis import Redis
 
-from services.tracklist_service.src.queue.batch_queue import (
-    BatchJobQueue,
-    Job,
-    JobPriority,
-)
+from services.tracklist_service.src.queue.batch_queue import BatchJobQueue, Job, JobPriority
 
 
 @pytest.fixture

@@ -7,10 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from services.file_rename_service.app.proposal.batch_processor import (
-    BatchProcessingResult,
-    BatchProcessor,
-)
+from services.file_rename_service.app.proposal.batch_processor import BatchProcessingResult, BatchProcessor
 from services.file_rename_service.app.proposal.cache import ProposalCache
 from services.file_rename_service.app.proposal.conflicts import (
     check_duplicate,
@@ -21,11 +18,7 @@ from services.file_rename_service.app.proposal.conflicts import (
 )
 from services.file_rename_service.app.proposal.explainer import RenameExplainer
 from services.file_rename_service.app.proposal.generator import ProposalGenerator
-from services.file_rename_service.app.proposal.models import (
-    ConflictResolution,
-    NamingTemplate,
-    RenameProposal,
-)
+from services.file_rename_service.app.proposal.models import ConflictResolution, NamingTemplate, RenameProposal
 from services.file_rename_service.app.proposal.scorer import ConfidenceScorer
 from services.file_rename_service.app.proposal.templates import TemplateManager
 

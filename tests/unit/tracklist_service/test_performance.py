@@ -8,9 +8,7 @@ from uuid import uuid4
 import pytest
 
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
-from services.tracklist_service.src.services.catalog_search_service import (
-    CatalogSearchService,
-)
+from services.tracklist_service.src.services.catalog_search_service import CatalogSearchService
 from services.tracklist_service.src.services.draft_service import DraftService
 from services.tracklist_service.src.services.timing_service import TimingService
 

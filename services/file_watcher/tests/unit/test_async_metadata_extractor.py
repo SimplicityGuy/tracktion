@@ -11,10 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest_asyncio
 
-from src.async_metadata_extractor import (
-    AsyncMetadataExtractor,
-    AsyncMetadataProgressTracker,
-)
+from src.async_metadata_extractor import AsyncMetadataExtractor, AsyncMetadataProgressTracker
 
 
 @pytest_asyncio.fixture

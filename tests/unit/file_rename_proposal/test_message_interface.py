@@ -10,9 +10,7 @@ from services.analysis_service.src.file_rename_proposal.message_interface import
     MessageTypes,
     RenameProposalMessageInterface,
 )
-from services.analysis_service.src.file_rename_proposal.proposal_generator import (
-    RenameProposal,
-)
+from services.analysis_service.src.file_rename_proposal.proposal_generator import RenameProposal
 
 
 class TestMessageInterface:

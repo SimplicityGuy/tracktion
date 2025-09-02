@@ -16,10 +16,7 @@ import aiofiles  # type: ignore[import-untyped]
 import essentia.standard as es
 import numpy as np
 
-from services.analysis_service.src.async_audio_processor import (
-    AsyncAudioProcessor,
-    TaskPriority,
-)
+from services.analysis_service.src.async_audio_processor import AsyncAudioProcessor, TaskPriority
 from services.analysis_service.src.bpm_detector import BPMDetector
 from services.analysis_service.src.key_detector import KeyDetector
 from services.analysis_service.src.mood_analyzer import MoodAnalyzer

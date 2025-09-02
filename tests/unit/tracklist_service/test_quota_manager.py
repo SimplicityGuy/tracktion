@@ -7,11 +7,7 @@ import pytest
 
 from services.tracklist_service.src.auth.models import User, UserTier
 from services.tracklist_service.src.quota.manager import QuotaManager
-from services.tracklist_service.src.quota.models import (
-    QuotaResult,
-    QuotaStatus,
-    QuotaType,
-)
+from services.tracklist_service.src.quota.models import QuotaResult, QuotaStatus, QuotaType
 
 
 @pytest.fixture

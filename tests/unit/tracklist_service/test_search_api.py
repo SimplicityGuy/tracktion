@@ -8,12 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from services.tracklist_service.src.main import create_app
-from services.tracklist_service.src.models.search_models import (
-    PaginationInfo,
-    SearchResponse,
-    SearchResult,
-    SearchType,
-)
+from services.tracklist_service.src.models.search_models import PaginationInfo, SearchResponse, SearchResult, SearchType
 
 
 @pytest.fixture

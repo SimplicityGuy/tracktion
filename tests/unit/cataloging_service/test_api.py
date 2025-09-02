@@ -234,23 +234,25 @@ class TestAPIEndpoints:
         sample_metadata_responses,
     ):
         """Test successful metadata retrieval."""
-        with patch("services.cataloging_service.src.api.recordings.RecordingRepository") as mock_recording_repo_class:
-            with patch("services.cataloging_service.src.api.recordings.MetadataRepository") as mock_metadata_repo_class:
-                mock_recording_repo = AsyncMock()
-                mock_recording_repo_class.return_value = mock_recording_repo
-                mock_recording_repo.get_by_id.return_value = sample_recording_response
+        with (
+            patch("services.cataloging_service.src.api.recordings.RecordingRepository") as mock_recording_repo_class,
+            patch("services.cataloging_service.src.api.recordings.MetadataRepository") as mock_metadata_repo_class,
+        ):
+            mock_recording_repo = AsyncMock()
+            mock_recording_repo_class.return_value = mock_recording_repo
+            mock_recording_repo.get_by_id.return_value = sample_recording_response
 
-                mock_metadata_repo = AsyncMock()
-                mock_metadata_repo_class.return_value = mock_metadata_repo
-                mock_metadata_repo.get_by_recording_id.return_value = sample_metadata_responses
+            mock_metadata_repo = AsyncMock()
+            mock_metadata_repo_class.return_value = mock_metadata_repo
+            mock_metadata_repo.get_by_recording_id.return_value = sample_metadata_responses
 
-                response = client.get(f"/recordings/{sample_recording_id}/metadata")
+            response = client.get(f"/recordings/{sample_recording_id}/metadata")
 
-                assert response.status_code == 200
-                data = response.json()
-                assert len(data) == 2
-                assert data[0]["key"] == "bpm"
-                assert data[1]["key"] == "genre"
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 2
+            assert data[0]["key"] == "bpm"
+            assert data[1]["key"] == "genre"
 
     def test_get_recording_metadata_recording_not_found(self, client):
         """Test metadata retrieval when recording not found."""
@@ -273,25 +275,25 @@ class TestAPIEndpoints:
         sample_tracklist_responses,
     ):
         """Test successful tracklist retrieval."""
-        with patch("services.cataloging_service.src.api.recordings.RecordingRepository") as mock_recording_repo_class:
-            with patch(
-                "services.cataloging_service.src.api.recordings.TracklistRepository"
-            ) as mock_tracklist_repo_class:
-                mock_recording_repo = AsyncMock()
-                mock_recording_repo_class.return_value = mock_recording_repo
-                mock_recording_repo.get_by_id.return_value = sample_recording_response
+        with (
+            patch("services.cataloging_service.src.api.recordings.RecordingRepository") as mock_recording_repo_class,
+            patch("services.cataloging_service.src.api.recordings.TracklistRepository") as mock_tracklist_repo_class,
+        ):
+            mock_recording_repo = AsyncMock()
+            mock_recording_repo_class.return_value = mock_recording_repo
+            mock_recording_repo.get_by_id.return_value = sample_recording_response
 
-                mock_tracklist_repo = AsyncMock()
-                mock_tracklist_repo_class.return_value = mock_tracklist_repo
-                mock_tracklist_repo.get_by_recording_id.return_value = sample_tracklist_responses
+            mock_tracklist_repo = AsyncMock()
+            mock_tracklist_repo_class.return_value = mock_tracklist_repo
+            mock_tracklist_repo.get_by_recording_id.return_value = sample_tracklist_responses
 
-                response = client.get(f"/recordings/{sample_recording_id}/tracklist")
+            response = client.get(f"/recordings/{sample_recording_id}/tracklist")
 
-                assert response.status_code == 200
-                data = response.json()
-                assert len(data) == 1
-                assert data[0]["source"] == "manual"
-                assert len(data[0]["tracks"]) == 1
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 1
+            assert data[0]["source"] == "manual"
+            assert len(data[0]["tracks"]) == 1
 
     def test_search_recordings_by_file_name(self, client, sample_recording_response):
         """Test search recordings by file name."""
@@ -507,18 +509,20 @@ class TestMiddleware:
 
         app.dependency_overrides[get_db_session] = mock_db_session
 
-        with TestClient(app) as client:
-            with patch("services.cataloging_service.src.api.recordings.RecordingRepository") as mock_repo_class:
-                mock_repo = AsyncMock()
-                mock_repo_class.return_value = mock_repo
-                mock_repo.get_all.return_value = []  # Return empty list instead of raising
+        with (
+            TestClient(app) as client,
+            patch("services.cataloging_service.src.api.recordings.RecordingRepository") as mock_repo_class,
+        ):
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.get_all.return_value = []  # Return empty list instead of raising
 
-                response = client.get("/recordings")
+            response = client.get("/recordings")
 
-                # Should work normally without errors
-                assert response.status_code == 200
-                data = response.json()
-                assert isinstance(data, list)
+            # Should work normally without errors
+            assert response.status_code == 200
+            data = response.json()
+            assert isinstance(data, list)
 
     def test_error_handling_middleware_dependency_error(self):
         """Test basic functionality when dependencies are properly mocked."""
@@ -533,17 +537,19 @@ class TestMiddleware:
 
         app.dependency_overrides[get_db_session] = working_dependency
 
-        with TestClient(app) as client:
-            with patch("services.cataloging_service.src.api.recordings.RecordingRepository") as mock_repo_class:
-                mock_repo = AsyncMock()
-                mock_repo_class.return_value = mock_repo
-                mock_repo.get_all.return_value = []
+        with (
+            TestClient(app) as client,
+            patch("services.cataloging_service.src.api.recordings.RecordingRepository") as mock_repo_class,
+        ):
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.get_all.return_value = []
 
-                response = client.get("/recordings")
+            response = client.get("/recordings")
 
-                assert response.status_code == 200
-                data = response.json()
-                assert isinstance(data, list)
+            assert response.status_code == 200
+            data = response.json()
+            assert isinstance(data, list)
 
 
 class TestAPISchemas:

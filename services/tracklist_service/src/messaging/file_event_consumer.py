@@ -9,13 +9,8 @@ from aio_pika import ExchangeType, IncomingMessage
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from services.tracklist_service.src.config import get_config
-from services.tracklist_service.src.messaging.rabbitmq_client import (
-    RabbitMQClient,
-    RabbitMQConfig,
-)
-from services.tracklist_service.src.services.file_lifecycle_service import (
-    FileLifecycleService,
-)
+from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient, RabbitMQConfig
+from services.tracklist_service.src.services.file_lifecycle_service import FileLifecycleService
 
 logger = logging.getLogger(__name__)
 

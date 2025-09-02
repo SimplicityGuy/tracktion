@@ -496,7 +496,9 @@ class TestMetricsTracker:
                     original_filename=f"old{i}.txt",
                     proposed_filename=f"new{i}.txt",
                     user_action=(
-                        FeedbackAction.APPROVED if np.random.random() < approval_prob else FeedbackAction.REJECTED  # noqa: NPY002
+                        FeedbackAction.APPROVED
+                        if np.random.default_rng().random() < approval_prob
+                        else FeedbackAction.REJECTED
                     ),
                     confidence_score=0.5 + i * 0.002,
                     model_version="v1.0.0",

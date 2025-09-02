@@ -7,10 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from services.analysis_service.src.cue_handler.exceptions import (
-    CueParsingError,
-    CueValidationError,
-)
+from services.analysis_service.src.cue_handler.exceptions import CueParsingError, CueValidationError
 from services.analysis_service.src.cue_handler.models import CueTime
 from services.analysis_service.src.cue_handler.parser import CueParser
 

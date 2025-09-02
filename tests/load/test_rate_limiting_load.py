@@ -10,10 +10,7 @@ import pytest
 from fastapi import Request
 
 from services.tracklist_service.src.auth.models import User, UserTier
-from services.tracklist_service.src.rate_limiting.limiter import (
-    RateLimiter,
-    RateLimitResult,
-)
+from services.tracklist_service.src.rate_limiting.limiter import RateLimiter, RateLimitResult
 
 
 class TestRateLimitingAccuracy:

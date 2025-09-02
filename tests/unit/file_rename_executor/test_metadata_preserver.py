@@ -2,9 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from services.analysis_service.src.file_rename_executor.metadata_preserver import (
-    MetadataPreserver,
-)
+from services.analysis_service.src.file_rename_executor.metadata_preserver import MetadataPreserver
 
 
 class TestMetadataPreserver:

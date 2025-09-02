@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 from src.config import get_config
 from src.database import get_db_manager
-from src.repositories import RecordingRepository, TracklistRepository
+from src.repositories import MetadataRepository, RecordingRepository, TracklistRepository
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +142,6 @@ class TracklistMessageConsumer:
                         metadata = body.get("metadata", {})
 
                         # Store metadata
-                        from src.repositories import MetadataRepository
-
                         metadata_repo = MetadataRepository(session)
 
                         for key, value in metadata.items():

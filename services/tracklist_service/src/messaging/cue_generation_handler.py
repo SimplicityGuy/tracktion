@@ -31,9 +31,7 @@ from services.tracklist_service.src.models.cue_file import (
     CueGenerationResponse,
     GenerateCueRequest,
 )
-from services.tracklist_service.src.services.cue_generation_service import (
-    CueGenerationService,
-)
+from services.tracklist_service.src.services.cue_generation_service import CueGenerationService
 from services.tracklist_service.src.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)

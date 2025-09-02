@@ -11,11 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from bs4 import BeautifulSoup
 
-from services.tracklist_service.src.models.tracklist_models import (
-    CuePoint,
-    Track,
-    TransitionType,
-)
+from services.tracklist_service.src.models.tracklist_models import CuePoint, Track, TransitionType
 from services.tracklist_service.src.scraper.tracklist_scraper import TracklistScraper
 
 # Sample HTML snippets for testing

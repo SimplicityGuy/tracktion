@@ -6,12 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from services.tracklist_service.src.progress.tracker import (
-    BatchProgress,
-    JobProgress,
-    JobStatus,
-    ProgressTracker,
-)
+from services.tracklist_service.src.progress.tracker import BatchProgress, JobProgress, JobStatus, ProgressTracker
 
 
 @pytest.fixture

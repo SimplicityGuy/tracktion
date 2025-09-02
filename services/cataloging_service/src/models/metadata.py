@@ -1,12 +1,18 @@
 """Metadata model for the cataloging service."""
 
+from __future__ import annotations
+
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+
+if TYPE_CHECKING:
+    from .recording import Recording
 
 
 class Metadata(Base):
@@ -20,7 +26,7 @@ class Metadata(Base):
     value: Mapped[str] = mapped_column(String, nullable=False)
 
     # Relationships
-    recording: Mapped["Recording"] = relationship("Recording", back_populates="metadata_items")
+    recording: Mapped[Recording] = relationship("Recording", back_populates="metadata_items")
 
     # Indexes
     __table_args__ = (

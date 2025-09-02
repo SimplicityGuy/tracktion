@@ -1,6 +1,8 @@
 """Tests for streaming endpoints."""
 
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 from fastapi import status
 from fastapi.testclient import TestClient
@@ -11,11 +13,18 @@ from services.analysis_service.src.api.app import app
 class TestStreamingEndpoints:
     """Test streaming response endpoints."""
 
-    def test_audio_streaming(self):
+    @patch("services.analysis_service.src.api.endpoints.streaming.recording_repo")
+    def test_audio_streaming(self, mock_repo):
         """Test audio file streaming."""
-        client = TestClient(app)
-        recording_id = "test-recording-123"
+        # Mock database operations
+        recording_id = uuid4()
+        test_file_path = "/Users/Robert/Code/public/tracktion/tests/fixtures/test_120bpm_click.wav"
+        mock_recording = MagicMock()
+        mock_recording.id = recording_id
+        mock_recording.file_path = test_file_path
+        mock_repo.get_by_id = AsyncMock(return_value=mock_recording)
 
+        client = TestClient(app)
         with client as c:
             response = c.get(f"/v1/streaming/audio/{recording_id}")
 
@@ -30,11 +39,18 @@ class TestStreamingEndpoints:
 
             assert len(content) > 0
 
-    def test_partial_content_streaming(self):
+    @patch("services.analysis_service.src.api.endpoints.streaming.recording_repo")
+    def test_partial_content_streaming(self, mock_repo):
         """Test partial content with range request."""
-        client = TestClient(app)
-        recording_id = "test-recording-456"
+        # Mock database operations
+        recording_id = uuid4()
+        test_file_path = "/Users/Robert/Code/public/tracktion/tests/fixtures/test_120bpm_click.wav"
+        mock_recording = MagicMock()
+        mock_recording.id = recording_id
+        mock_recording.file_path = test_file_path
+        mock_repo.get_by_id = AsyncMock(return_value=mock_recording)
 
+        client = TestClient(app)
         response = client.get(
             f"/v1/streaming/audio/{recording_id}",
             params={"start_byte": 0, "end_byte": 1024},

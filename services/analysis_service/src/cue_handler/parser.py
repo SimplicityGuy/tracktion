@@ -29,12 +29,7 @@ from pathlib import Path
 
 import chardet
 
-from .exceptions import (
-    CueParsingError,
-    CueValidationError,
-    InvalidCommandError,
-    InvalidTimeFormatError,
-)
+from .exceptions import CueParsingError, CueValidationError, InvalidCommandError, InvalidTimeFormatError
 from .models import CueSheet, CueTime, FileReference, Track
 
 

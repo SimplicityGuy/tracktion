@@ -6,11 +6,7 @@ from uuid import uuid4
 import pytest
 
 from shared.core_types.src.models import Metadata, Recording, Tracklist
-from shared.core_types.src.repositories import (
-    MetadataRepository,
-    RecordingRepository,
-    TracklistRepository,
-)
+from shared.core_types.src.repositories import MetadataRepository, RecordingRepository, TracklistRepository
 
 
 class TestRecordingRepository:

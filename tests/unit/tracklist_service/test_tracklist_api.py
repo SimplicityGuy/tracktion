@@ -19,11 +19,7 @@ from services.tracklist_service.src.api.tracklist_api import (
     health_check,
     retrieve_tracklist,
 )
-from services.tracklist_service.src.models.tracklist_models import (
-    Track,
-    Tracklist,
-    TracklistRequest,
-)
+from services.tracklist_service.src.models.tracklist_models import Track, Tracklist, TracklistRequest
 
 
 @pytest.fixture

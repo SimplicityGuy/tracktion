@@ -6,10 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from services.file_rename_service.app.feedback.models import (
-    Feedback,
-    FeedbackAction,
-)
+from services.file_rename_service.app.feedback.models import Feedback, FeedbackAction
 from services.file_rename_service.app.feedback.storage import FeedbackStorage
 
 logger = logging.getLogger(__name__)

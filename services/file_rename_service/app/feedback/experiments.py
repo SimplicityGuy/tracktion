@@ -9,12 +9,7 @@ from uuid import uuid4
 import numpy as np
 from scipy import stats
 
-from services.file_rename_service.app.feedback.models import (
-    ABExperiment,
-    ExperimentStatus,
-    Feedback,
-    FeedbackAction,
-)
+from services.file_rename_service.app.feedback.models import ABExperiment, ExperimentStatus, Feedback, FeedbackAction
 from services.file_rename_service.app.feedback.storage import FeedbackStorage
 
 

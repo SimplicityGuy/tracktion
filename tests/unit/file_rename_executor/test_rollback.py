@@ -5,9 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from services.analysis_service.src.file_rename_executor.executor import (
-    FileRenameExecutor,
-)
+from services.analysis_service.src.file_rename_executor.executor import FileRenameExecutor
 
 
 class TestRollbackMechanism:

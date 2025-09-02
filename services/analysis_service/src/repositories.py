@@ -8,7 +8,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
 from shared.core_types.src.async_database import AsyncDatabaseManager
-from shared.core_types.src.models import AnalysisResult, Metadata, Recording, Tracklist
+from shared.core_types.src.models import Metadata, Recording, Tracklist
 
 logger = logging.getLogger(__name__)
 
@@ -310,110 +310,6 @@ class AsyncTracklistRepository:
             return cast("Tracklist | None", result.scalar_one_or_none())
 
 
-class AsyncAnalysisResultRepository:
-    """Async repository for AnalysisResult entity operations."""
-
-    def __init__(self, db_manager: AsyncDatabaseManager) -> None:
-        """Initialize repository with async database manager.
-
-        Args:
-            db_manager: Async database manager instance
-        """
-        self.db = db_manager
-
-    async def get_by_recording_id(self, recording_id: UUID, analysis_type: str | None = None) -> list[AnalysisResult]:
-        """Get analysis results for a recording.
-
-        Args:
-            recording_id: UUID of the recording
-            analysis_type: Optional filter by analysis type
-
-        Returns:
-            List of analysis results
-        """
-        async with self.db.get_db_session() as session:
-            query = select(AnalysisResult).where(AnalysisResult.recording_id == recording_id)
-
-            if analysis_type:
-                query = query.where(AnalysisResult.analysis_type == analysis_type)
-
-            result = await session.execute(query.order_by(AnalysisResult.created_at.desc()))
-            return list(result.scalars().all())
-
-    async def get_latest_by_type(self, recording_id: UUID, analysis_type: str) -> AnalysisResult | None:
-        """Get latest analysis result of a specific type.
-
-        Args:
-            recording_id: UUID of the recording
-            analysis_type: Type of analysis
-
-        Returns:
-            Latest AnalysisResult or None
-        """
-        async with self.db.get_db_session() as session:
-            result = await session.execute(
-                select(AnalysisResult)
-                .where(AnalysisResult.recording_id == recording_id, AnalysisResult.analysis_type == analysis_type)
-                .order_by(AnalysisResult.created_at.desc())
-                .limit(1)
-            )
-            return cast("AnalysisResult | None", result.scalar_one_or_none())
-
-    async def create(
-        self,
-        recording_id: UUID,
-        analysis_type: str,
-        result_data: dict[str, Any],
-        confidence_score: float | None = None,
-        processing_time_ms: int | None = None,
-    ) -> AnalysisResult:
-        """Create a new analysis result.
-
-        Args:
-            recording_id: UUID of the recording
-            analysis_type: Type of analysis performed
-            result_data: Analysis result data
-            confidence_score: Confidence score (0.0-1.0)
-            processing_time_ms: Processing time in milliseconds
-
-        Returns:
-            Created AnalysisResult instance
-        """
-        async with self.db.get_db_session() as session:
-            analysis_result = AnalysisResult(
-                recording_id=recording_id,
-                analysis_type=analysis_type,
-                result_data=result_data,
-                confidence_score=confidence_score,
-                processing_time_ms=processing_time_ms,
-                status="completed",
-            )
-            session.add(analysis_result)
-            await session.flush()
-            await session.refresh(analysis_result)
-            await session.commit()  # Ensure transaction is committed
-            return analysis_result
-
-    async def update_status(
-        self,
-        result_id: UUID,
-        status: str,
-        error_message: str | None = None,
-    ) -> bool:
-        """Update analysis result status.
-
-        Args:
-            result_id: UUID of the analysis result
-            status: New status
-            error_message: Optional error message
-
-        Returns:
-            True if updated, False if not found
-        """
-        async with self.db.get_db_session() as session:
-            result = await session.execute(
-                update(AnalysisResult)
-                .where(AnalysisResult.id == result_id)
-                .values(status=status, error_message=error_message, updated_at=func.current_timestamp())
-            )
-            return cast("bool", result.rowcount > 0)
+# TODO: Enable when AnalysisResult model is available in shared models
+# AsyncAnalysisResultRepository will be implemented once the AnalysisResult model
+# import issue is resolved with shared/core_types/src/models.py

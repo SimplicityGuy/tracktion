@@ -10,18 +10,10 @@ from typing import Any
 
 import asyncpg
 from dotenv import load_dotenv
-from neo4j import (
-    AsyncDriver,
-    AsyncGraphDatabase,
-)
+from neo4j import AsyncDriver, AsyncGraphDatabase
 from redis import asyncio as aioredis
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 # Load environment variables
 load_dotenv()

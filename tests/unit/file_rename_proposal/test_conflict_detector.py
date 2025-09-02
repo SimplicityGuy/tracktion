@@ -4,9 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from services.analysis_service.src.file_rename_proposal.conflict_detector import (
-    ConflictDetector,
-)
+from services.analysis_service.src.file_rename_proposal.conflict_detector import ConflictDetector
 
 
 class TestConflictDetector:

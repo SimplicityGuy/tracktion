@@ -5,9 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from services.analysis_service.src.file_rename_proposal.config import (
-    FileRenameProposalConfig,
-)
+from services.analysis_service.src.file_rename_proposal.config import FileRenameProposalConfig
 
 
 class TestFileRenameProposalConfig:

@@ -6,10 +6,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from services.tracklist_service.src.services import integrity_monitor as monitor_module
-from services.tracklist_service.src.services.integrity_monitor import (
-    IntegrityMonitor,
-    get_integrity_monitor,
-)
+from services.tracklist_service.src.services.integrity_monitor import IntegrityMonitor, get_integrity_monitor
 
 
 @pytest.fixture

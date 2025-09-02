@@ -12,24 +12,13 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from services.tracklist_service.src.messaging.cue_generation_handler import (
-    CueGenerationMessageHandler,
-)
-from services.tracklist_service.src.messaging.rabbitmq_client import (
-    RabbitMQClient,
-    RabbitMQConfig,
-)
+from services.tracklist_service.src.messaging.cue_generation_handler import CueGenerationMessageHandler
+from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient, RabbitMQConfig
 from services.tracklist_service.src.models.cue_file import CueFormat
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist, TracklistDB
-from services.tracklist_service.src.services.catalog_search_service import (
-    CatalogSearchService,
-)
-from services.tracklist_service.src.services.cue_generation_service import (
-    CueGenerationService,
-)
-from services.tracklist_service.src.services.cue_integration import (
-    CueIntegrationService,
-)
+from services.tracklist_service.src.services.catalog_search_service import CatalogSearchService
+from services.tracklist_service.src.services.cue_generation_service import CueGenerationService
+from services.tracklist_service.src.services.cue_integration import CueIntegrationService
 from services.tracklist_service.src.services.draft_service import DraftService
 from services.tracklist_service.src.services.storage_service import StorageService
 from services.tracklist_service.src.services.timing_service import TimingService

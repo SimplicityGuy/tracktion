@@ -7,11 +7,7 @@ from uuid import uuid4
 import pytest
 import redis
 
-from services.tracklist_service.src.models.tracklist import (
-    TrackEntry,
-    Tracklist,
-    TracklistDB,
-)
+from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist, TracklistDB
 from services.tracklist_service.src.services.draft_service import DraftService
 
 

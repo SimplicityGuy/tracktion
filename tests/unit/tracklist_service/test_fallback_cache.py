@@ -6,11 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services.tracklist_service.src.cache.fallback_cache import (
-    CachedItem,
-    CacheStrategy,
-    FallbackCache,
-)
+from services.tracklist_service.src.cache.fallback_cache import CachedItem, CacheStrategy, FallbackCache
 
 
 class TestCachedItem:

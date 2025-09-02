@@ -12,11 +12,7 @@ sys.path.insert(
     str(Path(__file__).parent.parent.parent.parent.parent / "services" / "analysis_service" / "src"),
 )
 
-from metadata_extractor import (
-    InvalidAudioFileError,
-    MetadataExtractionError,
-    MetadataExtractor,
-)
+from metadata_extractor import InvalidAudioFileError, MetadataExtractionError, MetadataExtractor
 
 
 class TestMetadataExtractor:

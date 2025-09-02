@@ -13,14 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 from flask import Flask, Response
-from prometheus_client import (
-    CONTENT_TYPE_LATEST,
-    CollectorRegistry,
-    Counter,
-    Gauge,
-    Histogram,
-    generate_latest,
-)
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, Histogram, generate_latest
 
 if TYPE_CHECKING:
     from collections.abc import Generator

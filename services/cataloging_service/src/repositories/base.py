@@ -3,7 +3,7 @@
 from typing import Any, TypeVar, cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.base import Base
@@ -36,7 +36,7 @@ class BaseRepository[ModelType: Base]:
         instance = self.model(**kwargs)
         self.session.add(instance)
         await self.session.flush()
-        return instance
+        return cast("ModelType", instance)
 
     async def get_by_id(self, id: UUID) -> ModelType | None:
         """Get a record by ID.
@@ -102,7 +102,5 @@ class BaseRepository[ModelType: Base]:
         Returns:
             Total number of records
         """
-        from sqlalchemy import func
-
         result = await self.session.execute(select(func.count()).select_from(self.model))
-        return cast("int", result.scalar() or 0)
+        return result.scalar() or 0

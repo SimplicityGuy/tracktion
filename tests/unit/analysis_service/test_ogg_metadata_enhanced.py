@@ -5,10 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from services.analysis_service.src.metadata_extractor import (
-    MetadataExtractionError,
-    MetadataExtractor,
-)
+from services.analysis_service.src.metadata_extractor import MetadataExtractionError, MetadataExtractor
 
 
 class TestOggMetadataEnhanced:

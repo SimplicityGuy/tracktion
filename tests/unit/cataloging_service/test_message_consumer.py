@@ -7,12 +7,7 @@ from uuid import uuid4
 import pytest
 from aio_pika import IncomingMessage
 
-from services.cataloging_service.src.config import (
-    Config,
-    DatabaseConfig,
-    RabbitMQConfig,
-    ServiceConfig,
-)
+from services.cataloging_service.src.config import Config, DatabaseConfig, RabbitMQConfig, ServiceConfig
 from services.cataloging_service.src.consumers.tracklist_consumer import TracklistMessageConsumer
 from services.cataloging_service.src.message_consumer import CatalogingMessageConsumer
 

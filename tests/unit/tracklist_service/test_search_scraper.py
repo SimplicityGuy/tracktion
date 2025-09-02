@@ -6,11 +6,7 @@ from unittest.mock import patch
 import pytest
 from bs4 import BeautifulSoup
 
-from services.tracklist_service.src.models.search_models import (
-    SearchRequest,
-    SearchResponse,
-    SearchType,
-)
+from services.tracklist_service.src.models.search_models import SearchRequest, SearchResponse, SearchType
 from services.tracklist_service.src.scraper.search_scraper import SearchScraper
 
 

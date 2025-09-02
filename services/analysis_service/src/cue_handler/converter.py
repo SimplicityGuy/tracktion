@@ -12,11 +12,7 @@ from typing import Any, cast
 
 from .compatibility import CompatibilityChecker, CompatibilityReport
 from .exceptions import CueParsingError
-from .format_mappings import (
-    CONVERSION_RULES,
-    LOSSY_CONVERSIONS,
-    get_format_from_string,
-)
+from .format_mappings import CONVERSION_RULES, LOSSY_CONVERSIONS, get_format_from_string
 from .formats import get_generator
 from .generator import CueFormat
 from .parser import CueParser

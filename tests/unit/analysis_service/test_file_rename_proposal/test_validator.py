@@ -2,12 +2,8 @@
 
 from unittest.mock import patch
 
-from services.analysis_service.src.file_rename_proposal.config import (
-    FileRenameProposalConfig,
-)
-from services.analysis_service.src.file_rename_proposal.validator import (
-    FilesystemValidator,
-)
+from services.analysis_service.src.file_rename_proposal.config import FileRenameProposalConfig
+from services.analysis_service.src.file_rename_proposal.validator import FilesystemValidator
 
 
 class TestFilesystemValidator:

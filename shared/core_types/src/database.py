@@ -9,10 +9,7 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv
-from neo4j import (
-    Driver,
-    GraphDatabase,
-)
+from neo4j import Driver, GraphDatabase
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 

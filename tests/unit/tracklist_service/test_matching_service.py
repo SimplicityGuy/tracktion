@@ -7,14 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from services.tracklist_service.src.models.tracklist_models import (
-    CuePoint,
-    Track,
-    TracklistMetadata,
-)
-from services.tracklist_service.src.models.tracklist_models import (
-    Tracklist as ScrapedTracklist,
-)
+from services.tracklist_service.src.models.tracklist_models import CuePoint, Track, TracklistMetadata
+from services.tracklist_service.src.models.tracklist_models import Tracklist as ScrapedTracklist
 from services.tracklist_service.src.services.matching_service import MatchingService
 
 

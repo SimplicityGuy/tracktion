@@ -6,12 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aio_pika import DeliveryMode
 
-from services.file_rename_service.utils.rabbitmq import (
-    MessageTopics,
-    QueueNames,
-    RabbitMQManager,
-    get_rabbitmq_manager,
-)
+from services.file_rename_service.utils.rabbitmq import MessageTopics, QueueNames, RabbitMQManager, get_rabbitmq_manager
 
 
 @pytest.fixture

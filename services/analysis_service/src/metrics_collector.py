@@ -5,14 +5,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from prometheus_client import (
-    CollectorRegistry,
-    Counter,
-    Gauge,
-    Histogram,
-    generate_latest,
-    push_to_gateway,
-)
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest, push_to_gateway
 
 logger = logging.getLogger(__name__)
 

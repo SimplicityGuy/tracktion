@@ -9,12 +9,7 @@ import pytest
 
 from services.analysis_service.src.cue_handler.backup import BackupManager
 from services.analysis_service.src.cue_handler.editor import CueEditor
-from services.analysis_service.src.cue_handler.models import (
-    CueSheet,
-    CueTime,
-    FileReference,
-    Track,
-)
+from services.analysis_service.src.cue_handler.models import CueSheet, CueTime, FileReference, Track
 
 
 class TestCueEditor:

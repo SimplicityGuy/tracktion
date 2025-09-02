@@ -3,11 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from services.tracklist_service.src.models.tracklist import (
-    TrackEntry,
-    Tracklist,
-    TracklistDB,
-)
+from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist, TracklistDB
 
 
 class TestTrackEntry:

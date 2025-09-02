@@ -15,9 +15,7 @@ from services.tracklist_service.src.models.cue_file import (
     ValidationResult,
 )
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
-from services.tracklist_service.src.services.cue_generation_service import (
-    CueGenerationService,
-)
+from services.tracklist_service.src.services.cue_generation_service import CueGenerationService
 from services.tracklist_service.src.services.storage_service import StorageResult
 
 

@@ -6,11 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from prometheus_client import CollectorRegistry
 
-from services.analysis_service.src.metrics_collector import (
-    MetricsCollector,
-    MetricsTimer,
-    create_metrics_endpoint,
-)
+from services.analysis_service.src.metrics_collector import MetricsCollector, MetricsTimer, create_metrics_endpoint
 
 
 class TestMetricsCollector(unittest.TestCase):

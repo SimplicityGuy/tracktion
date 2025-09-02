@@ -16,13 +16,7 @@ from fastapi import Request, Response
 from src.auth.models import User
 
 from .abuse_detector import AbuseDetector, AbuseScore
-from .models import (
-    AccessRuleType,
-    AuditEventType,
-    AuditLog,
-    IPAccessRule,
-    SecurityConfig,
-)
+from .models import AccessRuleType, AuditEventType, AuditLog, IPAccessRule, SecurityConfig
 
 logger = logging.getLogger(__name__)
 

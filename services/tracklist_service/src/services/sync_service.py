@@ -11,21 +11,12 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.tracklist_service.src.models.synchronization import (
-    SyncConfiguration,
-    SyncEvent,
-)
+from services.tracklist_service.src.models.synchronization import SyncConfiguration, SyncEvent
 from services.tracklist_service.src.models.tracklist import TracklistDB
 from services.tracklist_service.src.services.audit_service import AuditService
-from services.tracklist_service.src.services.conflict_resolution_service import (
-    ConflictResolutionService,
-)
-from services.tracklist_service.src.services.cue_regeneration_service import (
-    CueRegenerationService,
-)
-from services.tracklist_service.src.services.tracklists_sync_service import (
-    TracklistsSyncService,
-)
+from services.tracklist_service.src.services.conflict_resolution_service import ConflictResolutionService
+from services.tracklist_service.src.services.cue_regeneration_service import CueRegenerationService
+from services.tracklist_service.src.services.tracklists_sync_service import TracklistsSyncService
 from services.tracklist_service.src.services.version_service import VersionService
 
 logger = logging.getLogger(__name__)

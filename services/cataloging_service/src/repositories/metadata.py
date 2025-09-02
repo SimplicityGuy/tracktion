@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.metadata import Metadata
@@ -96,8 +96,6 @@ class MetadataRepository(BaseRepository[Metadata]):
         Returns:
             Number of deleted entries
         """
-        from sqlalchemy import delete
-
         result = await self.session.execute(delete(Metadata).where(Metadata.recording_id == recording_id))
         return cast("int", result.rowcount)
 

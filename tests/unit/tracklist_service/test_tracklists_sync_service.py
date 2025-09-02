@@ -9,9 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.tracklist_service.src.models.synchronization import SyncConfiguration
 from services.tracklist_service.src.models.tracklist import TrackEntry, TracklistDB
-from services.tracklist_service.src.services.tracklists_sync_service import (
-    TracklistsSyncService,
-)
+from services.tracklist_service.src.services.tracklists_sync_service import TracklistsSyncService
 
 
 @pytest.fixture

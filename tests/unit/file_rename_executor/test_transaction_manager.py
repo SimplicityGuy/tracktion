@@ -6,9 +6,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from services.analysis_service.src.file_rename_executor.transaction_manager import (
-    TransactionManager,
-)
+from services.analysis_service.src.file_rename_executor.transaction_manager import TransactionManager
 from shared.core_types.src.models import Recording, RenameProposal
 
 

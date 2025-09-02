@@ -2,12 +2,8 @@
 
 import pytest
 
-from services.analysis_service.src.file_rename_proposal.config import (
-    FileRenameProposalConfig,
-)
-from services.analysis_service.src.file_rename_proposal.pattern_manager import (
-    PatternManager,
-)
+from services.analysis_service.src.file_rename_proposal.config import FileRenameProposalConfig
+from services.analysis_service.src.file_rename_proposal.pattern_manager import PatternManager
 
 
 class TestPatternManager:

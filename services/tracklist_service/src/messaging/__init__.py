@@ -2,9 +2,7 @@
 Messaging layer for RabbitMQ integration.
 """
 
-from services.tracklist_service.src.messaging.cue_generation_handler import (
-    CueGenerationMessageHandler,
-)
+from services.tracklist_service.src.messaging.cue_generation_handler import CueGenerationMessageHandler
 from services.tracklist_service.src.messaging.message_schemas import (
     BatchCueGenerationMessage,
     CueGenerationCompleteMessage,
