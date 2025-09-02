@@ -674,13 +674,11 @@ class TestFeedbackStorage:
 
 
 # Performance benchmarks
-@pytest.mark.skip(reason="Requires pytest-benchmark plugin")
 @pytest.mark.benchmark
-@pytest.mark.asyncio
 class TestPerformanceBenchmarks:
     """Performance benchmarks for feedback system."""
 
-    async def test_feedback_processing_speed(self, benchmark):
+    def test_feedback_processing_speed(self, benchmark):
         """Benchmark feedback processing speed."""
         storage = AsyncMock(spec=FeedbackStorage)
         storage.store_feedback = AsyncMock()
@@ -702,7 +700,7 @@ class TestPerformanceBenchmarks:
         benchmark(lambda: asyncio.run(process_feedback()))
         assert benchmark.stats["mean"] < 0.5  # 500ms
 
-    async def test_batch_processing_throughput(self, benchmark):
+    def test_batch_processing_throughput(self, benchmark):
         """Benchmark batch processing throughput."""
         storage = AsyncMock(spec=FeedbackStorage)
         storage.store_feedback = AsyncMock()

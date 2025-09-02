@@ -57,7 +57,7 @@ class ImportWorker:
             await setup_import_message_handler()
 
             # Register this worker as message handler
-            import_message_handler.register_import_handler(self.process_import_job)
+            import_message_handler.register_import_handler(self.process_import_job)  # type: ignore[arg-type]  # Handler signature mismatch - async vs sync interface
 
             # Start consuming messages
             await import_message_handler.start_consuming()

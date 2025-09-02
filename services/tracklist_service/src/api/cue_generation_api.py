@@ -75,7 +75,7 @@ cache_service = CacheService(cache_config)
 
 # Initialize database manager and CUE generation service with cache
 db_manager = AsyncDatabaseManager()
-cue_generation_service = CueGenerationService(storage_service, cache_service, db_manager)
+cue_generation_service = CueGenerationService(storage_service, cache_service, db_manager)  # type: ignore[arg-type]  # AsyncDatabaseManager vs DatabaseManager type mismatch
 
 # Initialize tracklist repository
 tracklist_repo = AsyncTracklistRepository(db_manager)
@@ -286,7 +286,7 @@ async def generate_cue_for_tracklist(
         tracklist = await get_tracklist_by_id(tracklist_id)
 
         # Generate CUE file
-        return await generate_cue_file(request, tracklist, background_tasks, async_processing)
+        return await generate_cue_file(request, tracklist, background_tasks, async_processing)  # type: ignore[no-any-return]  # Complex async type resolution
 
     except HTTPException:
         raise
@@ -339,7 +339,7 @@ async def get_format_capabilities(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Unsupported CUE format: {format}") from e
 
-        return cue_generation_service.get_format_capabilities(cue_format)  # type: ignore[no-any-return]  # Service returns dict but typed as Any
+        return cue_generation_service.get_format_capabilities(cue_format)
 
     except HTTPException:
         raise
@@ -374,7 +374,7 @@ async def get_conversion_preview(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Invalid CUE format: {e!s}") from e
 
-        return cue_generation_service.get_conversion_preview(source, target)  # type: ignore[no-any-return]  # Service returns list but typed as Any
+        return cue_generation_service.get_conversion_preview(source, target)
 
     except HTTPException:
         raise
@@ -1526,7 +1526,7 @@ async def get_cache_stats() -> dict[str, Any]:
         Cache statistics including hit rates, sizes, and configuration
     """
     try:
-        return await cache_service.get_cache_stats()  # type: ignore[no-any-return]  # Service returns dict but typed as Any
+        return await cache_service.get_cache_stats()
 
     except Exception as e:
         logger.error(f"Failed to get cache stats: {e}", exc_info=True)
@@ -1563,7 +1563,7 @@ async def warm_cache(
                 if fmt not in valid_formats:
                     raise HTTPException(status_code=400, detail=f"Invalid format: {fmt}")
 
-        return await cache_service.warm_cache(tracklist_ids, formats)  # type: ignore[no-any-return]  # Service returns dict but typed as Any
+        return await cache_service.warm_cache(tracklist_ids, formats)
 
     except HTTPException:
         raise

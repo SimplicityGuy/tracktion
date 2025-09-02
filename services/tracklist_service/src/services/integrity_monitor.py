@@ -131,7 +131,7 @@ class IntegrityMonitor:
             validator = IntegrityValidator(session)
             results = validator.run_full_validation()
             self.last_check = datetime.now(UTC)
-            return results  # type: ignore[no-any-return]  # Validator returns dict but typed as Any
+            return results
         finally:
             session.close()
 

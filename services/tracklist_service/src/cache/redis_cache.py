@@ -91,7 +91,7 @@ class RedisCache:
                     response = cached_response.response
                     response.cache_hit = True
                     response.correlation_id = request.correlation_id
-                    return response
+                    return response  # type: ignore[no-any-return]  # Redis cache response typing
                 # Expired - delete from cache
                 logger.debug(f"Cache expired for key: {key}")
                 self.client.delete(key)
@@ -408,6 +408,12 @@ class RedisCacheSingleton:
         if cls._instance is None:
             cls._instance = RedisCache()
         return cls._instance  # type: ignore[return-value]
+
+    def __getattr__(self, name: str) -> Any:
+        """Delegate attribute access to the wrapped RedisCache instance."""
+        if self._instance is None:
+            self._instance = RedisCache()
+        return getattr(self._instance, name)
 
     @classmethod
     def close(cls) -> None:

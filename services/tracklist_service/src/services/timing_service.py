@@ -78,7 +78,7 @@ class TimingService:
         result = parse_time_string(timing_str)
         if result == timedelta(0) and timing_str:
             logger.warning(f"Failed to parse timing: {timing_str}")
-        return result  # type: ignore[no-any-return]  # parse_time_string returns timedelta but typed as Any
+        return result
 
     def calculate_offset_from_start(
         self, first_track_time: timedelta, mix_start_time: timedelta = timedelta(0)
@@ -456,9 +456,9 @@ class TimingService:
         last_track = max(tracks, key=lambda t: t.position)
 
         if last_track.end_time:
-            return last_track.end_time  # type: ignore[no-any-return]  # TrackEntry.end_time returns timedelta but typed as Any
+            return last_track.end_time
         # Estimate based on start time + default duration
-        return last_track.start_time + timedelta(minutes=3)  # type: ignore[no-any-return]  # TrackEntry.start_time returns timedelta but typed as Any
+        return last_track.start_time + timedelta(minutes=3)
 
     def suggest_timing_adjustments(
         self,

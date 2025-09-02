@@ -28,7 +28,7 @@ class AuthenticationManagerSingleton:
 
     _instance: AuthenticationManager | None = None
 
-    def __new__(cls) -> AuthenticationManager:
+    def __new__(cls) -> AuthenticationManager:  # type: ignore[misc]  # Singleton pattern returns wrapped type, not wrapper
         """Get the singleton AuthenticationManager instance."""
         if cls._instance is None:
             # In production, this would be properly initialized
@@ -46,7 +46,7 @@ class UsageTrackerSingleton:
 
     _instance: UsageTracker | None = None
 
-    def __new__(cls) -> UsageTracker:
+    def __new__(cls) -> UsageTracker:  # type: ignore[misc]  # Singleton pattern returns wrapped type, not wrapper
         """Get the singleton UsageTracker instance."""
         if cls._instance is None:
             # In production, this would be properly initialized from dependencies
@@ -62,12 +62,12 @@ class UsageTrackerSingleton:
 
 def get_auth_manager() -> AuthenticationManager:
     """Get authentication manager singleton instance."""
-    return AuthenticationManagerSingleton()
+    return AuthenticationManagerSingleton()  # type: ignore[return-value]  # Singleton __new__ returns wrapped type
 
 
 def get_usage_tracker() -> UsageTracker:
     """Get usage tracker singleton instance."""
-    return UsageTrackerSingleton()
+    return UsageTrackerSingleton()  # type: ignore[return-value]  # Singleton __new__ returns wrapped type
 
 
 # Request/Response models

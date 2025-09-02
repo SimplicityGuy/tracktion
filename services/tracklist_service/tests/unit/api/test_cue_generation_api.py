@@ -15,9 +15,9 @@ from services.tracklist_service.src.models.cue_file import (
     BatchCueGenerationResponse,
     CueFileDB,
     CueGenerationResponse,
-    ValidationReport,
+    ValidationResult,
 )
-from services.tracklist_service.src.models.tracklist import Track, Tracklist
+from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def client(app):
 def sample_tracklist():
     """Create sample tracklist for testing."""
     tracks = [
-        Track(
+        TrackEntry(
             title=f"Track {i}",
             artist=f"Artist {i}",
             start_time=f"{(i - 1) * 5:02d}:00:00",
@@ -51,12 +51,9 @@ def sample_tracklist():
 
     return Tracklist(
         id=uuid4(),
-        title="Test Mix",
-        artist="Test DJ",
+        audio_file_id=uuid4(),
         tracks=tracks,
-        audio_file_path="audio.wav",
-        genre="Electronic",
-        source="test",
+        source="manual",
     )
 
 
@@ -85,13 +82,13 @@ class TestCueGenerationEndpoints:
     def test_generate_cue_file_sync(self, mock_service, client, sample_tracklist):
         """Test synchronous CUE file generation."""
         # Setup
-        mock_validation = ValidationReport(valid=True, warnings=[], error=None)
+        mock_validation = ValidationResult(valid=True, warnings=[], error=None)
         mock_service.validate_tracklist_for_cue.return_value = AsyncMock(return_value=mock_validation)()
 
         mock_response = CueGenerationResponse(
             success=True,
             job_id=uuid4(),
-            cue_file_id=str(uuid4()),
+            cue_file_id=uuid4(),
             file_path="/tmp/cue_files/test.cue",
             validation_report=mock_validation,
             error=None,
@@ -127,7 +124,7 @@ class TestCueGenerationEndpoints:
     def test_generate_cue_file_validation_failure(self, mock_service, client, sample_tracklist):
         """Test CUE generation with validation failure."""
         # Setup
-        mock_validation = ValidationReport(
+        mock_validation = ValidationResult(
             valid=False,
             warnings=["Missing track titles"],
             error="Invalid tracklist format",
@@ -414,7 +411,7 @@ class TestValidationEndpoints:
             None,
         )
 
-        mock_validation = ValidationReport(
+        mock_validation = ValidationResult(
             valid=True,
             warnings=["Minor timing issue"],
             error=None,
@@ -439,7 +436,7 @@ class TestValidationEndpoints:
         # Setup
         mock_get_tracklist.return_value = AsyncMock(return_value=sample_tracklist)()
 
-        mock_validation = ValidationReport(
+        mock_validation = ValidationResult(
             valid=True,
             warnings=[],
             error=None,

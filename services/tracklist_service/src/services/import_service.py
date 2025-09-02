@@ -191,11 +191,11 @@ class ImportService:
             return timedelta(0)
 
         if hasattr(cue_point, "timestamp_ms") and cue_point.timestamp_ms is not None:
-            return milliseconds_to_timedelta(cue_point.timestamp_ms)  # type: ignore[no-any-return]  # utility returns timedelta but typed as Any
+            return milliseconds_to_timedelta(cue_point.timestamp_ms)
 
         if hasattr(cue_point, "formatted_time") and cue_point.formatted_time:
             # Use centralized parsing function
-            return parse_time_string(cue_point.formatted_time)  # type: ignore[no-any-return]  # utility returns timedelta but typed as Any
+            return parse_time_string(cue_point.formatted_time)
 
         return timedelta(0)
 
