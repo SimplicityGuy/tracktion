@@ -1,11 +1,13 @@
 """Repository pattern implementations for database operations."""
 
 import logging
+from datetime import UTC, datetime, timedelta
+from enum import Enum
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from .database import DatabaseManager
-from .models import Metadata, Recording, Tracklist
+from .models import Job, Metadata, Recording, Tracklist
 
 logger = logging.getLogger(__name__)
 
@@ -382,3 +384,240 @@ class TracklistRepository:
 
             session.delete(tracklist)
             return True
+
+
+class JobStatus(Enum):
+    """Job status enumeration."""
+
+    CREATED = "created"
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    RETRYING = "retrying"
+
+
+class JobRepository:
+    """Repository for Job entity operations."""
+
+    def __init__(self, db_manager: DatabaseManager) -> None:
+        """Initialize repository with database manager.
+
+        Args:
+            db_manager: Database manager instance
+        """
+        self.db = db_manager
+
+    def create(
+        self,
+        job_type: str,
+        service_name: str | None = None,
+        context: dict[str, Any] | None = None,
+        correlation_id: UUID | None = None,
+        parent_job_id: UUID | None = None,
+    ) -> Job:
+        """Create a new job.
+
+        Args:
+            job_type: Type of job (e.g., 'analysis', 'tracklist_generation')
+            service_name: Name of the service creating the job
+            context: Job-specific context data
+            correlation_id: ID for correlating related jobs
+            parent_job_id: Parent job ID for hierarchical jobs
+
+        Returns:
+            Created Job instance
+        """
+        with self.db.get_db_session() as session:
+            job = Job(
+                job_type=job_type,
+                status=JobStatus.CREATED.value,
+                service_name=service_name,
+                context=context,
+                correlation_id=correlation_id or uuid4(),
+                parent_job_id=parent_job_id,
+                created_at=datetime.now(UTC),
+            )
+            session.add(job)
+            session.flush()
+            session.refresh(job)
+            return job
+
+    def get_by_id(self, job_id: UUID) -> Job | None:
+        """Get job by ID.
+
+        Args:
+            job_id: UUID of the job
+
+        Returns:
+            Job instance or None if not found
+        """
+        with self.db.get_db_session() as session:
+            return session.query(Job).filter(Job.id == job_id).first()  # type: ignore[no-any-return]
+
+    def get_by_correlation_id(self, correlation_id: UUID) -> list[Job]:
+        """Get all jobs with a specific correlation ID.
+
+        Args:
+            correlation_id: Correlation UUID
+
+        Returns:
+            List of Job instances
+        """
+        with self.db.get_db_session() as session:
+            return session.query(Job).filter(Job.correlation_id == correlation_id).all()  # type: ignore[no-any-return]
+
+    def get_by_status(self, status: JobStatus, service_name: str | None = None) -> list[Job]:
+        """Get jobs by status and optionally service name.
+
+        Args:
+            status: Job status
+            service_name: Optional service name filter
+
+        Returns:
+            List of Job instances
+        """
+        with self.db.get_db_session() as session:
+            query = session.query(Job).filter(Job.status == status.value)
+            if service_name:
+                query = query.filter(Job.service_name == service_name)
+            return query.all()  # type: ignore[no-any-return]
+
+    def update_status(
+        self,
+        job_id: UUID,
+        status: JobStatus,
+        result: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> Job | None:
+        """Update job status.
+
+        Args:
+            job_id: UUID of the job
+            status: New status
+            result: Optional result data
+            error_message: Optional error message
+
+        Returns:
+            Updated Job instance or None if not found
+        """
+        with self.db.get_db_session() as session:
+            job = session.query(Job).filter(Job.id == job_id).first()
+            if not job:
+                return None
+
+            job.status = status.value
+            job.updated_at = datetime.now(UTC)
+
+            if status == JobStatus.RUNNING and not job.started_at:
+                job.started_at = datetime.now(UTC)
+            elif status in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]:
+                job.completed_at = datetime.now(UTC)
+
+            if result is not None:
+                job.result = result
+            if error_message is not None:
+                job.error_message = error_message
+
+            session.flush()
+            session.refresh(job)
+            return job  # type: ignore[no-any-return]
+
+    def update_progress(self, job_id: UUID, progress: int, total_items: int | None = None) -> Job | None:
+        """Update job progress.
+
+        Args:
+            job_id: UUID of the job
+            progress: Current progress (e.g., items processed)
+            total_items: Optional total number of items
+
+        Returns:
+            Updated Job instance or None if not found
+        """
+        with self.db.get_db_session() as session:
+            job = session.query(Job).filter(Job.id == job_id).first()
+            if not job:
+                return None
+
+            job.progress = progress
+            if total_items is not None:
+                job.total_items = total_items
+            job.updated_at = datetime.now(UTC)
+
+            session.flush()
+            session.refresh(job)
+            return job  # type: ignore[no-any-return]
+
+    def create_child_job(
+        self,
+        parent_job_id: UUID,
+        job_type: str,
+        service_name: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> Job | None:
+        """Create a child job.
+
+        Args:
+            parent_job_id: Parent job UUID
+            job_type: Type of child job
+            service_name: Name of the service creating the job
+            context: Job-specific context data
+
+        Returns:
+            Created Job instance or None if parent not found
+        """
+        with self.db.get_db_session() as session:
+            parent_job = session.query(Job).filter(Job.id == parent_job_id).first()
+            if not parent_job:
+                return None
+
+            child_job = Job(
+                job_type=job_type,
+                status=JobStatus.CREATED.value,
+                service_name=service_name,
+                context=context,
+                correlation_id=parent_job.correlation_id,
+                parent_job_id=parent_job_id,
+                created_at=datetime.now(UTC),
+            )
+            session.add(child_job)
+            session.flush()
+            session.refresh(child_job)
+            return child_job
+
+    def get_child_jobs(self, parent_job_id: UUID) -> list[Job]:
+        """Get all child jobs for a parent job.
+
+        Args:
+            parent_job_id: Parent job UUID
+
+        Returns:
+            List of child Job instances
+        """
+        with self.db.get_db_session() as session:
+            return session.query(Job).filter(Job.parent_job_id == parent_job_id).all()  # type: ignore[no-any-return]
+
+    def cleanup_old_jobs(self, days: int = 30) -> int:
+        """Clean up old completed/failed jobs.
+
+        Args:
+            days: Number of days to keep jobs (default 30)
+
+        Returns:
+            Number of jobs deleted
+        """
+        with self.db.get_db_session() as session:
+            cutoff_date = datetime.now(UTC) - timedelta(days=days)
+            jobs_to_delete = (
+                session.query(Job)
+                .filter(
+                    Job.status.in_([JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CANCELLED.value]),
+                    Job.completed_at < cutoff_date,
+                )
+                .all()
+            )
+            count = len(jobs_to_delete)
+            for job in jobs_to_delete:
+                session.delete(job)
+            return count

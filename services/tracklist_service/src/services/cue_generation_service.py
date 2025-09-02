@@ -32,6 +32,8 @@ from services.analysis_service.src.cue_handler import (
 
 # Import time utilities
 from services.tracklist_service.src.utils.time_utils import parse_cue_time
+from shared.core_types.src.database import DatabaseManager
+from shared.core_types.src.repositories import JobRepository, JobStatus
 
 # Import request/response models from models.cue_file to avoid duplication
 from src.models.cue_file import BatchCueGenerationResponse as ModelBatchCueGenerationResponse
@@ -54,17 +56,23 @@ BatchCueGenerationResponse = ModelBatchCueGenerationResponse
 class CueGenerationService:
     """Service for generating CUE files from tracklists."""
 
-    def __init__(self, storage_service: Any, cache_service: Any = None):
+    def __init__(self, storage_service: Any, cache_service: Any = None, db_manager: DatabaseManager | None = None):
         """
         Initialize CUE generation service.
 
         Args:
             storage_service: Storage service for file operations
             cache_service: Optional cache service
+            db_manager: Optional database manager for job tracking
         """
         self.storage_service = storage_service
         self.cache_service = cache_service
         self.cue_integration: Any | None = None  # Placeholder for CUE integration service
+
+        # Initialize job repository if database manager provided
+        self.job_repo: JobRepository | None = None
+        if db_manager:
+            self.job_repo = JobRepository(db_manager)
 
         # Initialize format-specific generators
         self.generators = {
@@ -94,6 +102,24 @@ class CueGenerationService:
         """
         start_time = datetime.now(UTC)
 
+        # Create job if repository is available
+        job = None
+        job_id = UUID("00000000-0000-0000-0000-000000000000")
+        if self.job_repo:
+            tracklist_id = getattr(tracklist, "id", None) or uuid4()
+            job = self.job_repo.create(
+                job_type="cue_generation",
+                service_name="tracklist_service",
+                context={
+                    "tracklist_id": str(tracklist_id),
+                    "format": request.format,
+                    "validate_audio": request.validate_audio,
+                },
+            )
+            job_id = job.id
+            # Update job to running status
+            self.job_repo.update_status(job_id, JobStatus.RUNNING)
+
         try:
             # Transform tracklist to CUE data structure
             cue_disc, cue_files = self._transform_tracklist_to_cue(tracklist, request.format)
@@ -101,13 +127,16 @@ class CueGenerationService:
             # Get appropriate generator
             generator = self.generators.get(request.format.lower())
             if not generator:
+                error_msg = f"Unsupported format: {request.format}"
+                if self.job_repo and job:
+                    self.job_repo.update_status(job_id, JobStatus.FAILED, error_message=error_msg)
                 return ModelCueGenerationResponse(
                     success=False,
-                    job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                    job_id=job_id,
                     cue_file_id=None,
                     file_path=None,
                     validation_report=None,
-                    error=f"Unsupported format: {request.format}",
+                    error=error_msg,
                     processing_time_ms=0,
                 )
 
@@ -134,9 +163,22 @@ class CueGenerationService:
 
             processing_time = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
+            # Update job status to completed
+            if self.job_repo and job:
+                self.job_repo.update_status(
+                    job_id,
+                    JobStatus.COMPLETED,
+                    result={
+                        "cue_file_id": str(cue_file_id) if cue_file_id else None,
+                        "file_path": file_path,
+                        "validation_report": validation_report,
+                        "processing_time_ms": processing_time,
+                    },
+                )
+
             return ModelCueGenerationResponse(
                 success=True,
-                job_id=UUID("00000000-0000-0000-0000-000000000000"),  # TODO: implement job tracking
+                job_id=job_id,
                 cue_file_id=cue_file_id,
                 file_path=file_path,
                 validation_report=validation_report,
@@ -147,9 +189,14 @@ class CueGenerationService:
         except Exception as e:
             logger.error(f"Failed to generate CUE file: {e}", exc_info=True)
             processing_time = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
+
+            # Update job status to failed
+            if self.job_repo and job:
+                self.job_repo.update_status(job_id, JobStatus.FAILED, error_message=str(e))
+
             return ModelCueGenerationResponse(
                 success=False,
-                job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                job_id=job_id,
                 cue_file_id=None,
                 file_path=None,
                 validation_report=None,
@@ -548,12 +595,31 @@ class CueGenerationService:
         Returns:
             Generation response with converted content
         """
+        # Create job if repository is available
+        job = None
+        job_id = uuid4()
+        if self.job_repo:
+            job = self.job_repo.create(
+                job_type="cue_format_conversion",
+                service_name="tracklist_service",
+                context={
+                    "source_format": source_format,
+                    "target_format": target_format,
+                },
+            )
+            job_id = job.id
+            self.job_repo.update_status(job_id, JobStatus.RUNNING)
+
         try:
             # Basic format validation
             if source_format.upper() == target_format.upper():
+                if self.job_repo and job:
+                    self.job_repo.update_status(
+                        job_id, JobStatus.COMPLETED, result={"converted": False, "reason": "same_format"}
+                    )
                 return ModelCueGenerationResponse(
                     success=True,
-                    job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                    job_id=job_id,
                     cue_file_id=None,
                     file_path=None,
                     validation_report=None,
@@ -562,9 +628,11 @@ class CueGenerationService:
                 )
 
             # For now, return original content as conversion placeholder
+            if self.job_repo and job:
+                self.job_repo.update_status(job_id, JobStatus.COMPLETED, result={"converted": True})
             return ModelCueGenerationResponse(
                 success=True,
-                job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                job_id=job_id,
                 cue_file_id=None,
                 file_path=None,
                 validation_report=None,
@@ -574,9 +642,11 @@ class CueGenerationService:
 
         except Exception as e:
             logger.error(f"Format conversion failed: {e}", exc_info=True)
+            if self.job_repo and job:
+                self.job_repo.update_status(job_id, JobStatus.FAILED, error_message=str(e))
             return ModelCueGenerationResponse(
                 success=False,
-                job_id=UUID("00000000-0000-0000-0000-000000000000"),
+                job_id=job_id,
                 cue_file_id=None,
                 file_path=None,
                 validation_report=None,

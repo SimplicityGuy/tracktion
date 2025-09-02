@@ -8,7 +8,7 @@ from sqlalchemy import text
 from services.analysis_service.src.file_rename_executor.executor import FileRenameExecutor
 from shared.core_types.src.database import DatabaseManager
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
-from shared.core_types.src.repositories import RecordingRepository
+from shared.core_types.src.repositories import MetadataRepository, RecordingRepository
 
 from .batch_processor import BatchProcessor
 from .confidence_scorer import ConfidenceScorer
@@ -36,6 +36,7 @@ class FileRenameProposalServiceFactory:
         self._db_manager: DatabaseManager | None = None
         self._proposal_repo: RenameProposalRepository | None = None
         self._recording_repo: RecordingRepository | None = None
+        self._metadata_repo: MetadataRepository | None = None
         self._rename_executor: FileRenameExecutor | None = None
 
     @property
@@ -58,6 +59,13 @@ class FileRenameProposalServiceFactory:
         if self._recording_repo is None:
             self._recording_repo = RecordingRepository(self.db_manager)
         return self._recording_repo
+
+    @property
+    def metadata_repo(self) -> MetadataRepository:
+        """Get or create metadata repository instance."""
+        if self._metadata_repo is None:
+            self._metadata_repo = MetadataRepository(self.db_manager)
+        return self._metadata_repo
 
     @property
     def rename_executor(self) -> FileRenameExecutor:
@@ -100,6 +108,7 @@ class FileRenameProposalServiceFactory:
             confidence_scorer=confidence_scorer,
             proposal_repo=self.proposal_repo,
             recording_repo=self.recording_repo,
+            metadata_repo=self.metadata_repo,
         )
 
     def create_message_interface(self) -> RenameProposalMessageInterface:
@@ -115,6 +124,7 @@ class FileRenameProposalServiceFactory:
             confidence_scorer=confidence_scorer,
             proposal_repo=self.proposal_repo,
             recording_repo=self.recording_repo,
+            metadata_repo=self.metadata_repo,
             batch_processor=batch_processor,
             rename_executor=self.rename_executor,
         )
@@ -124,6 +134,7 @@ class FileRenameProposalServiceFactory:
         return FileRenameProposalIntegration(
             proposal_repo=self.proposal_repo,
             recording_repo=self.recording_repo,
+            metadata_repo=self.metadata_repo,
             config=self.config,
         )
 

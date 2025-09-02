@@ -7,7 +7,7 @@ from uuid import UUID
 import structlog
 
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
-from shared.core_types.src.repositories import RecordingRepository
+from shared.core_types.src.repositories import MetadataRepository, RecordingRepository
 
 from .batch_processor import BatchProcessor
 from .confidence_scorer import ConfidenceScorer
@@ -27,6 +27,7 @@ class FileRenameProposalIntegration:
         self,
         proposal_repo: RenameProposalRepository,
         recording_repo: RecordingRepository,
+        metadata_repo: MetadataRepository,
         config: FileRenameProposalConfig | None = None,
     ) -> None:
         """Initialize the integration service.
@@ -34,10 +35,12 @@ class FileRenameProposalIntegration:
         Args:
             proposal_repo: Repository for rename proposals
             recording_repo: Repository for recordings
+            metadata_repo: Repository for metadata
             config: Configuration for file rename proposals
         """
         self.proposal_repo = proposal_repo
         self.recording_repo = recording_repo
+        self.metadata_repo = metadata_repo
         self.config = config or FileRenameProposalConfig()
 
         # Initialize components
@@ -54,6 +57,7 @@ class FileRenameProposalIntegration:
             confidence_scorer=self.confidence_scorer,
             proposal_repo=self.proposal_repo,
             recording_repo=self.recording_repo,
+            metadata_repo=self.metadata_repo,
         )
 
         self.logger = logger

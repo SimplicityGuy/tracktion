@@ -301,3 +301,80 @@ class RenameProposal(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class Job(Base):
+    """Model for tracking jobs across services."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=func.uuid_generate_v4(),
+    )
+    job_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="created", index=True)
+    service_name: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    correlation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    parent_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True, index=True
+    )
+    context: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    progress: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    total_items: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.current_timestamp(),
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=True,
+    )
+
+    # Relationships
+    child_jobs: Mapped[list["Job"]] = relationship(
+        "Job",
+        back_populates="parent_job",
+        cascade="all, delete-orphan",
+    )
+    parent_job: Mapped[Optional["Job"]] = relationship(
+        "Job",
+        back_populates="child_jobs",
+        remote_side=[id],
+    )
+
+    def __repr__(self) -> str:
+        """String representation of Job."""
+        return f"<Job(id={self.id}, type={self.job_type}, status={self.status})>"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert Job to dictionary.
+
+        Returns:
+            Dictionary representation of the job
+        """
+        return {
+            "id": str(self.id),
+            "job_type": self.job_type,
+            "status": self.status,
+            "service_name": self.service_name,
+            "correlation_id": str(self.correlation_id) if self.correlation_id else None,
+            "parent_job_id": str(self.parent_job_id) if self.parent_job_id else None,
+            "context": self.context,
+            "result": self.result,
+            "error_message": self.error_message,
+            "progress": self.progress,
+            "total_items": self.total_items,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }

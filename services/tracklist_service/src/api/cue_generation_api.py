@@ -17,6 +17,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.core_types.src.repositories import JobRepository
 from src.messaging.message_schemas import BatchCueGenerationMessage, CueGenerationMessage, MessageType
 from src.messaging.rabbitmq_client import get_rabbitmq_client
 from src.models.cue_file import (
@@ -63,9 +64,16 @@ cache_config = CacheConfig(
 )
 cache_service = CacheService(cache_config)
 
-# Initialize CUE generation service with cache
-cue_generation_service = CueGenerationService(storage_service, cache_service)
+# Initialize database manager and CUE generation service with cache
+# Note: In production, this should use proper database configuration
+db_manager = None  # Will be initialized with proper config in production
+cue_generation_service = CueGenerationService(storage_service, cache_service, db_manager)
 audio_validation_service = AudioValidationService()
+
+# Initialize job repository for API endpoints
+job_repo: JobRepository | None = None
+if db_manager:
+    job_repo = JobRepository(db_manager)
 
 
 # Database dependency (placeholder - implement with actual DB connection)
@@ -369,12 +377,36 @@ async def get_generation_job_status(
         JSON response with job status and results
     """
     try:
-        # TODO: Implement job status tracking
-        # For now, return placeholder response
+        # Check if job repository is available
+        if not job_repo:
+            return {
+                "job_id": str(job_id),
+                "status": "unknown",
+                "message": "Job tracking not configured",
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+
+        # Get job from repository
+        job = job_repo.get_by_id(job_id)
+        if not job:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Job {job_id} not found",
+            )
+
+        # Return job status
         return {
-            "job_id": str(job_id),
-            "status": "completed",
-            "message": "Job status tracking not yet implemented",
+            "job_id": str(job.id),
+            "status": job.status,
+            "job_type": job.job_type,
+            "service_name": job.service_name,
+            "progress": job.progress,
+            "total_items": job.total_items,
+            "result": job.result,
+            "error_message": job.error_message,
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
