@@ -44,6 +44,8 @@ class ServiceConfig:
     soft_delete_enabled: bool = True
     cleanup_interval_days: int = 30
     log_level: str = "INFO"
+    host: str = "0.0.0.0"
+    port: int = 8000
 
 
 @dataclass
@@ -77,6 +79,8 @@ class Config:
                 soft_delete_enabled=os.getenv("SOFT_DELETE_ENABLED", "true").lower() == "true",
                 cleanup_interval_days=int(os.getenv("CLEANUP_INTERVAL_DAYS", "30")),
                 log_level=os.getenv("LOG_LEVEL", "INFO"),
+                host=os.getenv("SERVICE_HOST", "0.0.0.0"),
+                port=int(os.getenv("SERVICE_PORT", "8000")),
             ),
         )
 

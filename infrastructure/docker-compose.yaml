@@ -111,11 +111,28 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Cataloging Service (placeholder)
+  # Cataloging Service
   cataloging_service:
-    image: python:3.13-slim
+    build:
+      context: ../services/cataloging_service
+      dockerfile: Dockerfile
     container_name: tracktion-cataloging
-    command: ["echo", "Cataloging service placeholder"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: tracktion
+      DB_USER: ${POSTGRES_USER:-tracktion}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-tracktion}
+      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-changeme}
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8000
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql://tracktion:changeme@postgres:5432/tracktion
+    ports:
+      - "8001:8000"
     networks:
       - tracktion-network
     depends_on:
@@ -123,6 +140,12 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Analysis Service (placeholder)
   analysis_service:

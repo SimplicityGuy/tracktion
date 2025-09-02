@@ -8,13 +8,12 @@ from typing import TYPE_CHECKING
 import aio_pika
 from aio_pika import ExchangeType
 
-from shared.core_types.src.async_database import AsyncDatabaseManager
-
 if TYPE_CHECKING:
     from aio_pika.abc import AbstractChannel, AbstractIncomingMessage, AbstractQueue, AbstractRobustConnection
 
-from .async_catalog_service import AsyncCatalogService
 from .config import get_config
+from .database import get_db_manager
+from .repositories import MetadataRepository, RecordingRepository
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +27,7 @@ class CatalogingMessageConsumer:
         self.connection: AbstractRobustConnection | None = None
         self.channel: AbstractChannel | None = None
         self.queue: AbstractQueue | None = None
-
-        # Database setup
-        self.db_manager = AsyncDatabaseManager()
-        self.catalog_service = AsyncCatalogService(self.db_manager)
+        self.db_manager = get_db_manager()
 
     async def connect(self) -> None:
         """Connect to RabbitMQ and setup consumer."""
@@ -141,46 +137,82 @@ class CatalogingMessageConsumer:
                 extra={"correlation_id": correlation_id},
             )
 
-            # Handle event based on type using async catalog service
-            try:
+            # Handle event based on type using repositories
+            async with self.db_manager.get_session() as session:
+                recording_repo = RecordingRepository(session)
+                metadata_repo = MetadataRepository(session)
+
                 if event_type == "created":
                     # Extract file name from path
                     file_name = file_path.split("/")[-1] if "/" in file_path else file_path
 
-                    # Get metadata from message if available
-                    metadata = body.get("metadata", {})
+                    # Check if file already exists
+                    existing = await recording_repo.get_by_file_path(file_path)
+                    if not existing:
+                        # Create new recording
+                        recording = await recording_repo.create(
+                            file_path=file_path,
+                            file_name=file_name,
+                            sha256_hash=sha256_hash,
+                            xxh128_hash=xxh128_hash,
+                        )
 
-                    await self.catalog_service.catalog_file(
-                        file_path=file_path,
-                        file_name=file_name,
-                        sha256_hash=sha256_hash,
-                        xxh128_hash=xxh128_hash,
-                        metadata=metadata,
-                    )
+                        # Add metadata if provided
+                        metadata = body.get("metadata", {})
+                        if metadata:
+                            await metadata_repo.bulk_create(recording.id, metadata)
+                    else:
+                        # Update existing recording
+                        await recording_repo.update(
+                            existing.id,
+                            sha256_hash=sha256_hash,
+                            xxh128_hash=xxh128_hash,
+                        )
 
                 elif event_type == "modified":
                     # For modified, update the hashes
                     file_name = file_path.split("/")[-1] if "/" in file_path else file_path
-                    metadata = body.get("metadata", {})
 
-                    # This will update existing or create new
-                    await self.catalog_service.catalog_file(
-                        file_path=file_path,
-                        file_name=file_name,
-                        sha256_hash=sha256_hash,
-                        xxh128_hash=xxh128_hash,
-                        metadata=metadata,
-                    )
+                    existing = await recording_repo.get_by_file_path(file_path)
+                    if existing:
+                        await recording_repo.update(
+                            existing.id,
+                            sha256_hash=sha256_hash,
+                            xxh128_hash=xxh128_hash,
+                        )
+
+                        # Update metadata if provided
+                        metadata = body.get("metadata", {})
+                        if metadata:
+                            for key, value in metadata.items():
+                                await metadata_repo.upsert(existing.id, key, value)
+                    else:
+                        # Create new if doesn't exist
+                        recording = await recording_repo.create(
+                            file_path=file_path,
+                            file_name=file_name,
+                            sha256_hash=sha256_hash,
+                            xxh128_hash=xxh128_hash,
+                        )
+                        metadata = body.get("metadata", {})
+                        if metadata:
+                            await metadata_repo.bulk_create(recording.id, metadata)
 
                 elif event_type == "deleted":
-                    await self.catalog_service.handle_file_deleted(file_path)
+                    existing = await recording_repo.get_by_file_path(file_path)
+                    if existing:
+                        await recording_repo.delete(existing.id)
 
                 elif event_type in ["moved", "renamed"]:
                     if old_path:
                         new_name = file_path.split("/")[-1] if "/" in file_path else file_path
-                        await self.catalog_service.handle_file_moved(
-                            old_path=old_path, new_path=file_path, new_name=new_name
-                        )
+                        existing = await recording_repo.get_by_file_path(old_path)
+                        if existing:
+                            await recording_repo.update(
+                                existing.id,
+                                file_path=file_path,
+                                file_name=new_name,
+                            )
                     else:
                         logger.error(f"{event_type} event missing old_path: {file_path}")
                         raise ValueError(f"Missing old_path for {event_type} event")
@@ -192,13 +224,6 @@ class CatalogingMessageConsumer:
                     f"Cataloging: Successfully processed {event_type} event for {file_path}",
                     extra={"correlation_id": correlation_id},
                 )
-
-            except Exception as e:
-                logger.error(
-                    f"Cataloging: Failed to process {event_type} event for {file_path}: {e}",
-                    extra={"correlation_id": correlation_id},
-                )
-                raise
 
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in message: {e}")

@@ -6,6 +6,9 @@ import signal
 import sys
 from typing import Any
 
+import uvicorn
+
+from .api import create_app
 from .config import get_config
 from .message_consumer import CatalogingMessageConsumer
 
@@ -25,6 +28,18 @@ class CatalogingService:
     async def start(self) -> None:
         """Start the cataloging service."""
         try:
+            # Create FastAPI app
+            app = create_app()
+
+            # Configure uvicorn server
+            server_config = uvicorn.Config(
+                app,
+                host=self.config.service.host,
+                port=self.config.service.port,
+                log_level=self.config.service.log_level.lower(),
+            )
+            server = uvicorn.Server(server_config)
+
             # Connect to RabbitMQ
             await self.consumer.connect()
             logger.info("Cataloging service started")
@@ -35,16 +50,20 @@ class CatalogingService:
             # Start consuming messages
             consumer_task = asyncio.create_task(self.consumer.start_consuming())
 
+            # Start API server
+            api_task = asyncio.create_task(server.serve())
+
             # Wait for shutdown signal
             await self._shutdown_event.wait()
 
             # Cancel tasks
             consumer_task.cancel()
+            api_task.cancel()
             if self.cleanup_task:
                 self.cleanup_task.cancel()
 
             # Wait for tasks to complete
-            await asyncio.gather(consumer_task, self.cleanup_task, return_exceptions=True)
+            await asyncio.gather(consumer_task, api_task, self.cleanup_task, return_exceptions=True)
 
         except Exception as e:
             logger.error(f"Error in cataloging service: {e}")

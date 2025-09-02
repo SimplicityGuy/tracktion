@@ -1,23 +1,25 @@
 """Unit tests for async catalog service."""
 
+import unittest.mock
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 
 from services.cataloging_service.src.async_catalog_service import AsyncCatalogService
 from services.cataloging_service.src.message_consumer import CatalogingMessageConsumer
 from shared.core_types.src.models import Metadata, Recording, Tracklist
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def mock_db_manager():
     """Create mock database manager."""
     return MagicMock()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def mock_repositories():
     """Create mock repositories."""
     recording_repo = MagicMock()
@@ -46,7 +48,7 @@ async def mock_repositories():
     return recording_repo, metadata_repo, tracklist_repo, batch_ops
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def catalog_service(mock_db_manager, mock_repositories):
     """Create catalog service with mocked dependencies."""
     recording_repo, metadata_repo, tracklist_repo, batch_ops = mock_repositories
@@ -291,52 +293,94 @@ class TestAsyncMessageConsumer:
         """Test processing file created event."""
 
         consumer = CatalogingMessageConsumer()
-        consumer.catalog_service = MagicMock()
-        consumer.catalog_service.catalog_file = AsyncMock()
 
-        # Create mock message
-        message = MagicMock()
-        message.body = b"""{
-            "event_type": "created",
-            "file_path": "/test/file.mp3",
-            "sha256_hash": "hash",
-            "xxh128_hash": "xxhash",
-            "size_bytes": "1024",
-            "metadata": {"genre": "electronic"}
-        }"""
-        message.process = MagicMock()
-        message.process.__aenter__ = AsyncMock(return_value=None)
-        message.process.__aexit__ = AsyncMock(return_value=None)
+        # Mock the database manager and session
+        mock_session = AsyncMock()
+        mock_db_manager = MagicMock()
+        mock_db_manager.get_session = MagicMock()
+        mock_db_manager.get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_db_manager.get_session.return_value.__aexit__ = AsyncMock(return_value=None)
+        consumer.db_manager = mock_db_manager
 
-        # Process message
-        await consumer.process_message(message)
+        # Mock repositories
+        mock_recording_repo = MagicMock()
+        mock_recording_repo.get_by_file_path = AsyncMock(return_value=None)
+        mock_recording_repo.create = AsyncMock(return_value=MagicMock(id=uuid4()))
 
-        # Verify
-        consumer.catalog_service.catalog_file.assert_called_once()
+        mock_metadata_repo = MagicMock()
+        mock_metadata_repo.upsert = AsyncMock()
+        mock_metadata_repo.bulk_create = AsyncMock()
+
+        # Patch repository creation
+        with (
+            unittest.mock.patch(
+                "services.cataloging_service.src.message_consumer.RecordingRepository", return_value=mock_recording_repo
+            ),
+            unittest.mock.patch(
+                "services.cataloging_service.src.message_consumer.MetadataRepository", return_value=mock_metadata_repo
+            ),
+        ):
+            # Create mock message
+            message = MagicMock()
+            message.body = b"""{
+                "event_type": "created",
+                "file_path": "/test/file.mp3",
+                "sha256_hash": "hash",
+                "xxh128_hash": "xxhash",
+                "size_bytes": "1024",
+                "metadata": {"genre": "electronic"}
+            }"""
+            message.process = MagicMock()
+            message.process.__aenter__ = AsyncMock(return_value=None)
+            message.process.__aexit__ = AsyncMock(return_value=None)
+
+            # Process message
+            await consumer.process_message(message)
+
+            # Verify
+            mock_recording_repo.get_by_file_path.assert_called_once()
+            mock_recording_repo.create.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_process_deleted_event(self):
         """Test processing file deleted event."""
 
         consumer = CatalogingMessageConsumer()
-        consumer.catalog_service = MagicMock()
-        consumer.catalog_service.handle_file_deleted = AsyncMock()
 
-        # Create mock message
-        message = MagicMock()
-        message.body = b"""{
-            "event_type": "deleted",
-            "file_path": "/test/file.mp3"
-        }"""
-        message.process = MagicMock()
-        message.process.__aenter__ = AsyncMock(return_value=None)
-        message.process.__aexit__ = AsyncMock(return_value=None)
+        # Mock the database manager and session
+        mock_session = AsyncMock()
+        mock_db_manager = MagicMock()
+        mock_db_manager.get_session = MagicMock()
+        mock_db_manager.get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_db_manager.get_session.return_value.__aexit__ = AsyncMock(return_value=None)
+        consumer.db_manager = mock_db_manager
 
-        # Process message
-        await consumer.process_message(message)
+        # Mock repositories
+        mock_recording_repo = MagicMock()
+        mock_recording = MagicMock(id=uuid4())
+        mock_recording_repo.get_by_file_path = AsyncMock(return_value=mock_recording)
+        mock_recording_repo.delete = AsyncMock(return_value=True)
 
-        # Verify
-        consumer.catalog_service.handle_file_deleted.assert_called_once_with("/test/file.mp3")
+        # Patch repository creation
+        with unittest.mock.patch(
+            "services.cataloging_service.src.message_consumer.RecordingRepository", return_value=mock_recording_repo
+        ):
+            # Create mock message
+            message = MagicMock()
+            message.body = b"""{
+                "event_type": "deleted",
+                "file_path": "/test/file.mp3"
+            }"""
+            message.process = MagicMock()
+            message.process.__aenter__ = AsyncMock(return_value=None)
+            message.process.__aexit__ = AsyncMock(return_value=None)
+
+            # Process message
+            await consumer.process_message(message)
+
+            # Verify
+            mock_recording_repo.get_by_file_path.assert_called_once()
+            mock_recording_repo.delete.assert_called_once()
 
 
 if __name__ == "__main__":
