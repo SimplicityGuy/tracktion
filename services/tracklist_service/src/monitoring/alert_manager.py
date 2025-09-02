@@ -9,13 +9,14 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 
-import aiohttp
 from redis.asyncio import Redis
 
-from services.tracklist_service.src.monitoring.structure_monitor import (
-    ChangeReport,
-    StructureMonitor,
+from services.notification_service.src.channels.discord import DiscordNotificationService
+from services.notification_service.src.core.base import (
+    AlertType,
+    NotificationMessage,
 )
+from services.tracklist_service.src.monitoring.structure_monitor import ChangeReport, StructureMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +30,15 @@ class AlertSeverity(Enum):
     CRITICAL = "critical"
 
 
-class AlertChannel(Enum):
-    """Available alert notification channels."""
-
-    LOG = "log"
-    SLACK = "slack"
-    EMAIL = "email"
-    WEBHOOK = "webhook"
-    DASHBOARD = "dashboard"
+def severity_to_alert_type(severity: AlertSeverity) -> AlertType:
+    """Map AlertSeverity to AlertType."""
+    mapping = {
+        AlertSeverity.INFO: AlertType.GENERAL,
+        AlertSeverity.WARNING: AlertType.MONITORING,
+        AlertSeverity.ERROR: AlertType.ERROR,
+        AlertSeverity.CRITICAL: AlertType.CRITICAL,
+    }
+    return mapping.get(severity, AlertType.GENERAL)
 
 
 @dataclass
@@ -49,7 +51,7 @@ class Alert:
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     page_type: str | None = None
     change_report: ChangeReport | None = None
-    channels: list[AlertChannel] = field(default_factory=list)
+    channels: list[str] = field(default_factory=list)  # Legacy field - now just strings
     metadata: dict[str, Any] = field(default_factory=dict)
     resolved: bool = False
 
@@ -62,7 +64,7 @@ class Alert:
             "timestamp": self.timestamp.isoformat(),
             "page_type": self.page_type,
             "change_report": (self.change_report.to_dict() if self.change_report else None),
-            "channels": [c.value for c in self.channels],
+            "channels": self.channels,
             "metadata": self.metadata,
             "resolved": self.resolved,
         }
@@ -91,22 +93,16 @@ class AlertManager:
     def __init__(
         self,
         redis_client: Redis | None = None,
-        slack_webhook_url: str | None = None,
-        email_config: dict[str, str] | None = None,
-        dashboard_url: str | None = None,
+        notification_service: DiscordNotificationService | None = None,
     ):
         """Initialize alert manager.
 
         Args:
             redis_client: Redis client for storing alerts
-            slack_webhook_url: Slack webhook URL for notifications
-            email_config: Email configuration for notifications
-            dashboard_url: Dashboard URL for posting alerts
+            notification_service: Discord notification service for sending alerts
         """
         self.redis_client = redis_client
-        self.slack_webhook_url = slack_webhook_url
-        self.email_config = email_config
-        self.dashboard_url = dashboard_url
+        self.notification_service = notification_service or DiscordNotificationService(redis_client)
         self._alert_history: list[Alert] = []
         self._health_checks: dict[str, HealthStatus] = {}
         self._anomaly_detectors: dict[str, Callable[..., Any]] = {}
@@ -186,21 +182,37 @@ class AlertManager:
 
         return status
 
-    async def send_alert(self, severity: str, message: str, channels: list[str]) -> None:
-        """Send alert to specified channels.
+    async def send_alert(self, severity: str, message: str, channels: list[str] | None = None) -> None:
+        """Send alert using Discord notification service.
 
         Args:
             severity: Alert severity level
             message: Alert message
-            channels: List of channels to send to
+            channels: Legacy parameter - ignored (Discord channels determined by severity)
         """
-        alert = Alert(
-            severity=AlertSeverity(severity),
+        severity_enum = AlertSeverity(severity)
+        alert_type = severity_to_alert_type(severity_enum)
+
+        notification = NotificationMessage(
+            alert_type=alert_type,
+            title=f"{severity_enum.value.title()} Alert",
             message=message,
-            channels=[AlertChannel(c) for c in channels],
         )
 
-        await self._dispatch_alert(alert)
+        result = await self.notification_service.send(notification)
+
+        # Store in local history for compatibility
+        alert = Alert(
+            severity=severity_enum,
+            message=message,
+            channels=[],  # Legacy channels not used with Discord
+        )
+        self._alert_history.append(alert)
+        if len(self._alert_history) > 1000:
+            self._alert_history = self._alert_history[-1000:]
+
+        if not result.success:
+            logger.error(f"Failed to send Discord notification: {result.error}")
 
     async def send_change_alert(self, change_report: ChangeReport) -> None:
         """Send alert for structural changes.
@@ -218,7 +230,31 @@ class AlertManager:
         else:
             severity = AlertSeverity.INFO
 
-        # Create alert
+        alert_type = severity_to_alert_type(severity)
+
+        # Build Discord message fields
+        fields: list[dict[str, Any]] = [
+            {"name": "Page Type", "value": change_report.page_type, "inline": True},
+            {"name": "Changes", "value": str(len(change_report.changes)), "inline": True},
+            {"name": "Severity", "value": change_report.severity, "inline": True},
+            {"name": "Match %", "value": f"{change_report.fingerprint_match_percentage:.1f}%", "inline": True},
+            {
+                "name": "Review Required",
+                "value": "Yes" if change_report.requires_manual_review else "No",
+                "inline": True,
+            },
+        ]
+
+        notification = NotificationMessage(
+            alert_type=alert_type,
+            title="🔄 Structural Changes Detected",
+            message=f"Structural changes detected for {change_report.page_type}",
+            fields=fields,
+        )
+
+        result = await self.notification_service.send(notification)
+
+        # Store in local history for compatibility
         alert = Alert(
             severity=severity,
             message=f"Structural changes detected for {change_report.page_type}",
@@ -231,10 +267,12 @@ class AlertManager:
             },
             page_type=change_report.page_type,
             change_report=change_report,
-            channels=self._get_channels_for_severity(severity),
+            channels=[],
         )
+        self._alert_history.append(alert)
 
-        await self._dispatch_alert(alert)
+        if not result.success:
+            logger.error(f"Failed to send change alert: {result.error}")
 
     async def send_health_alert(self, health_status: HealthStatus, page_type: str | None = None) -> None:
         """Send alert for health status issues.
@@ -256,7 +294,36 @@ class AlertManager:
         else:
             severity = AlertSeverity.INFO
 
-        # Create alert
+        alert_type = severity_to_alert_type(severity)
+
+        # Build Discord message fields
+        fields: list[dict[str, Any]] = [
+            {"name": "Success Rate", "value": f"{health_status.success_rate:.1%}", "inline": True},
+            {"name": "Anomalies", "value": str(len(health_status.anomalies)), "inline": True},
+            {"name": "Failed Extractions", "value": str(len(health_status.failed_extractions)), "inline": True},
+        ]
+
+        # Add metrics
+        for key, value in health_status.metrics.items():
+            fields.append({"name": key.title(), "value": str(value), "inline": True})
+
+        # Add anomalies if present (limited)
+        if health_status.anomalies:
+            anomaly_text = "\n".join(health_status.anomalies[:3])
+            if len(health_status.anomalies) > 3:
+                anomaly_text += f"\n... and {len(health_status.anomalies) - 3} more"
+            fields.append({"name": "Anomalies", "value": anomaly_text, "inline": False})
+
+        notification = NotificationMessage(
+            alert_type=alert_type,
+            title=f"🏥 Health Alert{f': {page_type}' if page_type else ''}",
+            message=f"Parser health degraded{f' for {page_type}' if page_type else ''}",
+            fields=fields,
+        )
+
+        result = await self.notification_service.send(notification)
+
+        # Store in local history for compatibility
         alert = Alert(
             severity=severity,
             message=f"Parser health degraded{f' for {page_type}' if page_type else ''}",
@@ -267,137 +334,18 @@ class AlertManager:
                 "metrics": health_status.metrics,
             },
             page_type=page_type,
-            channels=self._get_channels_for_severity(severity),
+            channels=[],
             metadata={
                 "anomalies": health_status.anomalies,
-                "failed_extractions": health_status.failed_extractions[:5],  # Limit to 5
+                "failed_extractions": health_status.failed_extractions[:5],
             },
         )
-
-        await self._dispatch_alert(alert)
-
-    async def _dispatch_alert(self, alert: Alert) -> None:
-        """Dispatch alert to configured channels.
-
-        Args:
-            alert: Alert to dispatch
-        """
-        # Store in history
         self._alert_history.append(alert)
-        if len(self._alert_history) > 1000:
-            self._alert_history = self._alert_history[-1000:]  # Keep last 1000
 
-        # Store in Redis if available
-        if self.redis_client:
-            await self._store_alert_in_redis(alert)
+        if not result.success:
+            logger.error(f"Failed to send health alert: {result.error}")
 
-        # Send to each channel
-        for channel in alert.channels:
-            try:
-                if channel == AlertChannel.LOG:
-                    await self._send_to_log(alert)
-                elif channel == AlertChannel.SLACK:
-                    await self._send_to_slack(alert)
-                elif channel == AlertChannel.EMAIL:
-                    await self._send_to_email(alert)
-                elif channel == AlertChannel.WEBHOOK:
-                    await self._send_to_webhook(alert)
-                elif channel == AlertChannel.DASHBOARD:
-                    await self._send_to_dashboard(alert)
-            except Exception as e:
-                logger.error(f"Failed to send alert to {channel.value}: {e}")
-
-    async def _send_to_log(self, alert: Alert) -> None:
-        """Send alert to log."""
-        log_method = {
-            AlertSeverity.INFO: logger.info,
-            AlertSeverity.WARNING: logger.warning,
-            AlertSeverity.ERROR: logger.error,
-            AlertSeverity.CRITICAL: logger.critical,
-        }.get(alert.severity, logger.info)
-
-        log_method(f"[ALERT] {alert.message}", extra={"alert": alert.to_dict()})
-
-    async def _send_to_slack(self, alert: Alert) -> None:
-        """Send alert to Slack."""
-        if not self.slack_webhook_url:
-            return
-
-        # Format message for Slack
-        color = {
-            AlertSeverity.INFO: "#36a64f",
-            AlertSeverity.WARNING: "#ff9900",
-            AlertSeverity.ERROR: "#ff0000",
-            AlertSeverity.CRITICAL: "#990000",
-        }.get(alert.severity, "#808080")
-
-        attachment = {
-            "color": color,
-            "title": f"{alert.severity.value.upper()}: {alert.message}",
-            "fields": [{"title": k, "value": str(v), "short": True} for k, v in alert.details.items()],
-            "footer": "Tracklist Service Alert",
-            "ts": int(alert.timestamp.timestamp()),
-        }
-
-        payload = {"attachments": [attachment]}
-
-        async with aiohttp.ClientSession() as session, session.post(self.slack_webhook_url, json=payload) as response:
-            if response.status != 200:
-                logger.error(f"Failed to send Slack alert: {response.status}")
-
-    async def _send_to_email(self, alert: Alert) -> None:
-        """Send alert via email."""
-        # TODO: Implement email sending
-        logger.info(f"Email alert not implemented: {alert.message}")
-
-    async def _send_to_webhook(self, alert: Alert) -> None:
-        """Send alert to webhook."""
-        # TODO: Implement generic webhook
-        logger.info(f"Webhook alert not implemented: {alert.message}")
-
-    async def _send_to_dashboard(self, alert: Alert) -> None:
-        """Send alert to dashboard."""
-        if not self.dashboard_url:
-            return
-
-        async with (
-            aiohttp.ClientSession() as session,
-            session.post(self.dashboard_url, json=alert.to_dict()) as response,
-        ):
-            if response.status != 200:
-                logger.error(f"Failed to send dashboard alert: {response.status}")
-
-    async def _store_alert_in_redis(self, alert: Alert) -> None:
-        """Store alert in Redis for history."""
-        if not self.redis_client:
-            return
-
-        key = f"alerts:history:{alert.page_type or 'global'}"
-        # Handle potential sync/async Redis methods
-        result1 = self.redis_client.lpush(key, json.dumps(alert.to_dict()))
-        result2 = self.redis_client.ltrim(key, 0, 99)  # Keep last 100
-        result3 = self.redis_client.expire(key, 86400 * 7)  # 7 days
-
-        if hasattr(result1, "__await__"):
-            await result1
-        if hasattr(result2, "__await__"):
-            await result2
-        if hasattr(result3, "__await__"):
-            await result3
-
-    def _get_channels_for_severity(self, severity: AlertSeverity) -> list[AlertChannel]:
-        """Get appropriate channels based on severity."""
-        channels = [AlertChannel.LOG]
-
-        # Always add dashboard for visibility
-        channels.append(AlertChannel.DASHBOARD)
-
-        if severity in [AlertSeverity.ERROR, AlertSeverity.CRITICAL]:
-            channels.append(AlertChannel.SLACK)
-            if severity == AlertSeverity.CRITICAL:
-                channels.append(AlertChannel.EMAIL)
-
-        return channels
+    # Legacy methods removed - using DiscordNotificationService instead
 
     async def _detect_anomalies(self, page_type: str | None = None) -> list[str]:
         """Detect anomalies in extraction patterns.
