@@ -8,10 +8,12 @@ from typing import Any
 
 import requests  # type: ignore[import-untyped]  # types-requests not installed in this environment
 from bs4 import BeautifulSoup
-from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
+from shared.core_types.src.database import DatabaseManager
+from src.auth.admin_auth import AdminUser, require_parser_admin, require_readonly
 from src.cache.fallback_cache import FallbackCache
+from src.models.operation_history import OperationHistoryRepository
 from src.monitoring.alert_manager import AlertManager
 from src.monitoring.structure_monitor import StructureMonitor
 from src.scrapers.adaptive_parser import AdaptiveParser
@@ -31,26 +33,6 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-security = HTTPBearer()
-
-
-security_dependency = security  # Will be injected via Depends in route
-
-
-async def verify_admin_access(
-    credentials: HTTPAuthorizationCredentials = security_dependency,
-) -> str:
-    """Verify admin access token and return admin user ID."""
-    # TODO: Implement proper authentication
-    # For now, return a placeholder admin user
-    if not credentials.credentials:
-        raise HTTPException(status_code=401, detail="Missing admin token")
-
-    # Placeholder validation - implement actual token validation
-    if credentials.credentials == "admin-token":
-        return "admin-user"
-
-    raise HTTPException(status_code=403, detail="Invalid admin token")
 
 
 class ComponentRegistry:
@@ -65,6 +47,8 @@ class ComponentRegistry:
         self._alert_manager: AlertManager | None = None
         self._structure_monitor: StructureMonitor | None = None
         self._fallback_cache: FallbackCache | None = None
+        self._db_manager: DatabaseManager | None = None
+        self._operation_history_repo: OperationHistoryRepository | None = None
 
     @classmethod
     def get_instance(cls) -> "ComponentRegistry":
@@ -103,6 +87,18 @@ class ComponentRegistry:
             self._fallback_cache = FallbackCache()
         return self._fallback_cache
 
+    def get_db_manager(self) -> DatabaseManager:
+        """Get or create database manager instance."""
+        if self._db_manager is None:
+            self._db_manager = DatabaseManager()
+        return self._db_manager
+
+    def get_operation_history_repo(self) -> OperationHistoryRepository:
+        """Get or create operation history repository instance."""
+        if self._operation_history_repo is None:
+            self._operation_history_repo = OperationHistoryRepository(self.get_db_manager())
+        return self._operation_history_repo
+
 
 # Convenience functions
 def get_adaptive_parser() -> AdaptiveParser:
@@ -130,11 +126,16 @@ def get_fallback_cache() -> FallbackCache:
     return ComponentRegistry.get_instance().get_fallback_cache()
 
 
+def get_operation_history_repo() -> OperationHistoryRepository:
+    """Get or create operation history repository instance."""
+    return ComponentRegistry.get_instance().get_operation_history_repo()
+
+
 @router.post("/selectors/update", response_model=dict[str, Any])
 async def update_selectors(
     updates: SelectorUpdate,
     background_tasks: BackgroundTasks,
-    admin_user: str,  # Will be injected via Depends in route
+    admin_user: AdminUser = Depends(require_parser_admin),  # noqa: B008 - FastAPI requires Depends in defaults
 ) -> dict[str, Any]:
     """Update parser selectors with new configuration.
 
@@ -183,21 +184,33 @@ async def update_selectors(
         # Update configuration
         operation_id = str(uuid.uuid4())
 
-        # Record admin operation
+        # Save operation to database
+        operation_history_repo = get_operation_history_repo()
+        operation_details = {
+            "page_type": updates.page_type,
+            "field_name": updates.field_name,
+            "selector_type": updates.selector_type.value,
+            "selector_value": updates.selector_value,
+            "priority": updates.priority,
+            "test_result": test_result,
+            "notes": updates.notes,
+        }
+
+        operation_history = operation_history_repo.create_operation(
+            operation_id=operation_id,
+            operation_type="selector_update",
+            admin_user=admin_user.username,
+            details=operation_details,
+            success=True,
+        )
+
+        # Create admin operation for background task
         admin_operation = AdminOperation(
             operation_id=operation_id,
             operation_type="selector_update",
-            timestamp=datetime.now(UTC),
-            admin_user=admin_user,
-            details={
-                "page_type": updates.page_type,
-                "field_name": updates.field_name,
-                "selector_type": updates.selector_type.value,
-                "selector_value": updates.selector_value,
-                "priority": updates.priority,
-                "test_result": test_result,
-                "notes": updates.notes,
-            },
+            timestamp=operation_history.timestamp,
+            admin_user=admin_user.username,
+            details=operation_details,
             success=True,
         )
 
@@ -251,7 +264,7 @@ async def apply_selector_update(
 @router.post("/parser/test", response_model=ParserTestResult)
 async def test_parser(
     test_request: SelectorTestRequest,
-    admin_user: str,  # Will be injected via Depends in route
+    admin_user: AdminUser = Depends(require_parser_admin),  # noqa: B008 - FastAPI requires Depends in defaults
 ) -> ParserTestResult:
     """Test parser with specific selector configuration.
 
@@ -360,7 +373,7 @@ async def test_selector_internal(
 async def correct_data(
     correction: ManualDataCorrection,
     background_tasks: BackgroundTasks,
-    admin_user: str,  # Will be injected via Depends in route
+    admin_user: AdminUser = Depends(require_parser_admin),  # noqa: B008 - FastAPI requires Depends in defaults
 ) -> dict[str, Any]:
     """Manually correct extracted data.
 
@@ -380,7 +393,7 @@ async def correct_data(
             operation_id=operation_id,
             operation_type="manual_correction",
             timestamp=datetime.now(UTC),
-            admin_user=admin_user,
+            admin_user=admin_user.username,
             details={
                 "tracklist_id": correction.tracklist_id,
                 "field_corrections": correction.field_corrections,
@@ -439,7 +452,7 @@ async def apply_data_correction(
         corrected_data["manual_corrections"].append(
             {
                 "timestamp": datetime.now(UTC).isoformat(),
-                "admin_user": correction.admin_user,
+                "admin_user": admin_operation.admin_user,
                 "reason": correction.reason,
                 "fields": list(correction.field_corrections.keys()),
             }
@@ -460,7 +473,7 @@ async def apply_data_correction(
 async def rollback_parser(
     rollback_request: RollbackRequest,
     background_tasks: BackgroundTasks,
-    admin_user: str,  # Will be injected via Depends in route
+    admin_user: AdminUser = Depends(require_parser_admin),  # noqa: B008 - FastAPI requires Depends in defaults
 ) -> dict[str, Any]:
     """Rollback parser to previous version.
 
@@ -489,7 +502,7 @@ async def rollback_parser(
             operation_id=operation_id,
             operation_type="parser_rollback",
             timestamp=datetime.now(UTC),
-            admin_user=admin_user,
+            admin_user=admin_user.username,
             details={
                 "target_version": rollback_request.target_version,
                 "reason": rollback_request.reason,
@@ -541,7 +554,7 @@ async def perform_rollback(
 
 @router.get("/parser/health", response_model=ParserHealthStatus)
 async def get_parser_health(
-    admin_user: str,  # Will be injected via Depends in route
+    admin_user: AdminUser = Depends(require_readonly),  # noqa: B008 - FastAPI requires Depends in defaults
 ) -> ParserHealthStatus:
     """Get current parser health and status.
 
@@ -588,7 +601,7 @@ async def get_parser_health(
 
 @router.get("/configuration/snapshot", response_model=ConfigurationSnapshot)
 async def get_configuration_snapshot(
-    admin_user: str,  # Will be injected via Depends in route
+    admin_user: AdminUser = Depends(require_readonly),  # noqa: B008 - FastAPI requires Depends in defaults
 ) -> ConfigurationSnapshot:
     """Get current parser configuration snapshot.
 
@@ -619,7 +632,7 @@ async def get_configuration_snapshot(
 
 @router.get("/operations/history")
 async def get_operation_history(
-    admin_user: str,  # Will be injected via Depends in route
+    admin_user: AdminUser = Depends(require_readonly),  # noqa: B008 - FastAPI requires Depends in defaults
     limit: int = 50,
     operation_type: str | None = None,
 ) -> list[dict[str, Any]]:
@@ -634,19 +647,41 @@ async def get_operation_history(
         List of admin operations
     """
     try:
-        # TODO: Implement operation history storage and retrieval
-        # For now, return placeholder
-        return [
-            {
-                "operation_id": "placeholder",
-                "operation_type": "system_status",
-                "timestamp": datetime.now(UTC).isoformat(),
-                "admin_user": admin_user,
-                "details": {"message": "Operation history not yet implemented"},
-                "success": True,
-            }
-        ]
+        operation_history_repo = get_operation_history_repo()
+
+        # Get recent operations with optional filter
+        operations = operation_history_repo.get_recent_operations(
+            limit=limit,
+            operation_type=operation_type,
+        )
+
+        # Convert to dict format
+        return [op.to_dict() for op in operations]
 
     except Exception as e:
         logger.error(f"Error getting operation history: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get operation history: {e!s}") from e
+
+
+@router.get("/operations/statistics")
+async def get_operation_statistics(
+    admin_user: AdminUser = Depends(require_readonly),  # noqa: B008 - FastAPI requires Depends in defaults
+    days: int = 30,
+) -> dict[str, Any]:
+    """Get operation statistics for the last N days.
+
+    Args:
+        admin_user: Authenticated admin user
+        days: Number of days to look back
+
+    Returns:
+        Operation statistics
+    """
+    try:
+        operation_history_repo = get_operation_history_repo()
+        stats: dict[str, Any] = operation_history_repo.get_operation_statistics(days=days)
+        return stats
+
+    except Exception as e:
+        logger.error(f"Error getting operation statistics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get operation statistics: {e!s}") from e
