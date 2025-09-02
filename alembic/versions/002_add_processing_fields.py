@@ -8,7 +8,7 @@ Create Date: 2025-08-16
 
 import sqlalchemy as sa
 
-from alembic import op  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "002"

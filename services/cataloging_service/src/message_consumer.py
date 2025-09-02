@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aio_pika
 from aio_pika import ExchangeType
@@ -153,7 +153,7 @@ class CatalogingMessageConsumer:
                     existing = await recording_repo.get_by_file_path(file_path)
                     if not existing:
                         # Create new recording
-                        recording = await recording_repo.create(
+                        recording: Any = await recording_repo.create(
                             file_path=file_path,
                             file_name=file_name,
                             sha256_hash=sha256_hash,

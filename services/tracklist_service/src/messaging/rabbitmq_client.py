@@ -375,19 +375,35 @@ class RabbitMQClient:
         return health_status
 
 
-# Global client instance (to be configured by application)
-rabbitmq_client: RabbitMQClient | None = None
+class RabbitMQClientSingleton:
+    """Singleton wrapper for RabbitMQClient."""
+
+    _instance: RabbitMQClient | None = None
+
+    @classmethod
+    def get_instance(cls) -> RabbitMQClient:
+        """Get the singleton RabbitMQClient instance."""
+        if cls._instance is None:
+            raise RuntimeError("RabbitMQ client not initialized")
+        return cls._instance
+
+    @classmethod
+    def initialize(cls, config: RabbitMQConfig) -> RabbitMQClient:
+        """Initialize the singleton RabbitMQClient instance."""
+        cls._instance = RabbitMQClient(config)
+        return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
 def get_rabbitmq_client() -> RabbitMQClient:
-    """Get the global RabbitMQ client instance."""
-    if not rabbitmq_client:
-        raise RuntimeError("RabbitMQ client not initialized")
-    return rabbitmq_client
+    """Get the singleton RabbitMQ client instance."""
+    return RabbitMQClientSingleton.get_instance()
 
 
 def initialize_rabbitmq_client(config: RabbitMQConfig) -> RabbitMQClient:
-    """Initialize the global RabbitMQ client."""
-    global rabbitmq_client  # noqa: PLW0603 - Global singleton pattern necessary for RabbitMQ client lifecycle
-    rabbitmq_client = RabbitMQClient(config)
-    return rabbitmq_client
+    """Initialize the singleton RabbitMQ client."""
+    return RabbitMQClientSingleton.initialize(config)

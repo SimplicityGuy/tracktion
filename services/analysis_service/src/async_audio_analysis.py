@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import aiofiles  # type: ignore[import-untyped]
+import aiofiles
 import essentia.standard as es
 import numpy as np
 

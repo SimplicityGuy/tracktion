@@ -8,15 +8,16 @@ import os
 import sys
 from pathlib import Path
 
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+# Third-party imports
+from alembic import command
+from alembic.config import Config
+
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-
-from sqlalchemy import text  # noqa: E402
-from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
-
-from alembic import command  # type: ignore[attr-defined]  # Alembic adds commands at runtime # noqa: E402
-from alembic.config import Config  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

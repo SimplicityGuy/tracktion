@@ -228,7 +228,7 @@ class CueGenerationService:
                 options=request.options,
                 validate_audio=request.validate_audio,
                 audio_file_path=request.audio_file_path,
-                # store_file=request.store_files,  # TODO: Add store_file to GenerateCueRequest model
+                store_file=request.store_files,  # Now using the field from the model
             )
 
             response = await self.generate_cue_file(tracklist, single_request)

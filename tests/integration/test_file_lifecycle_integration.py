@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import DatabaseError
 from sqlalchemy.orm import Session, sessionmaker
 
 from shared.core_types.src.database import Base
@@ -442,7 +443,7 @@ class TestServiceIntegration:
     def test_error_handling_across_services(self, mock_services):
         """Test error handling and recovery across services."""
         # Simulate error in cataloging service
-        mock_services["cataloging"].process_file_event.side_effect = Exception("Database error")
+        mock_services["cataloging"].process_file_event.side_effect = DatabaseError("Database error", None, None)
 
         file_event = {"event_type": "created", "file_path": "/music/error_test.mp3"}
 
@@ -450,7 +451,7 @@ class TestServiceIntegration:
         mock_services["file_watcher"].publish_event(file_event)
 
         # Cataloging fails
-        with pytest.raises(Exception):  # noqa: B017
+        with pytest.raises(DatabaseError):
             mock_services["cataloging"].process_file_event(file_event)
 
         # Other services should handle gracefully

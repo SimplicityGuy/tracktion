@@ -10,7 +10,7 @@ from enum import Enum
 from typing import Any
 
 import pika
-from croniter import croniter  # type: ignore[import-untyped]
+from croniter import croniter
 from redis import Redis
 
 logger = logging.getLogger(__name__)

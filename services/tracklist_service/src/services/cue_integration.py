@@ -5,49 +5,48 @@ This module provides a wrapper around the analysis service's CUE handler
 to integrate CUE file generation and validation with tracklist data.
 """
 
+import importlib.util
 import logging
 import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
-from src.models.cue_file import CueFormat
-from src.models.tracklist import Tracklist
-from src.utils.time_utils import timedelta_to_milliseconds
-
-# Optional audio analysis imports - check availability without importing
-try:
-    import importlib.util
-
-    MUTAGEN_AVAILABLE = importlib.util.find_spec("mutagen") is not None
-except ImportError:
-    MUTAGEN_AVAILABLE = False
-
-try:
-    import importlib.util
-
-    TINYTAG_AVAILABLE = importlib.util.find_spec("tinytag") is not None
-except ImportError:
-    TINYTAG_AVAILABLE = False
-
-# Add the analysis service to the path so we can import from it
-analysis_service_path = Path(__file__).parent.parent.parent.parent / "analysis_service" / "src"
-sys.path.insert(0, str(analysis_service_path))
-
-from cue_handler import (  # noqa: E402  # Path modification required before import
+# Third-party imports (after path setup)
+from cue_handler import (
     CueConverter,
     CueGenerator,
     CueHandler,
     CueTrack,
     CueValidator,
 )
-from cue_handler import CueFormat as CueHandlerFormat  # noqa: E402  # Path modification required before import
-from cue_handler.format_mappings import (  # noqa: E402  # Path modification required before import
+from cue_handler import CueFormat as CueHandlerFormat
+from cue_handler.format_mappings import (
     get_format_capabilities as handler_get_format_capabilities,
 )
-from cue_handler.format_mappings import (  # noqa: E402  # Path modification required before import
+from cue_handler.format_mappings import (
     get_lossy_warnings as handler_get_lossy_warnings,
 )
-from cue_handler.models import CueTime  # noqa: E402  # Path modification required before import
+from cue_handler.models import CueTime
+
+# Local imports
+from src.models.cue_file import CueFormat
+from src.models.tracklist import Tracklist
+from src.utils.time_utils import timedelta_to_milliseconds
+
+# Add the analysis service to the path so we can import from it
+analysis_service_path = Path(__file__).parent.parent.parent.parent / "analysis_service" / "src"
+sys.path.insert(0, str(analysis_service_path))
+
+# Optional audio analysis imports - check availability without importing
+try:
+    MUTAGEN_AVAILABLE = importlib.util.find_spec("mutagen") is not None
+except ImportError:
+    MUTAGEN_AVAILABLE = False
+
+try:
+    TINYTAG_AVAILABLE = importlib.util.find_spec("tinytag") is not None
+except ImportError:
+    TINYTAG_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 

@@ -393,28 +393,39 @@ class RedisCache:
                 logger.error(f"Error closing Redis connection: {e}")
 
 
-# Global cache instance
-_cache_instance: RedisCache | None = None
+class RedisCacheSingleton:
+    """Singleton wrapper for RedisCache."""
+
+    _instance: RedisCache | None = None
+
+    def __new__(cls) -> "RedisCacheSingleton":
+        """Get the singleton RedisCache instance."""
+        if cls._instance is None:
+            cls._instance = RedisCache()
+        return cls._instance  # type: ignore[return-value]
+
+    @classmethod
+    def close(cls) -> None:
+        """Close the singleton cache instance."""
+        if cls._instance:
+            cls._instance.close()
+            cls._instance = None
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
-def get_cache() -> RedisCache:
-    """Get or create the global cache instance.
+def get_cache() -> "RedisCacheSingleton":
+    """Get or create the singleton cache instance.
 
     Returns:
-        RedisCache instance
+        RedisCache singleton instance
     """
-    global _cache_instance  # noqa: PLW0603  # Global singleton pattern required for cache lifecycle
-
-    if _cache_instance is None:
-        _cache_instance = RedisCache()
-
-    return _cache_instance
+    return RedisCacheSingleton()
 
 
 def close_cache() -> None:
-    """Close the global cache instance."""
-    global _cache_instance  # noqa: PLW0603  # Global singleton pattern required for cache lifecycle
-
-    if _cache_instance:
-        _cache_instance.close()
-        _cache_instance = None
+    """Close the singleton cache instance."""
+    RedisCacheSingleton.close()

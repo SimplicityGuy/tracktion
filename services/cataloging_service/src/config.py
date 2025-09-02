@@ -2,6 +2,7 @@
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -85,13 +86,32 @@ class Config:
         )
 
 
-# Global config instance
-_config: Config | None = None
+class ConfigSingleton:
+    """Singleton wrapper for Config."""
+
+    _instance: Config | None = None
+    _singleton_instance: "ConfigSingleton | None" = None
+
+    def __new__(cls) -> "ConfigSingleton":
+        """Get the singleton Config instance."""
+        if cls._singleton_instance is None:
+            cls._singleton_instance = super().__new__(cls)
+            cls._instance = Config.from_env()
+        return cls._singleton_instance
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the wrapped config instance."""
+        if self._instance is None:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        return getattr(self._instance, name)
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
+        cls._singleton_instance = None
 
 
-def get_config() -> Config:
-    """Get the global configuration instance."""
-    global _config  # noqa: PLW0603 - Necessary for singleton pattern
-    if _config is None:
-        _config = Config.from_env()
-    return _config
+def get_config() -> "ConfigSingleton":
+    """Get the singleton configuration instance."""
+    return ConfigSingleton()

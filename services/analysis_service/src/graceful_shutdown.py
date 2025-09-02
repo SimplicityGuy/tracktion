@@ -508,19 +508,28 @@ class AsyncGracefulShutdownHandler(GracefulShutdownHandler):
             logger.error(f"Error cleaning up {name}: {e}")
 
 
-# Global instance
-_shutdown_handler: GracefulShutdownHandler | None = None
+class GracefulShutdownSingleton:
+    """Singleton wrapper for GracefulShutdownHandler."""
+
+    _instance: GracefulShutdownHandler | None = None
+
+    def __new__(cls) -> GracefulShutdownSingleton:
+        """Get the singleton GracefulShutdownHandler instance."""
+        if cls._instance is None:
+            cls._instance = GracefulShutdownHandler()
+        return cls._instance  # type: ignore[return-value]
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
-def get_shutdown_handler() -> GracefulShutdownHandler:
-    """Get the global shutdown handler instance."""
-    global _shutdown_handler  # noqa: PLW0603 - Standard singleton pattern for global shutdown handler
-    if _shutdown_handler is None:
-        _shutdown_handler = GracefulShutdownHandler()
-    return _shutdown_handler
+def get_shutdown_handler() -> GracefulShutdownSingleton:
+    """Get the singleton shutdown handler instance."""
+    return GracefulShutdownSingleton()
 
 
 def reset_shutdown_handler() -> None:
-    """Reset the global shutdown handler (mainly for testing)."""
-    global _shutdown_handler  # noqa: PLW0603 - Standard singleton reset pattern for testing
-    _shutdown_handler = None
+    """Reset the shutdown handler singleton (mainly for testing)."""
+    GracefulShutdownSingleton.reset()

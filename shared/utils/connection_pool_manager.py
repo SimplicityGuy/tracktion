@@ -426,25 +426,39 @@ class ConnectionPoolManager:
             await self.close_pool(service_name)
 
 
-# Global pool manager instance
-_global_pool_manager: ConnectionPoolManager | None = None
+class ConnectionPoolManagerSingleton:
+    """Singleton wrapper for ConnectionPoolManager."""
+
+    _instance: ConnectionPoolManager | None = None
+
+    def __new__(cls) -> "ConnectionPoolManagerSingleton":
+        """Get the singleton ConnectionPoolManager instance."""
+        if cls._instance is None:
+            cls._instance = ConnectionPoolManager()
+        return cls._instance  # type: ignore[return-value]
+
+    @classmethod
+    async def cleanup(cls) -> None:
+        """Cleanup the singleton instance."""
+        if cls._instance:
+            await cls._instance.close_all_pools()
+            cls._instance = None
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
-def get_global_pool_manager() -> ConnectionPoolManager:
-    """Get or create the global connection pool manager.
+def get_global_pool_manager() -> "ConnectionPoolManagerSingleton":
+    """Get or create the singleton connection pool manager.
 
     Returns:
-        Global connection pool manager instance
+        Singleton connection pool manager instance
     """
-    global _global_pool_manager  # noqa: PLW0603 - Module-level singleton pattern for pool manager
-    if _global_pool_manager is None:
-        _global_pool_manager = ConnectionPoolManager()
-    return _global_pool_manager
+    return ConnectionPoolManagerSingleton()
 
 
 async def cleanup_global_pool_manager() -> None:
-    """Cleanup the global connection pool manager."""
-    global _global_pool_manager  # noqa: PLW0603 - Module-level singleton pattern for pool manager
-    if _global_pool_manager:
-        await _global_pool_manager.close_all_pools()
-        _global_pool_manager = None
+    """Cleanup the singleton connection pool manager."""
+    await ConnectionPoolManagerSingleton.cleanup()

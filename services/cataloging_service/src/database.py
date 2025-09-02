@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -45,16 +46,35 @@ class DatabaseManager:
         await self.engine.dispose()
 
 
-# Global database manager instance
-_db_manager: DatabaseManager | None = None
+class DatabaseManagerSingleton:
+    """Singleton wrapper for DatabaseManager."""
+
+    _instance: DatabaseManager | None = None
+    _singleton_instance: "DatabaseManagerSingleton | None" = None
+
+    def __new__(cls) -> "DatabaseManagerSingleton":
+        """Get the singleton DatabaseManager instance."""
+        if cls._singleton_instance is None:
+            cls._singleton_instance = super().__new__(cls)
+            cls._instance = DatabaseManager()
+        return cls._singleton_instance
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the wrapped database manager instance."""
+        if self._instance is None:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        return getattr(self._instance, name)
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
+        cls._singleton_instance = None
 
 
-def get_db_manager() -> DatabaseManager:
-    """Get the global database manager instance."""
-    global _db_manager  # noqa: PLW0603 - Necessary for singleton pattern
-    if _db_manager is None:
-        _db_manager = DatabaseManager()
-    return _db_manager
+def get_db_manager() -> "DatabaseManagerSingleton":
+    """Get the singleton database manager instance."""
+    return DatabaseManagerSingleton()
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession]:

@@ -345,24 +345,33 @@ class MetricsServer:
         self.app.run(host=host, port=self.port)
 
 
-# Global metrics instance
-_metrics_collector: MetricsCollector | None = None
+class MetricsCollectorSingleton:
+    """Singleton wrapper for MetricsCollector."""
+
+    _instance: MetricsCollector | None = None
+
+    def __new__(cls) -> MetricsCollectorSingleton:
+        """Get the singleton MetricsCollector instance."""
+        if cls._instance is None:
+            cls._instance = MetricsCollector()
+        return cls._instance  # type: ignore[return-value]
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
-def get_metrics_collector() -> MetricsCollector:
+def get_metrics_collector() -> MetricsCollectorSingleton:
     """
-    Get the global metrics collector instance.
+    Get the singleton metrics collector instance.
 
     Returns:
-        The global MetricsCollector instance
+        The singleton MetricsCollector instance
     """
-    global _metrics_collector  # noqa: PLW0603 - Standard singleton pattern for global metrics collector
-    if _metrics_collector is None:
-        _metrics_collector = MetricsCollector()
-    return _metrics_collector
+    return MetricsCollectorSingleton()
 
 
 def reset_metrics_collector() -> None:
-    """Reset the global metrics collector (mainly for testing)."""
-    global _metrics_collector  # noqa: PLW0603 - Standard singleton reset pattern for testing
-    _metrics_collector = None
+    """Reset the metrics collector singleton (mainly for testing)."""
+    MetricsCollectorSingleton.reset()

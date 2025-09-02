@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 import structlog
 from bs4 import BeautifulSoup, PageElement, Tag
-from dateutil import parser  # type: ignore[import-untyped]  # dateutil lacks complete type stubs
+from dateutil import parser
 
 from src.models.tracklist import CuePoint, Track, Tracklist, TracklistMetadata, Transition, TransitionType
 

@@ -425,24 +425,41 @@ class HealthCheckServer:
         self.app.run(host=host, port=self.port)
 
 
-# Global instance
-_health_checker: HealthChecker | None = None
+class HealthCheckerSingleton:
+    """Singleton wrapper for HealthChecker with proper initialization."""
+
+    _instance: HealthChecker | None = None
+    _initialized: bool = False
+
+    def __new__(cls) -> HealthCheckerSingleton:
+        """Get the singleton HealthChecker instance."""
+        if cls._instance is None:
+            cls._instance = HealthChecker()
+            cls._initialize_default_checks()
+        return cls._instance  # type: ignore[return-value]
+
+    @classmethod
+    def _initialize_default_checks(cls) -> None:
+        """Initialize default health checks."""
+        if cls._instance is not None and not cls._initialized:
+            cls._instance.register_health_check("postgresql", check_postgresql_health)
+            cls._instance.register_health_check("neo4j", check_neo4j_health)
+            cls._instance.register_health_check("rabbitmq", check_rabbitmq_health)
+            cls._instance.register_health_check("redis", check_redis_health)
+            cls._initialized = True
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
+        cls._initialized = False
 
 
-def get_health_checker() -> HealthChecker:
-    """Get the global health checker instance."""
-    global _health_checker  # noqa: PLW0603 - Standard singleton pattern for global health checker
-    if _health_checker is None:
-        _health_checker = HealthChecker()
-        # Register default health checks
-        _health_checker.register_health_check("postgresql", check_postgresql_health)
-        _health_checker.register_health_check("neo4j", check_neo4j_health)
-        _health_checker.register_health_check("rabbitmq", check_rabbitmq_health)
-        _health_checker.register_health_check("redis", check_redis_health)
-    return _health_checker
+def get_health_checker() -> HealthCheckerSingleton:
+    """Get the singleton health checker instance."""
+    return HealthCheckerSingleton()
 
 
 def reset_health_checker() -> None:
-    """Reset the global health checker (mainly for testing)."""
-    global _health_checker  # noqa: PLW0603 - Standard singleton reset pattern for testing
-    _health_checker = None
+    """Reset the health checker singleton (mainly for testing)."""
+    HealthCheckerSingleton.reset()

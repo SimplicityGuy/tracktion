@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 import aiohttp
-import requests  # type: ignore[import-untyped]  # types-requests not installed in this environment
+import requests
 
 
 class TracklistClient:

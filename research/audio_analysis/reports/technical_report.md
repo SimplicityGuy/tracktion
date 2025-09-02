@@ -355,7 +355,7 @@ cd ~/.essentia/models
 wget https://essentia.upf.edu/models/[model-url]
 
 # Docker integration
-FROM python:3.12-slim
+FROM python:3.11-slim
 RUN pip install essentia
 COPY models/ /app/models/
 ```

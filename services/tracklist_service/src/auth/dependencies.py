@@ -11,25 +11,41 @@ from .models import User
 
 logger = logging.getLogger(__name__)
 
-# Global authentication manager instance
-# In production, this would be injected via dependency injection
-auth_manager: AuthenticationManager | None = None
+
+class AuthManagerSingleton:
+    """Singleton wrapper for AuthenticationManager dependency injection."""
+
+    _instance: AuthenticationManager | None = None
+
+    @classmethod
+    def get_instance(cls) -> AuthenticationManager:
+        """Get the singleton AuthenticationManager instance."""
+        if cls._instance is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Authentication manager not initialized",
+            )
+        return cls._instance
+
+    @classmethod
+    def set_instance(cls, manager: AuthenticationManager) -> None:
+        """Set the singleton AuthenticationManager instance."""
+        cls._instance = manager
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
 def get_auth_manager() -> AuthenticationManager:
-    """Get authentication manager instance."""
-    if auth_manager is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication manager not initialized",
-        )
-    return auth_manager
+    """Get authentication manager singleton instance."""
+    return AuthManagerSingleton.get_instance()
 
 
 def set_auth_manager(manager: AuthenticationManager) -> None:
-    """Set authentication manager instance."""
-    global auth_manager  # noqa: PLW0603  # Global state necessary for dependency injection pattern
-    auth_manager = manager
+    """Set authentication manager singleton instance."""
+    AuthManagerSingleton.set_instance(manager)
 
 
 # Security scheme for Bearer token

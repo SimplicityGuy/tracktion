@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
-import aiofiles  # type: ignore[import-untyped]  # aiofiles types not available
+import aiofiles
 import structlog
 import xxhash
 from dotenv import load_dotenv

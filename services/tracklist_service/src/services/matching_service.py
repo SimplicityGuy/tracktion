@@ -336,10 +336,36 @@ class MatchingService:
         """
         Get audio file metadata.
 
-        In production, this would query the audio service.
-        For now, returns simulated metadata.
+        This method should be replaced with an actual call to the Analysis Service
+        API endpoint when the services are integrated. The Analysis Service provides
+        comprehensive metadata extraction via its /api/metadata endpoint.
+
+        Args:
+            audio_file_id: UUID of the audio file to get metadata for
+
+        Returns:
+            Dictionary containing audio metadata with keys:
+            - title: Track title
+            - artist: Artist name
+            - duration_seconds: Duration in seconds
+            - date: Release date
+            - album: Album name
+
+        Note:
+            Integration point for Analysis Service API:
+            GET /api/metadata/{audio_file_id}
+            Response format matches the dictionary structure returned here.
         """
-        # TODO: Replace with actual audio service call
+        # NOTE: This is a placeholder implementation that returns simulated data.
+        # In production, this should make an HTTP request to the Analysis Service API:
+        # response = await http_client.get(f"{ANALYSIS_SERVICE_URL}/api/metadata/{audio_file_id}")
+        # return response.json()
+
+        # Simulated metadata for development/testing
+        logger.warning(
+            f"Using simulated metadata for audio file {audio_file_id}. "
+            "Replace with Analysis Service API call for production."
+        )
         return {
             "title": f"Audio file {audio_file_id}",
             "artist": "Unknown Artist",

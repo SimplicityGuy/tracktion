@@ -2,10 +2,10 @@
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, select
 
 from .database import DatabaseManager
 from .models import RenameProposal
@@ -54,7 +54,9 @@ class RenameProposalRepository:
             RenameProposal instance or None if not found
         """
         with self.db.get_db_session() as session:
-            return session.query(RenameProposal).filter(RenameProposal.id == proposal_id).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns RenameProposal | None
+            stmt = select(RenameProposal).where(RenameProposal.id == proposal_id)
+            result = session.execute(stmt)
+            return cast("RenameProposal | None", result.scalar_one_or_none())
 
     def get_by_recording(self, recording_id: UUID, status: str | None = None) -> list[RenameProposal]:
         """Get all proposals for a recording.
@@ -67,13 +69,14 @@ class RenameProposalRepository:
             List of RenameProposal instances
         """
         with self.db.get_db_session() as session:
-            query = session.query(RenameProposal).filter(RenameProposal.recording_id == recording_id)
+            stmt = select(RenameProposal).where(RenameProposal.recording_id == recording_id)
 
             if status:
-                query = query.filter(RenameProposal.status == status)
+                stmt = stmt.where(RenameProposal.status == status)
 
-            query = query.order_by(RenameProposal.created_at.desc())
-            return query.all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[RenameProposal]
+            stmt = stmt.order_by(RenameProposal.created_at.desc())
+            result = session.execute(stmt)
+            return cast("list[RenameProposal]", result.scalars().all())
 
     def get_pending_proposals(self, limit: int | None = None) -> list[RenameProposal]:
         """Get all pending rename proposals.
@@ -85,13 +88,14 @@ class RenameProposalRepository:
             List of pending RenameProposal instances
         """
         with self.db.get_db_session() as session:
-            query = session.query(RenameProposal).filter(RenameProposal.status == "pending")
-            query = query.order_by(RenameProposal.created_at)
+            stmt = select(RenameProposal).where(RenameProposal.status == "pending")
+            stmt = stmt.order_by(RenameProposal.created_at)
 
             if limit:
-                query = query.limit(limit)
+                stmt = stmt.limit(limit)
 
-            return query.all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[RenameProposal]
+            result = session.execute(stmt)
+            return cast("list[RenameProposal]", result.scalars().all())
 
     def get_by_status(self, status: str, limit: int | None = None) -> list[RenameProposal]:
         """Get proposals by status.
@@ -104,13 +108,14 @@ class RenameProposalRepository:
             List of RenameProposal instances
         """
         with self.db.get_db_session() as session:
-            query = session.query(RenameProposal).filter(RenameProposal.status == status)
-            query = query.order_by(RenameProposal.created_at.desc())
+            stmt = select(RenameProposal).where(RenameProposal.status == status)
+            stmt = stmt.order_by(RenameProposal.created_at.desc())
 
             if limit:
-                query = query.limit(limit)
+                stmt = stmt.limit(limit)
 
-            return query.all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[RenameProposal]
+            result = session.execute(stmt)
+            return cast("list[RenameProposal]", result.scalars().all())
 
     def update(self, proposal_id: UUID, **kwargs: Any) -> RenameProposal | None:
         """Update a rename proposal.
@@ -123,7 +128,9 @@ class RenameProposalRepository:
             Updated RenameProposal instance or None if not found
         """
         with self.db.get_db_session() as session:
-            proposal = session.query(RenameProposal).filter(RenameProposal.id == proposal_id).first()
+            stmt = select(RenameProposal).where(RenameProposal.id == proposal_id)
+            result = session.execute(stmt)
+            proposal = cast("RenameProposal | None", result.scalar_one_or_none())
 
             if not proposal:
                 return None
@@ -137,7 +144,7 @@ class RenameProposalRepository:
             session.refresh(proposal)
 
             logger.info(f"Updated rename proposal: {proposal_id}")
-            return proposal  # type: ignore[no-any-return] # RenameProposal object from database refresh, known to be RenameProposal type
+            return proposal
 
     def update_status(self, proposal_id: UUID, status: str) -> bool:
         """Update the status of a rename proposal.
@@ -150,7 +157,9 @@ class RenameProposalRepository:
             True if updated successfully
         """
         with self.db.get_db_session() as session:
-            proposal = session.query(RenameProposal).filter(RenameProposal.id == proposal_id).first()
+            stmt = select(RenameProposal).where(RenameProposal.id == proposal_id)
+            result = session.execute(stmt)
+            proposal = cast("RenameProposal | None", result.scalar_one_or_none())
 
             if not proposal:
                 return False
@@ -175,7 +184,9 @@ class RenameProposalRepository:
         with self.db.get_db_session() as session:
             count = 0
             for proposal_id in proposal_ids:
-                proposal = session.query(RenameProposal).filter(RenameProposal.id == proposal_id).first()
+                stmt = select(RenameProposal).where(RenameProposal.id == proposal_id)
+                result = session.execute(stmt)
+                proposal = cast("RenameProposal | None", result.scalar_one_or_none())
                 if proposal:
                     proposal.status = status
                     proposal.updated_at = datetime.now(UTC)
@@ -195,7 +206,9 @@ class RenameProposalRepository:
             True if deleted successfully
         """
         with self.db.get_db_session() as session:
-            proposal = session.query(RenameProposal).filter(RenameProposal.id == proposal_id).first()
+            stmt = select(RenameProposal).where(RenameProposal.id == proposal_id)
+            result = session.execute(stmt)
+            proposal = cast("RenameProposal | None", result.scalar_one_or_none())
 
             if not proposal:
                 return False
@@ -215,7 +228,7 @@ class RenameProposalRepository:
             List of conflicting proposals
         """
         with self.db.get_db_session() as session:
-            query = session.query(RenameProposal).filter(
+            stmt = select(RenameProposal).where(
                 and_(
                     RenameProposal.full_proposed_path == proposed_path,
                     RenameProposal.recording_id != recording_id,
@@ -223,7 +236,8 @@ class RenameProposalRepository:
                 )
             )
 
-            return query.all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[RenameProposal]
+            result = session.execute(stmt)
+            return cast("list[RenameProposal]", result.scalars().all())
 
     def get_statistics(self) -> dict[str, Any]:
         """Get statistics about rename proposals.
@@ -233,26 +247,24 @@ class RenameProposalRepository:
         """
         with self.db.get_db_session() as session:
             # Count by status
-            query = session.query(RenameProposal.status, func.count(RenameProposal.id)).group_by(RenameProposal.status)
-            status_counts: dict[str, int] = dict(query)
+            stmt = select(RenameProposal.status, func.count(RenameProposal.id)).group_by(RenameProposal.status)
+            result = session.execute(stmt)
+            status_counts: dict[str, int] = dict(result.all())
 
             # Average confidence scores
-            avg_confidence = (
-                session.query(func.avg(RenameProposal.confidence_score))
-                .filter(RenameProposal.confidence_score.isnot(None))
-                .scalar()
-                or 0.0
-            )
+            stmt = select(func.avg(RenameProposal.confidence_score)).where(RenameProposal.confidence_score.isnot(None))
+            result = session.execute(stmt)
+            avg_confidence = result.scalar() or 0.0
 
             # Count proposals with conflicts
-            with_conflicts = (
-                session.query(func.count(RenameProposal.id)).filter(RenameProposal.conflicts.isnot(None)).scalar() or 0
-            )
+            stmt = select(func.count(RenameProposal.id)).where(RenameProposal.conflicts.isnot(None))
+            result = session.execute(stmt)
+            with_conflicts = result.scalar() or 0
 
             # Count proposals with warnings
-            with_warnings = (
-                session.query(func.count(RenameProposal.id)).filter(RenameProposal.warnings.isnot(None)).scalar() or 0
-            )
+            stmt = select(func.count(RenameProposal.id)).where(RenameProposal.warnings.isnot(None))
+            result = session.execute(stmt)
+            with_warnings = result.scalar() or 0
 
             return {
                 "total": sum(status_counts.values()),
@@ -274,16 +286,14 @@ class RenameProposalRepository:
         with self.db.get_db_session() as session:
             cutoff_date = datetime.now(UTC) - timedelta(days=days)
 
-            proposals = (
-                session.query(RenameProposal)
-                .filter(
-                    and_(
-                        RenameProposal.status.in_(["rejected", "applied"]),
-                        RenameProposal.updated_at < cutoff_date,
-                    )
+            stmt = select(RenameProposal).where(
+                and_(
+                    RenameProposal.status.in_(["rejected", "applied"]),
+                    RenameProposal.updated_at < cutoff_date,
                 )
-                .all()
             )
+            result = session.execute(stmt)
+            proposals = cast("list[RenameProposal]", result.scalars().all())
 
             count = len(proposals)
 

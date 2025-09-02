@@ -235,6 +235,7 @@ class GenerateCueRequest(BaseModel):
     options: dict[str, Any] = Field(default_factory=dict, description="Generation options")
     validate_audio: bool = Field(default=True, description="Whether to validate against audio file")
     audio_file_path: str | None = Field(None, description="Path to audio file for validation")
+    store_file: bool = Field(default=True, description="Whether to store the generated CUE file to disk")
 
 
 class BatchGenerateCueRequest(BaseModel):
@@ -244,6 +245,7 @@ class BatchGenerateCueRequest(BaseModel):
     options: dict[str, Any] = Field(default_factory=dict, description="Generation options")
     validate_audio: bool = Field(default=True, description="Whether to validate against audio files")
     audio_file_path: str | None = Field(None, description="Path to audio file for validation")
+    store_files: bool = Field(default=True, description="Whether to store the generated CUE files to disk")
 
     @field_validator("formats")
     @classmethod

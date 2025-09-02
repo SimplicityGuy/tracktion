@@ -766,13 +766,24 @@ class StorageService:
         }
 
 
-# Singleton instance
-_storage_service: StorageService | None = None
+class StorageServiceSingleton:
+    """Singleton wrapper for StorageService."""
+
+    _instance: StorageService | None = None
+
+    @classmethod
+    def get_instance(cls, config: StorageConfig | None = None) -> StorageService:
+        """Get the singleton StorageService instance."""
+        if cls._instance is None:
+            cls._instance = StorageService(config)
+        return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
 def get_storage_service(config: StorageConfig | None = None) -> StorageService:
-    """Get or create storage service instance."""
-    global _storage_service  # noqa: PLW0603  # Global is needed for singleton pattern
-    if _storage_service is None:
-        _storage_service = StorageService(config)
-    return _storage_service
+    """Get or create storage service singleton instance."""
+    return StorageServiceSingleton.get_instance(config)

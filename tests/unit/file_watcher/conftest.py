@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from unittest.mock import AsyncMock
 
-import aiofiles  # type: ignore
+import aiofiles
 import pytest
 import pytest_asyncio
 from aio_pika import Channel, Connection

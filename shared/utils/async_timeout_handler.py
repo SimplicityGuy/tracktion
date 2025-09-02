@@ -438,46 +438,83 @@ class CancellationHandler:
             self.clear_token(operation_id)
 
 
-# Global instances
-_timeout_handler: TimeoutHandler | None = None
-_deadline_manager: DeadlineManager | None = None
-_cancellation_handler: CancellationHandler | None = None
+class TimeoutHandlerSingleton:
+    """Singleton wrapper for TimeoutHandler."""
+
+    _instance: TimeoutHandler | None = None
+
+    @classmethod
+    def get_instance(cls, config: TimeoutConfig | None = None) -> TimeoutHandler:
+        """Get the singleton TimeoutHandler instance."""
+        if cls._instance is None:
+            cls._instance = TimeoutHandler(config)
+        return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
+
+
+class DeadlineManagerSingleton:
+    """Singleton wrapper for DeadlineManager."""
+
+    _instance: DeadlineManager | None = None
+
+    def __new__(cls) -> "DeadlineManagerSingleton":
+        """Get the singleton DeadlineManager instance."""
+        if cls._instance is None:
+            cls._instance = DeadlineManager()
+        return cls._instance  # type: ignore[return-value]
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
+
+
+class CancellationHandlerSingleton:
+    """Singleton wrapper for CancellationHandler."""
+
+    _instance: CancellationHandler | None = None
+
+    def __new__(cls) -> "CancellationHandlerSingleton":
+        """Get the singleton CancellationHandler instance."""
+        if cls._instance is None:
+            cls._instance = CancellationHandler()
+        return cls._instance  # type: ignore[return-value]
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
 def get_timeout_handler(config: TimeoutConfig | None = None) -> TimeoutHandler:
-    """Get or create global timeout handler.
+    """Get or create singleton timeout handler.
 
     Args:
         config: Optional timeout configuration
 
     Returns:
-        Global timeout handler instance
+        Singleton timeout handler instance
     """
-    global _timeout_handler  # noqa: PLW0603 - Module-level singleton pattern for timeout handler
-    if _timeout_handler is None:
-        _timeout_handler = TimeoutHandler(config)
-    return _timeout_handler
+    return TimeoutHandlerSingleton.get_instance(config)
 
 
-def get_deadline_manager() -> DeadlineManager:
-    """Get or create global deadline manager.
+def get_deadline_manager() -> "DeadlineManagerSingleton":
+    """Get or create singleton deadline manager.
 
     Returns:
-        Global deadline manager instance
+        Singleton deadline manager instance
     """
-    global _deadline_manager  # noqa: PLW0603 - Module-level singleton pattern for deadline manager
-    if _deadline_manager is None:
-        _deadline_manager = DeadlineManager()
-    return _deadline_manager
+    return DeadlineManagerSingleton()
 
 
-def get_cancellation_handler() -> CancellationHandler:
-    """Get or create global cancellation handler.
+def get_cancellation_handler() -> "CancellationHandlerSingleton":
+    """Get or create singleton cancellation handler.
 
     Returns:
-        Global cancellation handler instance
+        Singleton cancellation handler instance
     """
-    global _cancellation_handler  # noqa: PLW0603 - Module-level singleton pattern for cancellation handler
-    if _cancellation_handler is None:
-        _cancellation_handler = CancellationHandler()
-    return _cancellation_handler
+    return CancellationHandlerSingleton()

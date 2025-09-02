@@ -383,7 +383,7 @@ class AsyncStorageHandler:
         """
         try:
             # Store in PostgreSQL
-            await self.tracklist_repo.create(recording_id=recording_id, source=source, tracks={"tracks": tracks})
+            await self.tracklist_repo.create(recording_id=recording_id, source=source, tracks=tracks)
 
             # Create graph relationships in Neo4j
             await self.neo4j_repo.create_tracklist_relationship(recording_id=recording_id, source=source, tracks=tracks)

@@ -308,30 +308,45 @@ class AsyncHTTPClient:
         return await asyncio.gather(*tasks, return_exceptions=False)
 
 
-# Global client factory instance
-_global_factory: AsyncHTTPClientFactory | None = None
+class HTTPClientFactorySingleton:
+    """Singleton wrapper for AsyncHTTPClientFactory."""
+
+    _instance: AsyncHTTPClientFactory | None = None
+
+    @classmethod
+    def get_instance(cls, config: HTTPClientConfig | None = None) -> AsyncHTTPClientFactory:
+        """Get the singleton AsyncHTTPClientFactory instance."""
+        if cls._instance is None:
+            cls._instance = AsyncHTTPClientFactory(config)
+        return cls._instance
+
+    @classmethod
+    async def cleanup(cls) -> None:
+        """Cleanup the singleton instance."""
+        if cls._instance:
+            await cls._instance.close()
+            cls._instance = None
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
 def get_global_http_factory(
     config: HTTPClientConfig | None = None,
 ) -> AsyncHTTPClientFactory:
-    """Get or create the global HTTP client factory.
+    """Get or create the singleton HTTP client factory.
 
     Args:
         config: Optional configuration for the factory
 
     Returns:
-        Global HTTP client factory instance
+        Singleton HTTP client factory instance
     """
-    global _global_factory  # noqa: PLW0603 - Module-level singleton pattern for global factory
-    if _global_factory is None:
-        _global_factory = AsyncHTTPClientFactory(config)
-    return _global_factory
+    return HTTPClientFactorySingleton.get_instance(config)
 
 
 async def cleanup_global_factory() -> None:
-    """Cleanup the global HTTP client factory."""
-    global _global_factory  # noqa: PLW0603 - Module-level singleton pattern for global factory
-    if _global_factory:
-        await _global_factory.close()
-        _global_factory = None
+    """Cleanup the singleton HTTP client factory."""
+    await HTTPClientFactorySingleton.cleanup()

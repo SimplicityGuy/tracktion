@@ -22,6 +22,7 @@ import pytest_asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from services.file_rename_service.api.feedback_routes import router as feedback_router
 from services.file_rename_service.app.feedback.experiments import ExperimentManager
@@ -470,11 +471,11 @@ class TestDatabaseTransactionsAndRollback:
 
         # Mock Redis error to test transaction rollback
         original_incr = test_storage._redis_client.incr
-        test_storage._redis_client.incr = AsyncMock(side_effect=Exception("Redis error"))
+        test_storage._redis_client.incr = AsyncMock(side_effect=RedisError("Redis error"))
 
         try:
             # Should fail and rollback
-            with pytest.raises(Exception):  # noqa: B017
+            with pytest.raises(RedisError):
                 await test_storage.store_feedback(feedback)
 
             # Verify feedback was not stored due to rollback

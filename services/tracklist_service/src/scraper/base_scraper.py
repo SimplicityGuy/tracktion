@@ -8,7 +8,7 @@ import random
 import time
 from typing import Any
 
-import requests  # type: ignore[import-untyped]  # types-requests not installed in this environment
+import requests
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 

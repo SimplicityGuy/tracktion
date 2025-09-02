@@ -22,28 +22,52 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/developer", tags=["developer"])
 
-# Initialize components (in production these would be dependency injected)
-auth_manager: AuthenticationManager | None = None
-usage_tracker: UsageTracker | None = None
+
+class AuthenticationManagerSingleton:
+    """Singleton wrapper for AuthenticationManager."""
+
+    _instance: AuthenticationManager | None = None
+
+    def __new__(cls) -> AuthenticationManager:
+        """Get the singleton AuthenticationManager instance."""
+        if cls._instance is None:
+            # In production, this would be properly initialized
+            cls._instance = AuthenticationManager(jwt_secret="dev-secret-key")
+        return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
+
+
+class UsageTrackerSingleton:
+    """Singleton wrapper for UsageTracker."""
+
+    _instance: UsageTracker | None = None
+
+    def __new__(cls) -> UsageTracker:
+        """Get the singleton UsageTracker instance."""
+        if cls._instance is None:
+            # In production, this would be properly initialized from dependencies
+            redis_client = redis.Redis.from_url("redis://localhost:6379", decode_responses=True)
+            cls._instance = UsageTracker(redis_client)
+        return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
 def get_auth_manager() -> AuthenticationManager:
-    """Get authentication manager instance."""
-    global auth_manager  # noqa: PLW0603 - Module-level singleton pattern for API endpoints
-    if auth_manager is None:
-        # In production, this would be properly initialized
-        auth_manager = AuthenticationManager(jwt_secret="dev-secret-key")
-    return auth_manager
+    """Get authentication manager singleton instance."""
+    return AuthenticationManagerSingleton()
 
 
 def get_usage_tracker() -> UsageTracker:
-    """Get usage tracker instance."""
-    global usage_tracker  # noqa: PLW0603 - Module-level singleton pattern for API endpoints
-    if usage_tracker is None:
-        # In production, this would be properly initialized from dependencies
-        redis_client = redis.Redis.from_url("redis://localhost:6379", decode_responses=True)
-        usage_tracker = UsageTracker(redis_client)
-    return usage_tracker
+    """Get usage tracker singleton instance."""
+    return UsageTrackerSingleton()
 
 
 # Request/Response models

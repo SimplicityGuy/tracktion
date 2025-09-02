@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy import engine_from_config, pool
 
-from alembic import context  # type: ignore[attr-defined]  # Alembic adds context attribute at runtime
+from alembic import context
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))

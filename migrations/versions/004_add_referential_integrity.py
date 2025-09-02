@@ -6,7 +6,7 @@ Create Date: 2024-01-28 10:00:00.000000
 
 """
 
-from alembic import op  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "004_add_referential_integrity"

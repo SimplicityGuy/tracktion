@@ -523,6 +523,7 @@ class CacheService:
             "format_count": len(formats),
             "combinations": len(tracklist_ids) * len(formats),
             "warmed": 0,
+            "cache_misses": 0,
             "errors": 0,
         }
 
@@ -537,10 +538,14 @@ class CacheService:
                         results["warmed"] += 1
                         continue
 
-                    # TODO: Generate content if not cached
-                    # This would integrate with the CUE generation service
-                    # For now, we'll just log the cache miss
+                    # NOTE: Content generation should be handled by the caller
+                    # The cache service should remain decoupled from CUE generation
+                    # When implementing cache warming, the orchestration layer should:
+                    # 1. Check cache (via this service)
+                    # 2. Generate content if missing (via CueGenerationService)
+                    # 3. Store in cache (via this service's set_cue_content method)
                     logger.debug(f"Cache miss during warming: {tracklist_id}:{format_name}")
+                    results["cache_misses"] += 1
 
                 except Exception as e:
                     logger.error(f"Cache warming error for {tracklist_id}:{format_name}: {e}")
@@ -636,19 +641,35 @@ class CacheService:
         return self.memory_cache.cleanup_expired()
 
 
-# Global cache service instance
-cache_service: CacheService | None = None
+class CacheServiceSingleton:
+    """Singleton wrapper for CacheService."""
+
+    _instance: CacheService | None = None
+
+    @classmethod
+    def get_instance(cls) -> CacheService:
+        """Get the singleton CacheService instance."""
+        if cls._instance is None:
+            raise RuntimeError("Cache service not initialized")
+        return cls._instance
+
+    @classmethod
+    def initialize(cls, config: CacheConfig) -> CacheService:
+        """Initialize the singleton CacheService instance."""
+        cls._instance = CacheService(config)
+        return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
 def get_cache_service() -> CacheService:
-    """Get the global cache service instance."""
-    if not cache_service:
-        raise RuntimeError("Cache service not initialized")
-    return cache_service
+    """Get the singleton cache service instance."""
+    return CacheServiceSingleton.get_instance()
 
 
 def initialize_cache_service(config: CacheConfig) -> CacheService:
-    """Initialize the global cache service."""
-    global cache_service  # noqa: PLW0603  # Global is needed for cache service initialization
-    cache_service = CacheService(config)
-    return cache_service
+    """Initialize the singleton cache service."""
+    return CacheServiceSingleton.initialize(config)

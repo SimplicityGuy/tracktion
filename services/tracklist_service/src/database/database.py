@@ -18,38 +18,86 @@ from src.models.tracklist import Base
 
 logger = logging.getLogger(__name__)
 
-# Global variables for connection
-engine: Engine | None = None
-SessionLocal: sessionmaker[Session] | None = None
+
+class DatabaseManager:
+    """Database connection manager with singleton pattern."""
+
+    _instance: "DatabaseManager | None" = None
+    _engine: Engine | None = None
+    _session_local: sessionmaker[Session] | None = None
+    _initialized: bool = False
+
+    def __new__(cls) -> "DatabaseManager":
+        """Get the singleton DatabaseManager instance."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    @property
+    def engine(self) -> Engine:
+        """Get the database engine."""
+        if self._engine is None:
+            self._initialize()
+        if self._engine is None:
+            raise RuntimeError("Failed to initialize database engine")
+        return self._engine
+
+    @property
+    def session_local(self) -> sessionmaker[Session]:
+        """Get the session factory."""
+        if self._session_local is None:
+            self._initialize()
+        if self._session_local is None:
+            raise RuntimeError("Failed to initialize session factory")
+        return self._session_local
+
+    def _initialize(self) -> None:
+        """Initialize database connection and create tables."""
+        if self._initialized:
+            return
+
+        config = get_config()
+
+        # Create database engine
+        database_url = (
+            f"postgresql://{config.database.user}:{config.database.password}"
+            f"@{config.database.host}:{config.database.port}/{config.database.name}"
+        )
+
+        self._engine = create_engine(
+            database_url,
+            pool_size=config.database.pool_size,
+            max_overflow=config.database.max_overflow,
+            pool_timeout=config.database.pool_timeout,
+            pool_recycle=config.database.pool_recycle,
+            echo=config.database.echo_queries,
+        )
+
+        # Create session factory
+        self._session_local = sessionmaker(autocommit=False, autoflush=False, bind=self._engine)
+
+        # Create tables
+        Base.metadata.create_all(bind=self._engine)
+        self._initialized = True
+        logger.info("Database initialized successfully")
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
+
+
+# Singleton instance
+_db_manager = DatabaseManager()
+
+# Maintain compatibility with existing code
+engine = _db_manager.engine
+SessionLocal = _db_manager.session_local
 
 
 def init_database() -> None:
     """Initialize database connection and create tables."""
-    global engine, SessionLocal  # noqa: PLW0603 - Global pattern necessary for database lifecycle management across app
-
-    config = get_config()
-
-    # Create database engine
-    database_url = (
-        f"postgresql://{config.database.user}:{config.database.password}"
-        f"@{config.database.host}:{config.database.port}/{config.database.name}"
-    )
-
-    engine = create_engine(
-        database_url,
-        pool_size=config.database.pool_size,
-        max_overflow=config.database.max_overflow,
-        pool_timeout=config.database.pool_timeout,
-        pool_recycle=config.database.pool_recycle,
-        echo=config.database.echo_queries,
-    )
-
-    # Create session factory
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    # Create tables
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database initialized successfully")
+    _db_manager._initialize()
 
 
 def get_db_session() -> Generator[Session]:

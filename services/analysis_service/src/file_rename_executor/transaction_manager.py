@@ -4,9 +4,10 @@ import logging
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -49,12 +50,16 @@ class TransactionManager:
             # Start a new session
             with self.db_manager.get_db_session() as session:
                 # Get the proposal
-                proposal = session.query(RenameProposal).filter_by(id=proposal_id).first()
+                stmt = select(RenameProposal).where(RenameProposal.id == proposal_id)
+                result = session.execute(stmt)
+                proposal = cast("RenameProposal | None", result.scalar_one_or_none())
                 if not proposal:
                     raise ValueError(f"Proposal {proposal_id} not found")
 
                 # Get the recording
-                recording = session.query(Recording).filter_by(id=proposal.recording_id).first()
+                stmt = select(Recording).where(Recording.id == proposal.recording_id)
+                result = session.execute(stmt)
+                recording = cast("Recording | None", result.scalar_one_or_none())
                 if not recording:
                     raise ValueError(f"Recording {proposal.recording_id} not found")
 

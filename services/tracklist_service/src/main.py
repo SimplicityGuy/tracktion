@@ -56,69 +56,81 @@ def setup_logging() -> None:
     )
 
 
-# Global handlers for cleanup
-message_handler: TracklistMessageHandler | None = None
-redis_client: redis.Redis | None = None
-rate_limiter: RateLimiter | None = None
+class AppContext:
+    """Application context manager for lifecycle components."""
+
+    def __init__(self) -> None:
+        self.message_handler: TracklistMessageHandler | None = None
+        self.redis_client: redis.Redis | None = None
+        self.rate_limiter: RateLimiter | None = None
+        self.consume_task: asyncio.Task | None = None
+
+    async def startup(self) -> None:
+        """Initialize application components."""
+        logger = structlog.get_logger(__name__)
+        config = get_config()
+
+        logger.info("Starting tracklist service", version="0.1.0", debug_mode=config.debug_mode)
+
+        # Initialize Redis client for rate limiting
+        self.redis_client = redis.Redis(
+            host=config.cache.redis_host,
+            port=config.cache.redis_port,
+            db=config.cache.redis_db,
+            password=config.cache.redis_password,
+            decode_responses=True,
+        )
+
+        # Initialize rate limiter
+        self.rate_limiter = RateLimiter(self.redis_client)
+        logger.info("Rate limiter initialized")
+
+        # Initialize authentication manager
+        auth_manager = AuthenticationManager(jwt_secret="temp-secret-key")
+        set_auth_manager(auth_manager)
+        logger.info("Authentication manager initialized")
+
+        # Initialize message handler
+        self.message_handler = TracklistMessageHandler()
+
+        # Start message consumption in background
+        self.consume_task = asyncio.create_task(self.message_handler.start_consuming())
+        logger.info("Message handler started")
+
+    async def shutdown(self) -> None:
+        """Clean up application components."""
+        logger = structlog.get_logger(__name__)
+        logger.info("Shutting down tracklist service")
+
+        # Stop message handler
+        if self.message_handler:
+            await self.message_handler.stop()
+
+        # Cancel consume task
+        if self.consume_task and not self.consume_task.done():
+            self.consume_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self.consume_task
+
+        # Close Redis connection
+        if self.redis_client:
+            await self.redis_client.close()
+
+        logger.info("Tracklist service shutdown complete")
+
+
+# Application context singleton
+_app_context = AppContext()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Manage application lifespan events."""
-    global message_handler, redis_client, rate_limiter  # noqa: PLW0603 - Global pattern necessary for FastAPI lifespan management
-
-    logger = structlog.get_logger(__name__)
-    config = get_config()
-
-    # Startup
-    logger.info("Starting tracklist service", version="0.1.0", debug_mode=config.debug_mode)
-
-    # Initialize Redis client for rate limiting
-    redis_client = redis.Redis(
-        host=config.cache.redis_host,
-        port=config.cache.redis_port,
-        db=config.cache.redis_db,
-        password=config.cache.redis_password,
-        decode_responses=True,
-    )
-
-    # Initialize rate limiter
-    rate_limiter = RateLimiter(redis_client)
-    logger.info("Rate limiter initialized")
-
-    # Initialize authentication manager
-    auth_manager = AuthenticationManager(jwt_secret="temp-secret-key")
-    set_auth_manager(auth_manager)
-    logger.info("Authentication manager initialized")
-
-    # Initialize message handler
-    message_handler = TracklistMessageHandler()
-
-    # Start message consumption in background
-    consume_task = asyncio.create_task(message_handler.start_consuming())
-    logger.info("Message handler started")
-
+    await _app_context.startup()
     try:
         yield
     finally:
-        # Shutdown
-        logger.info("Shutting down tracklist service")
-
-        # Stop message handler
-        if message_handler:
-            await message_handler.stop()
-
-        # Cancel consume task
-        if not consume_task.done():
-            consume_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await consume_task
-
-        # Close Redis connection
-        if redis_client:
-            await redis_client.close()
-
-        logger.info("Tracklist service shutdown complete")
+        await _app_context.shutdown()
 
 
 def create_app() -> FastAPI:
@@ -139,8 +151,8 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def add_rate_limiting(request: Request, call_next: Callable[..., Any]) -> Response:
         """Add rate limiting to all requests."""
-        if rate_limiter is not None:
-            middleware = RateLimitMiddleware(app, rate_limiter)
+        if _app_context.rate_limiter is not None:
+            middleware = RateLimitMiddleware(app, _app_context.rate_limiter)
             return await middleware.dispatch(request, call_next)
         # If rate limiter not initialized yet, pass through
         return await call_next(request)

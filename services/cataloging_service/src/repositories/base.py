@@ -1,6 +1,6 @@
 """Base repository class with common CRUD operations."""
 
-from typing import Any, TypeVar, cast
+from typing import Any, Generic, TypeVar, cast
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -11,7 +11,7 @@ from src.models.base import Base
 ModelType = TypeVar("ModelType", bound=Base)
 
 
-class BaseRepository[ModelType: Base]:
+class BaseRepository(Generic[ModelType]):  # noqa: UP046 - Python 3.11 compatibility
     """Base repository with common CRUD operations."""
 
     def __init__(self, model: type[ModelType], session: AsyncSession) -> None:

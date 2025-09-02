@@ -4,7 +4,7 @@ import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import aiofiles  # type: ignore
+import aiofiles
 import pytest_asyncio
 
 from services.file_watcher.src.async_file_watcher import AsyncFileEventHandler, AsyncFileWatcherService

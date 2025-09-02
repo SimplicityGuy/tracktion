@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import String, delete, select, update
@@ -67,7 +67,7 @@ class AsyncRecordingRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Recording).where(Recording.id == recording_id)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Recording | None
+            return cast("Recording | None", result.scalar_one_or_none())
 
     async def get_by_file_path(self, file_path: str) -> Recording | None:
         """Get recording by file path.
@@ -81,7 +81,7 @@ class AsyncRecordingRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Recording).where(Recording.file_path == file_path)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Recording | None
+            return cast("Recording | None", result.scalar_one_or_none())
 
     async def get_by_hash(self, sha256_hash: str) -> Recording | None:
         """Get recording by SHA256 hash.
@@ -95,7 +95,7 @@ class AsyncRecordingRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Recording).where(Recording.sha256_hash == sha256_hash)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Recording | None
+            return cast("Recording | None", result.scalar_one_or_none())
 
     async def get_all(self, limit: int | None = None, offset: int | None = None) -> list[Recording]:
         """Get all recordings with optional pagination.
@@ -130,7 +130,7 @@ class AsyncRecordingRepository:
             stmt = update(Recording).where(Recording.id == recording_id).values(**kwargs).returning(Recording)
             result = await session.execute(stmt)
             await session.commit()
-            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Recording | None
+            return cast("Recording | None", result.scalar_one_or_none())
 
     async def delete(self, recording_id: UUID) -> bool:
         """Delete a recording.
@@ -145,7 +145,7 @@ class AsyncRecordingRepository:
             stmt = delete(Recording).where(Recording.id == recording_id)
             result = await session.execute(stmt)
             await session.commit()
-            return result.rowcount > 0  # type: ignore[no-any-return] # Comparison operation returns bool but mypy sees result.rowcount as Any
+            return cast("int", result.rowcount) > 0
 
     async def batch_create(self, recordings: list[dict[str, Any]]) -> list[Recording]:
         """Create multiple recordings in a batch.
@@ -221,9 +221,9 @@ class AsyncMetadataRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Metadata).where(Metadata.recording_id == recording_id, Metadata.key == key)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Metadata | None
+            return cast("Metadata | None", result.scalar_one_or_none())
 
-    async def update(self, metadata_id: int, value: str) -> Metadata | None:
+    async def update(self, metadata_id: UUID, value: str) -> Metadata | None:
         """Update a metadata value.
 
         Args:
@@ -237,9 +237,9 @@ class AsyncMetadataRepository:
             stmt = update(Metadata).where(Metadata.id == metadata_id).values(value=value).returning(Metadata)
             result = await session.execute(stmt)
             await session.commit()
-            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Metadata | None
+            return cast("Metadata | None", result.scalar_one_or_none())
 
-    async def delete(self, metadata_id: int) -> bool:
+    async def delete(self, metadata_id: UUID) -> bool:
         """Delete a metadata entry.
 
         Args:
@@ -252,7 +252,7 @@ class AsyncMetadataRepository:
             stmt = delete(Metadata).where(Metadata.id == metadata_id)
             result = await session.execute(stmt)
             await session.commit()
-            return result.rowcount > 0  # type: ignore[no-any-return] # Comparison operation returns bool but mypy sees result.rowcount as Any
+            return cast("int", result.rowcount) > 0
 
     async def batch_create(self, recording_id: UUID, metadata_dict: dict[str, str]) -> list[Metadata]:
         """Create multiple metadata entries for a recording.
@@ -288,7 +288,7 @@ class AsyncTracklistRepository:
         self,
         recording_id: UUID,
         source: str,
-        tracks: dict[str, Any],
+        tracks: list[dict[str, Any]] | None,
         cue_file_path: str | None = None,
     ) -> Tracklist:
         """Create a new tracklist.
@@ -296,7 +296,7 @@ class AsyncTracklistRepository:
         Args:
             recording_id: UUID of the associated recording
             source: Source of the tracklist
-            tracks: Track data as dictionary
+            tracks: Track data as list of dictionaries or None
             cue_file_path: Optional path to cue file
 
         Returns:
@@ -326,9 +326,9 @@ class AsyncTracklistRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Tracklist).where(Tracklist.recording_id == recording_id)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Tracklist | None
+            return cast("Tracklist | None", result.scalar_one_or_none())
 
-    async def get_with_recording(self, tracklist_id: int) -> Tracklist | None:
+    async def get_with_recording(self, tracklist_id: UUID) -> Tracklist | None:
         """Get tracklist with its associated recording.
 
         Args:
@@ -340,9 +340,9 @@ class AsyncTracklistRepository:
         async with self.db.get_db_session() as session:
             stmt = select(Tracklist).options(selectinload(Tracklist.recording)).where(Tracklist.id == tracklist_id)
             result = await session.execute(stmt)
-            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Tracklist | None
+            return cast("Tracklist | None", result.scalar_one_or_none())
 
-    async def update(self, tracklist_id: int, **kwargs: Any) -> Tracklist | None:
+    async def update(self, tracklist_id: UUID, **kwargs: Any) -> Tracklist | None:
         """Update a tracklist.
 
         Args:
@@ -356,9 +356,9 @@ class AsyncTracklistRepository:
             stmt = update(Tracklist).where(Tracklist.id == tracklist_id).values(**kwargs).returning(Tracklist)
             result = await session.execute(stmt)
             await session.commit()
-            return result.scalar_one_or_none()  # type: ignore[no-any-return] # SQLAlchemy result methods return Any but we know this returns Tracklist | None
+            return cast("Tracklist | None", result.scalar_one_or_none())
 
-    async def delete(self, tracklist_id: int) -> bool:
+    async def delete(self, tracklist_id: UUID) -> bool:
         """Delete a tracklist.
 
         Args:
@@ -371,7 +371,7 @@ class AsyncTracklistRepository:
             stmt = delete(Tracklist).where(Tracklist.id == tracklist_id)
             result = await session.execute(stmt)
             await session.commit()
-            return result.rowcount > 0  # type: ignore[no-any-return] # Comparison operation returns bool but mypy sees result.rowcount as Any
+            return cast("int", result.rowcount) > 0
 
     async def search_by_track(self, track_name: str) -> list[Tracklist]:
         """Search tracklists by track name.

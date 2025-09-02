@@ -7,6 +7,7 @@ caching, and messaging settings.
 
 import os
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -242,34 +243,56 @@ class ServiceConfig:
         return errors
 
 
-# Global configuration instance
-_config: ServiceConfig | None = None
+class ServiceConfigSingleton:
+    """Singleton wrapper for ServiceConfig."""
+
+    _instance: ServiceConfig | None = None
+    _singleton_instance: "ServiceConfigSingleton | None" = None
+
+    def __new__(cls) -> "ServiceConfigSingleton":
+        """Get the singleton ServiceConfig instance."""
+        if cls._singleton_instance is None:
+            cls._singleton_instance = super().__new__(cls)
+            cls._instance = ServiceConfig.from_env()
+        return cls._singleton_instance
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the wrapped config instance."""
+        if self._instance is None:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        return getattr(self._instance, name)
+
+    @classmethod
+    def set_instance(cls, config: ServiceConfig) -> None:
+        """Set the singleton configuration instance."""
+        cls._instance = config
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
+        cls._singleton_instance = None
 
 
-def get_config() -> ServiceConfig:
-    """Get the global configuration instance.
+def get_config() -> "ServiceConfigSingleton":
+    """Get the singleton configuration instance.
 
     Creates the configuration from environment variables on first call.
     """
-    global _config  # noqa: PLW0603  # Global config pattern for application configuration
-    if _config is None:
-        _config = ServiceConfig.from_env()
-    return _config
+    return ServiceConfigSingleton()
 
 
 def set_config(config: ServiceConfig) -> None:
-    """Set the global configuration instance.
+    """Set the singleton configuration instance.
 
     Useful for testing or when loading configuration from files.
     """
-    global _config  # noqa: PLW0603  # Global config pattern for application configuration
-    _config = config
+    ServiceConfigSingleton.set_instance(config)
 
 
 def reset_config() -> None:
-    """Reset the global configuration instance.
+    """Reset the singleton configuration instance.
 
     The next call to get_config() will recreate from environment.
     """
-    global _config  # noqa: PLW0603  # Global config pattern for application configuration
-    _config = None
+    ServiceConfigSingleton.reset()

@@ -152,8 +152,29 @@ class IntegrityMonitor:
         }
 
 
-# Singleton instance
-_monitor_instance: IntegrityMonitor | None = None
+class IntegrityMonitorSingleton:
+    """Singleton wrapper for IntegrityMonitor."""
+
+    _instance: IntegrityMonitor | None = None
+
+    @classmethod
+    def get_instance(
+        cls,
+        session_factory: Callable[[], Session] | None = None,
+        check_interval_minutes: int = 60,
+        auto_clean: bool = False,
+    ) -> IntegrityMonitor:
+        """Get the singleton IntegrityMonitor instance."""
+        if cls._instance is None:
+            if session_factory is None:
+                raise ValueError("session_factory is required to create monitor instance")
+            cls._instance = IntegrityMonitor(session_factory, check_interval_minutes, auto_clean)
+        return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
 def get_integrity_monitor(
@@ -169,13 +190,6 @@ def get_integrity_monitor(
         auto_clean: Whether to automatically clean orphaned records
 
     Returns:
-        The integrity monitor instance
+        The singleton integrity monitor instance
     """
-    global _monitor_instance  # noqa: PLW0603  # Global is needed for singleton pattern
-
-    if _monitor_instance is None:
-        if session_factory is None:
-            raise ValueError("session_factory is required to create monitor instance")
-        _monitor_instance = IntegrityMonitor(session_factory, check_interval_minutes, auto_clean)
-
-    return _monitor_instance
+    return IntegrityMonitorSingleton.get_instance(session_factory, check_interval_minutes, auto_clean)

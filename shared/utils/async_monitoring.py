@@ -463,30 +463,53 @@ class ServiceHealthMonitor:
         return dashboard
 
 
-# Global instances
-_correlation_propagator: CorrelationIdPropagator | None = None
-_health_monitor: ServiceHealthMonitor | None = None
+class CorrelationPropagatorSingleton:
+    """Singleton wrapper for CorrelationIdPropagator."""
+
+    _instance: CorrelationIdPropagator | None = None
+
+    def __new__(cls) -> "CorrelationPropagatorSingleton":
+        """Get the singleton CorrelationIdPropagator instance."""
+        if cls._instance is None:
+            cls._instance = CorrelationIdPropagator()
+        return cls._instance  # type: ignore[return-value]
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
 
 
-def get_correlation_propagator() -> CorrelationIdPropagator:
-    """Get or create global correlation ID propagator.
+class HealthMonitorSingleton:
+    """Singleton wrapper for ServiceHealthMonitor."""
+
+    _instance: ServiceHealthMonitor | None = None
+
+    def __new__(cls) -> "HealthMonitorSingleton":
+        """Get the singleton ServiceHealthMonitor instance."""
+        if cls._instance is None:
+            cls._instance = ServiceHealthMonitor()
+        return cls._instance  # type: ignore[return-value]
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
+
+
+def get_correlation_propagator() -> "CorrelationPropagatorSingleton":
+    """Get or create singleton correlation ID propagator.
 
     Returns:
-        Global correlation ID propagator instance
+        Singleton correlation ID propagator instance
     """
-    global _correlation_propagator  # noqa: PLW0603 - Module-level singleton pattern for correlation propagator
-    if _correlation_propagator is None:
-        _correlation_propagator = CorrelationIdPropagator()
-    return _correlation_propagator
+    return CorrelationPropagatorSingleton()
 
 
-def get_health_monitor() -> ServiceHealthMonitor:
-    """Get or create global service health monitor.
+def get_health_monitor() -> "HealthMonitorSingleton":
+    """Get or create singleton service health monitor.
 
     Returns:
-        Global service health monitor instance
+        Singleton service health monitor instance
     """
-    global _health_monitor  # noqa: PLW0603 - Module-level singleton pattern for health monitor
-    if _health_monitor is None:
-        _health_monitor = ServiceHealthMonitor()
-    return _health_monitor
+    return HealthMonitorSingleton()

@@ -3,6 +3,7 @@
 import asyncio
 import inspect
 import logging
+import os
 from collections.abc import Callable
 from functools import wraps
 from typing import Any, TypeVar
@@ -256,7 +257,29 @@ class RepositoryCompatibilityMixin:
 
 
 # Feature flag management
-_ASYNC_ENABLED = True
+class AsyncModeConfig:
+    """Configuration manager for async mode setting."""
+
+    _enabled: bool = True
+
+    @classmethod
+    def set_enabled(cls, enabled: bool) -> None:
+        """Set async mode.
+
+        Args:
+            enabled: Whether to enable async mode
+        """
+        cls._enabled = enabled
+        logger.info(f"Async mode set to: {enabled}")
+
+    @classmethod
+    def is_enabled(cls) -> bool:
+        """Check if async mode is enabled.
+
+        Returns:
+            True if async mode is enabled
+        """
+        return cls._enabled
 
 
 def set_async_mode(enabled: bool) -> None:
@@ -265,9 +288,7 @@ def set_async_mode(enabled: bool) -> None:
     Args:
         enabled: Whether to enable async mode
     """
-    global _ASYNC_ENABLED  # noqa: PLW0603 - Module-level singleton pattern for async mode setting
-    _ASYNC_ENABLED = enabled
-    logger.info(f"Async mode set to: {enabled}")
+    AsyncModeConfig.set_enabled(enabled)
 
 
 def is_async_enabled() -> bool:
@@ -276,13 +297,10 @@ def is_async_enabled() -> bool:
     Returns:
         True if async mode is enabled
     """
-    return _ASYNC_ENABLED
+    return AsyncModeConfig.is_enabled()
 
 
 # Environment-based configuration
-import os  # noqa: E402
-
-
 def configure_from_environment() -> None:
     """Configure async mode from environment variables."""
     async_mode = os.getenv("TRACKTION_ASYNC_MODE", "true").lower()

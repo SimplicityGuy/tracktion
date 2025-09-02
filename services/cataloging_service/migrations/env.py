@@ -3,7 +3,7 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from alembic import context  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
+from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 # Add parent directory to path to import our models

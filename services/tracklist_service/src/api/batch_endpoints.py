@@ -93,16 +93,35 @@ class BatchScheduleRequest(BaseModel):
     name: str | None = None
 
 
-# Module-level queue instance (would be dependency injected in production)
-_batch_queue: BatchJobQueue | None = None
+class BatchJobQueueSingleton:
+    """Singleton wrapper for BatchJobQueue."""
+
+    _instance: BatchJobQueue | None = None
+    _singleton_instance: "BatchJobQueueSingleton | None" = None
+
+    def __new__(cls) -> "BatchJobQueueSingleton":
+        """Get the singleton BatchJobQueue instance."""
+        if cls._singleton_instance is None:
+            cls._singleton_instance = super().__new__(cls)
+            cls._instance = BatchJobQueue()
+        return cls._singleton_instance
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the wrapped batch job queue instance."""
+        if self._instance is None:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        return getattr(self._instance, name)
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (mainly for testing)."""
+        cls._instance = None
+        cls._singleton_instance = None
 
 
-def get_batch_queue() -> BatchJobQueue:
-    """Get or create batch queue instance."""
-    global _batch_queue  # noqa: PLW0603 - Module-level singleton pattern for API endpoints
-    if _batch_queue is None:
-        _batch_queue = BatchJobQueue()
-    return _batch_queue
+def get_batch_queue() -> "BatchJobQueueSingleton":
+    """Get or create batch queue singleton instance."""
+    return BatchJobQueueSingleton()
 
 
 @router.post("/batch", response_model=BatchResponse)

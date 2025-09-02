@@ -149,7 +149,7 @@ services:
 
   # Analysis Service (placeholder)
   analysis_service:
-    image: python:3.13-slim
+    image: python:3.11-slim
     container_name: tracktion-analysis
     command: ["echo", "Analysis service placeholder"]
     networks:
@@ -164,7 +164,7 @@ services:
 
   # Tracklist Service (placeholder)
   tracklist_service:
-    image: python:3.13-slim
+    image: python:3.11-slim
     container_name: tracktion-tracklist
     command: ["echo", "Tracklist service placeholder"]
     networks:

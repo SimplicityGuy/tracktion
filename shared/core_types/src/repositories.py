@@ -3,8 +3,10 @@
 import logging
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
+
+from sqlalchemy import select
 
 from .database import DatabaseManager
 from .models import Job, Metadata, Recording, Tracklist
@@ -66,7 +68,9 @@ class RecordingRepository:
             Recording instance or None if not found
         """
         with self.db.get_db_session() as session:
-            return session.query(Recording).filter(Recording.id == recording_id).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns Recording | None
+            stmt = select(Recording).where(Recording.id == recording_id)
+            result = session.execute(stmt)
+            return cast("Recording | None", result.scalar_one_or_none())
 
     def get_by_file_path(self, file_path: str) -> Recording | None:
         """Get recording by file path.
@@ -78,7 +82,9 @@ class RecordingRepository:
             Recording instance or None if not found
         """
         with self.db.get_db_session() as session:
-            return session.query(Recording).filter(Recording.file_path == file_path).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns Recording | None
+            stmt = select(Recording).where(Recording.file_path == file_path)
+            result = session.execute(stmt)
+            return cast("Recording | None", result.scalar_one_or_none())
 
     def get_all(self, limit: int | None = None, offset: int | None = None) -> list[Recording]:
         """Get all recordings with optional pagination.
@@ -91,12 +97,13 @@ class RecordingRepository:
             List of Recording instances
         """
         with self.db.get_db_session() as session:
-            query = session.query(Recording)
+            stmt = select(Recording)
             if offset:
-                query = query.offset(offset)
+                stmt = stmt.offset(offset)
             if limit:
-                query = query.limit(limit)
-            return query.all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[Recording]
+                stmt = stmt.limit(limit)
+            result = session.execute(stmt)
+            return list(result.scalars().all())
 
     def update(self, recording_id: UUID, **kwargs: Any) -> Recording | None:
         """Update a recording.
@@ -109,7 +116,9 @@ class RecordingRepository:
             Updated Recording instance or None if not found
         """
         with self.db.get_db_session() as session:
-            recording = session.query(Recording).filter(Recording.id == recording_id).first()
+            stmt = select(Recording).where(Recording.id == recording_id)
+            result = session.execute(stmt)
+            recording = cast("Recording | None", result.scalar_one_or_none())
 
             if not recording:
                 return None
@@ -120,7 +129,7 @@ class RecordingRepository:
 
             session.flush()
             session.refresh(recording)
-            return recording  # type: ignore[no-any-return] # Recording object from database refresh, known to be Recording type
+            return recording
 
     def delete(self, recording_id: UUID) -> bool:
         """Delete a recording.
@@ -132,7 +141,9 @@ class RecordingRepository:
             True if deleted, False if not found
         """
         with self.db.get_db_session() as session:
-            recording = session.query(Recording).filter(Recording.id == recording_id).first()
+            stmt = select(Recording).where(Recording.id == recording_id)
+            result = session.execute(stmt)
+            recording = cast("Recording | None", result.scalar_one_or_none())
 
             if not recording:
                 return False
@@ -194,7 +205,9 @@ class MetadataRepository:
             List of Metadata instances
         """
         with self.db.get_db_session() as session:
-            return session.query(Metadata).filter(Metadata.recording_id == recording_id).all()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns list[Metadata]
+            stmt = select(Metadata).where(Metadata.recording_id == recording_id)
+            result = session.execute(stmt)
+            return list(result.scalars().all())
 
     def get_by_key(self, recording_id: UUID, key: str) -> Metadata | None:
         """Get specific metadata by key for a recording.
@@ -207,7 +220,9 @@ class MetadataRepository:
             Metadata instance or None if not found
         """
         with self.db.get_db_session() as session:
-            return session.query(Metadata).filter(Metadata.recording_id == recording_id, Metadata.key == key).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns Metadata | None
+            stmt = select(Metadata).where(Metadata.recording_id == recording_id, Metadata.key == key)
+            result = session.execute(stmt)
+            return cast("Metadata | None", result.scalar_one_or_none())
 
     def update(self, metadata_id: UUID, value: str) -> Metadata | None:
         """Update metadata value.
@@ -220,7 +235,9 @@ class MetadataRepository:
             Updated Metadata instance or None if not found
         """
         with self.db.get_db_session() as session:
-            metadata = session.query(Metadata).filter(Metadata.id == metadata_id).first()
+            stmt = select(Metadata).where(Metadata.id == metadata_id)
+            result = session.execute(stmt)
+            metadata = cast("Metadata | None", result.scalar_one_or_none())
 
             if not metadata:
                 return None
@@ -228,7 +245,7 @@ class MetadataRepository:
             metadata.value = value
             session.flush()
             session.refresh(metadata)
-            return metadata  # type: ignore[no-any-return] # Metadata object from database refresh, known to be Metadata type
+            return metadata
 
     def delete(self, metadata_id: UUID) -> bool:
         """Delete metadata.
@@ -240,7 +257,9 @@ class MetadataRepository:
             True if deleted, False if not found
         """
         with self.db.get_db_session() as session:
-            metadata = session.query(Metadata).filter(Metadata.id == metadata_id).first()
+            stmt = select(Metadata).where(Metadata.id == metadata_id)
+            result = session.execute(stmt)
+            metadata = cast("Metadata | None", result.scalar_one_or_none())
 
             if not metadata:
                 return False
@@ -325,7 +344,9 @@ class TracklistRepository:
             Tracklist instance or None if not found
         """
         with self.db.get_db_session() as session:
-            return session.query(Tracklist).filter(Tracklist.recording_id == recording_id).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns Tracklist | None
+            stmt = select(Tracklist).where(Tracklist.recording_id == recording_id)
+            result = session.execute(stmt)
+            return cast("Tracklist | None", result.scalar_one_or_none())
 
     def get_by_id(self, tracklist_id: UUID) -> Tracklist | None:
         """Get tracklist by ID.
@@ -337,7 +358,9 @@ class TracklistRepository:
             Tracklist instance or None if not found
         """
         with self.db.get_db_session() as session:
-            return session.query(Tracklist).filter(Tracklist.id == tracklist_id).first()  # type: ignore[no-any-return] # SQLAlchemy query methods return Any but we know this returns Tracklist | None
+            stmt = select(Tracklist).where(Tracklist.id == tracklist_id)
+            result = session.execute(stmt)
+            return cast("Tracklist | None", result.scalar_one_or_none())
 
     def update(self, tracklist_id: UUID, **kwargs: Any) -> Tracklist | None:
         """Update a tracklist.
@@ -350,7 +373,9 @@ class TracklistRepository:
             Updated Tracklist instance or None if not found
         """
         with self.db.get_db_session() as session:
-            tracklist = session.query(Tracklist).filter(Tracklist.id == tracklist_id).first()
+            stmt = select(Tracklist).where(Tracklist.id == tracklist_id)
+            result = session.execute(stmt)
+            tracklist = cast("Tracklist | None", result.scalar_one_or_none())
 
             if not tracklist:
                 return None
@@ -365,7 +390,7 @@ class TracklistRepository:
 
             session.flush()
             session.refresh(tracklist)
-            return tracklist  # type: ignore[no-any-return] # Tracklist object from database refresh, known to be Tracklist type
+            return tracklist
 
     def delete(self, tracklist_id: UUID) -> bool:
         """Delete a tracklist.
@@ -377,7 +402,9 @@ class TracklistRepository:
             True if deleted, False if not found
         """
         with self.db.get_db_session() as session:
-            tracklist = session.query(Tracklist).filter(Tracklist.id == tracklist_id).first()
+            stmt = select(Tracklist).where(Tracklist.id == tracklist_id)
+            result = session.execute(stmt)
+            tracklist = cast("Tracklist | None", result.scalar_one_or_none())
 
             if not tracklist:
                 return False
@@ -454,7 +481,9 @@ class JobRepository:
             Job instance or None if not found
         """
         with self.db.get_db_session() as session:
-            return session.query(Job).filter(Job.id == job_id).first()  # type: ignore[no-any-return]
+            stmt = select(Job).where(Job.id == job_id)
+            result = session.execute(stmt)
+            return cast("Job | None", result.scalar_one_or_none())
 
     def get_by_correlation_id(self, correlation_id: UUID) -> list[Job]:
         """Get all jobs with a specific correlation ID.
@@ -466,7 +495,9 @@ class JobRepository:
             List of Job instances
         """
         with self.db.get_db_session() as session:
-            return session.query(Job).filter(Job.correlation_id == correlation_id).all()  # type: ignore[no-any-return]
+            stmt = select(Job).where(Job.correlation_id == correlation_id)
+            result = session.execute(stmt)
+            return list(result.scalars().all())
 
     def get_by_status(self, status: JobStatus, service_name: str | None = None) -> list[Job]:
         """Get jobs by status and optionally service name.
@@ -479,10 +510,11 @@ class JobRepository:
             List of Job instances
         """
         with self.db.get_db_session() as session:
-            query = session.query(Job).filter(Job.status == status.value)
+            stmt = select(Job).where(Job.status == status.value)
             if service_name:
-                query = query.filter(Job.service_name == service_name)
-            return query.all()  # type: ignore[no-any-return]
+                stmt = stmt.where(Job.service_name == service_name)
+            result = session.execute(stmt)
+            return list(result.scalars().all())
 
     def update_status(
         self,
@@ -503,7 +535,9 @@ class JobRepository:
             Updated Job instance or None if not found
         """
         with self.db.get_db_session() as session:
-            job = session.query(Job).filter(Job.id == job_id).first()
+            stmt = select(Job).where(Job.id == job_id)
+            result_query = session.execute(stmt)
+            job = cast("Job | None", result_query.scalar_one_or_none())
             if not job:
                 return None
 
@@ -522,7 +556,7 @@ class JobRepository:
 
             session.flush()
             session.refresh(job)
-            return job  # type: ignore[no-any-return]
+            return job
 
     def update_progress(self, job_id: UUID, progress: int, total_items: int | None = None) -> Job | None:
         """Update job progress.
@@ -536,7 +570,9 @@ class JobRepository:
             Updated Job instance or None if not found
         """
         with self.db.get_db_session() as session:
-            job = session.query(Job).filter(Job.id == job_id).first()
+            stmt = select(Job).where(Job.id == job_id)
+            result = session.execute(stmt)
+            job = cast("Job | None", result.scalar_one_or_none())
             if not job:
                 return None
 
@@ -547,7 +583,7 @@ class JobRepository:
 
             session.flush()
             session.refresh(job)
-            return job  # type: ignore[no-any-return]
+            return job
 
     def create_child_job(
         self,
@@ -568,7 +604,9 @@ class JobRepository:
             Created Job instance or None if parent not found
         """
         with self.db.get_db_session() as session:
-            parent_job = session.query(Job).filter(Job.id == parent_job_id).first()
+            stmt = select(Job).where(Job.id == parent_job_id)
+            result = session.execute(stmt)
+            parent_job = cast("Job | None", result.scalar_one_or_none())
             if not parent_job:
                 return None
 
@@ -596,7 +634,9 @@ class JobRepository:
             List of child Job instances
         """
         with self.db.get_db_session() as session:
-            return session.query(Job).filter(Job.parent_job_id == parent_job_id).all()  # type: ignore[no-any-return]
+            stmt = select(Job).where(Job.parent_job_id == parent_job_id)
+            result = session.execute(stmt)
+            return list(result.scalars().all())
 
     def cleanup_old_jobs(self, days: int = 30) -> int:
         """Clean up old completed/failed jobs.
@@ -609,14 +649,12 @@ class JobRepository:
         """
         with self.db.get_db_session() as session:
             cutoff_date = datetime.now(UTC) - timedelta(days=days)
-            jobs_to_delete = (
-                session.query(Job)
-                .filter(
-                    Job.status.in_([JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CANCELLED.value]),
-                    Job.completed_at < cutoff_date,
-                )
-                .all()
+            stmt = select(Job).where(
+                Job.status.in_([JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CANCELLED.value]),
+                Job.completed_at < cutoff_date,
             )
+            result = session.execute(stmt)
+            jobs_to_delete = list(result.scalars().all())
             count = len(jobs_to_delete)
             for job in jobs_to_delete:
                 session.delete(job)
