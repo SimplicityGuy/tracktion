@@ -4,15 +4,17 @@ Message handler for CUE generation operations.
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from pathlib import Path
+from typing import Any, cast
 from uuid import UUID, uuid4
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 from aio_pika.abc import AbstractIncomingMessage
 
+from services.analysis_service.src.cue_handler.converter import ConversionMode, CueConverter
+from services.analysis_service.src.cue_handler.generator import CueFormat
+from services.analysis_service.src.cue_handler.validator import CueValidator
 from services.tracklist_service.src.messaging.message_schemas import (
     BaseMessage,
     BatchCueGenerationCompleteMessage,
@@ -27,7 +29,7 @@ from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQCli
 from services.tracklist_service.src.models.cue_file import (
     BatchCueGenerationResponse,
     BatchGenerateCueRequest,
-    CueFormat,
+    CueFileDB,
     CueGenerationResponse,
     GenerateCueRequest,
 )
@@ -45,6 +47,7 @@ class CueGenerationMessageHandler:
         cue_generation_service: CueGenerationService,
         storage_service: StorageService,
         rabbitmq_client: RabbitMQClient,
+        session_factory: Callable[[], Any],
     ):
         """
         Initialize message handler.
@@ -53,10 +56,12 @@ class CueGenerationMessageHandler:
             cue_generation_service: CUE generation service instance
             storage_service: Storage service instance
             rabbitmq_client: RabbitMQ client instance
+            session_factory: Database session factory
         """
         self.cue_generation_service = cue_generation_service
         self.storage_service = storage_service
         self.rabbitmq_client = rabbitmq_client
+        self.session_factory = session_factory
 
     async def handle_cue_generation(
         self, message: CueGenerationMessage, rabbitmq_message: AbstractIncomingMessage
@@ -239,9 +244,44 @@ class CueGenerationMessageHandler:
         logger.info(f"Processing CUE validation request {message.validation_job_id} for file {message.cue_file_id}")
 
         try:
-            # TODO: Implement validation logic
-            # For now, just acknowledge the message
-            logger.info(f"CUE validation request {message.validation_job_id} completed (placeholder)")
+            # Get the CUE file path from the repository
+            async with self.session_factory() as session:
+                # Get the CUE file from database
+                cue_file = await session.get(CueFileDB, message.cue_file_id)
+                if not cue_file:
+                    logger.error(f"CUE file {message.cue_file_id} not found")
+                    await rabbitmq_message.reject(requeue=False)
+                    return
+
+                # Initialize validator
+                validator = CueValidator()
+
+                # Perform validation
+                validation_result = validator.validate(cue_file.file_path)
+
+                # Store validation results in the database
+                cue_file.validation_status = "valid" if validation_result.is_valid else "invalid"
+                cue_file.validation_errors = [
+                    {"line": e.line_number, "message": e.message, "severity": str(e.severity)}
+                    for e in validation_result.errors
+                ]
+                cue_file.validation_warnings = [
+                    {"line": w.line_number, "message": w.message, "severity": str(w.severity)}
+                    for w in validation_result.warnings
+                ]
+                cue_file.last_validated_at = datetime.now(UTC)
+
+                await session.commit()
+
+                logger.info(
+                    f"CUE validation request {message.validation_job_id} completed. "
+                    f"Valid: {validation_result.is_valid}, "
+                    f"Errors: {len(validation_result.errors)}, "
+                    f"Warnings: {len(validation_result.warnings)}"
+                )
+
+                # Log validation completion (message publishing can be added later when schema is created)
+
             await rabbitmq_message.ack()
 
         except Exception as e:
@@ -269,9 +309,70 @@ class CueGenerationMessageHandler:
         )
 
         try:
-            # TODO: Implement conversion logic
-            # For now, just acknowledge the message
-            logger.info(f"CUE conversion request {message.conversion_job_id} completed (placeholder)")
+            # Get the source CUE file from the repository
+            async with self.session_factory() as session:
+                # Get the source CUE file from database
+                source_cue = await session.get(CueFileDB, message.source_cue_file_id)
+                if not source_cue:
+                    logger.error(f"Source CUE file {message.source_cue_file_id} not found")
+                    await rabbitmq_message.reject(requeue=False)
+                    return
+
+                # Initialize converter
+                converter = CueConverter(mode=ConversionMode.STANDARD, validate_output=True, verbose=False)
+
+                # Determine target format
+                try:
+                    target_format = CueFormat[message.target_format.upper()]
+                except KeyError:
+                    logger.error(f"Invalid target format: {message.target_format}")
+                    await rabbitmq_message.reject(requeue=False)
+                    return
+
+                # Generate output file path
+                source_path = Path(source_cue.file_path)
+                output_path = source_path.with_suffix(f".{message.target_format.lower()}.cue")
+
+                # Perform conversion
+                conversion_report = converter.convert(
+                    source_file=source_cue.file_path,
+                    target_format=target_format,
+                    output_file=str(output_path),
+                )
+
+                # Create new CUE file record for the converted file
+                if conversion_report.success:
+                    converted_cue = CueFileDB(
+                        id=uuid4(),
+                        tracklist_id=source_cue.tracklist_id,
+                        file_path=str(output_path),
+                        file_format=message.target_format.lower(),
+                        file_size=output_path.stat().st_size if output_path.exists() else 0,
+                        created_at=datetime.now(UTC),
+                        is_primary=False,
+                        source_type="conversion",
+                        metadata={
+                            "source_file_id": str(message.source_cue_file_id),
+                            "conversion_job_id": str(message.conversion_job_id),
+                            "changes": [
+                                {"type": c.change_type, "command": c.command, "reason": c.reason}
+                                for c in conversion_report.changes
+                            ],
+                            "warnings": conversion_report.warnings,
+                        },
+                    )
+                    session.add(converted_cue)
+                    await session.commit()
+
+                    logger.info(
+                        f"CUE conversion request {message.conversion_job_id} completed successfully. "
+                        f"Converted {source_cue.file_path} to {output_path}"
+                    )
+                else:
+                    logger.error(
+                        f"CUE conversion request {message.conversion_job_id} failed. Errors: {conversion_report.errors}"
+                    )
+
             await rabbitmq_message.ack()
 
         except Exception as e:

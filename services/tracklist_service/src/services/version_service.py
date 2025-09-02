@@ -266,3 +266,38 @@ class VersionService:
         await self.session.commit()
 
         return len(versions_to_delete)
+
+    async def get_version_by_id(self, version_id: UUID) -> TracklistVersion | None:
+        """Get a version by its UUID.
+
+        Args:
+            version_id: ID of the version
+
+        Returns:
+            Version or None
+        """
+        query = select(TracklistVersion).where(TracklistVersion.id == version_id)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy returns model but typed as Any
+
+    async def rollback_to_version_by_id(self, tracklist_id: UUID, version_id: UUID) -> TracklistDB:
+        """Rollback tracklist to a specific version using version ID.
+
+        Args:
+            tracklist_id: ID of the tracklist
+            version_id: ID of version to rollback to
+
+        Returns:
+            Updated tracklist
+        """
+        # Get the target version by ID
+        target_version = await self.get_version_by_id(version_id)
+        if not target_version:
+            raise ValueError(f"Version {version_id} not found")
+
+        # Verify the version belongs to the correct tracklist
+        if target_version.tracklist_id != tracklist_id:
+            raise ValueError(f"Version {version_id} does not belong to tracklist {tracklist_id}")
+
+        # Use the existing rollback method with the version number
+        return await self.rollback_to_version(tracklist_id, target_version.version_number)

@@ -4,6 +4,7 @@ import os
 import signal
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -65,6 +66,7 @@ class AnalysisService:
         self.rename_integration: FileRenameProposalIntegration | None = None
         self.bpm_detector: BPMDetector | None = None
         self.key_detector: KeyDetector | None = None
+        self.messaging_service: MessageConsumer | None = None
         self._shutdown_requested = False
 
         # Configuration
@@ -142,7 +144,7 @@ class AnalysisService:
             logger.error(f"Failed to initialize service: {e}")
             raise
 
-    def process_message(self, message: dict[str, Any], correlation_id: str) -> None:
+    async def process_message(self, message: dict[str, Any], correlation_id: str) -> None:
         """Process a single analysis message.
 
         Args:
@@ -176,7 +178,7 @@ class AnalysisService:
             self._process_file(recording_uuid, file_path, correlation_id)
 
             # Send success notification (if configured)
-            self._send_notification(
+            await self._send_notification(
                 recording_id=recording_uuid,
                 status="completed",
                 correlation_id=correlation_id,
@@ -436,7 +438,7 @@ class AnalysisService:
         # Add analysis version for future compatibility
         metadata["audio_analysis_version"] = "1.0"
 
-    def _send_notification(
+    async def _send_notification(
         self,
         recording_id: UUID,
         status: str,
@@ -454,11 +456,60 @@ class AnalysisService:
             correlation_id: Correlation ID for tracing
             metadata: Optional metadata to include
         """
-        # TODO: Implement notification sending via RabbitMQ
-        logger.debug(
-            f"Notification would be sent: recording {recording_id} status={status}",
-            correlation_id=correlation_id,
-        )
+        # Send notification via the notification service
+        if self.messaging_service:
+            try:
+                # Create notification message based on status
+                notification_data: dict[str, Any] = {
+                    "recording_id": str(recording_id),
+                    "status": status,
+                    "correlation_id": correlation_id,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "service": "analysis_service",
+                }
+
+                # Add metadata if provided
+                if metadata:
+                    notification_data["metadata"] = metadata
+
+                # Determine notification type based on status
+                if status == "completed":
+                    notification_type = "analysis_completed"
+                    notification_data["message"] = f"Analysis completed for recording {recording_id}"
+                elif status == "failed":
+                    notification_type = "analysis_failed"
+                    notification_data["message"] = f"Analysis failed for recording {recording_id}"
+                    notification_data["alert_type"] = "error"
+                elif status == "processing":
+                    notification_type = "analysis_started"
+                    notification_data["message"] = f"Analysis started for recording {recording_id}"
+                else:
+                    notification_type = "analysis_status_update"
+                    notification_data["message"] = f"Analysis status update for recording {recording_id}: {status}"
+
+                # Send the notification message
+                await self.messaging_service.publish_message(
+                    exchange_name="notifications",
+                    routing_key=notification_type,
+                    message=notification_data,
+                    correlation_id=correlation_id,
+                )
+
+                logger.info(
+                    f"Notification sent: recording {recording_id} status={status}",
+                    correlation_id=correlation_id,
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to send notification for recording {recording_id}: {e}",
+                    correlation_id=correlation_id,
+                    exc_info=True,
+                )
+        else:
+            logger.debug(
+                f"Messaging service not available, notification not sent: recording {recording_id} status={status}",
+                correlation_id=correlation_id,
+            )
 
     def run(self) -> None:
         """Run the analysis service."""

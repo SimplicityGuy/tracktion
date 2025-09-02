@@ -270,18 +270,10 @@ class SyncEventConsumer:
             async with self.SessionLocal() as session:
                 version_service = VersionService(session)
 
-                # Perform rollback
-                # TODO: Fix this mismatch - VersionRollbackRequest has version_id (UUID) but
-                # rollback_to_version expects version_number (int). Need to add a new method
-                # to VersionService that accepts version_id or convert version_id to version_number
-
-                # For now, use a placeholder version number (1) to fix mypy error
-                # This needs to be properly implemented with either:
-                # 1. A new method rollback_to_version_by_id(tracklist_id, version_id)
-                # 2. A lookup to convert version_id to version_number first
-                result = await version_service.rollback_to_version(
+                # Perform rollback using the new method that accepts version_id
+                result = await version_service.rollback_to_version_by_id(
                     tracklist_id=request.tracklist_id,
-                    version_number=1,  # FIXME: This should be derived from request.version_id
+                    version_id=request.version_id,
                 )
 
                 if result:

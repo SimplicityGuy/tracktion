@@ -592,10 +592,16 @@ async def publish_draft(
             cue_service = CueGenerationService(storage_service=storage_service)
             rabbitmq_client = RabbitMQClient(RabbitMQConfig())
 
+            # Create a placeholder session factory since this is placeholder code
+            def placeholder_session_factory():
+                # This is a placeholder - in real implementation would return async session
+                return db
+
             _ = CueGenerationMessageHandler(
                 cue_generation_service=cue_service,
                 storage_service=storage_service,
                 rabbitmq_client=rabbitmq_client,
+                session_factory=placeholder_session_factory,
             )
 
             # Note: CueGenerationMessageHandler doesn't have publish_generation_request method

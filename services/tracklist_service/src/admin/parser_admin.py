@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import requests  # type: ignore[import-untyped]  # types-requests not installed in this environment
+import requests  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
