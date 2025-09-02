@@ -109,6 +109,9 @@ class ProposalGenerator:
         # Calculate confidence score
         confidence_score = self._calculate_confidence(metadata, proposed_filename, sanitized_filename)
 
+        # Determine metadata source based on what fields are present
+        metadata_source = self._determine_metadata_source(metadata)
+
         # Create proposal
         proposal = RenameProposal(
             recording_id=recording_id,
@@ -117,7 +120,7 @@ class ProposalGenerator:
             proposed_filename=sanitized_filename,
             full_proposed_path=full_proposed_path,
             confidence_score=confidence_score,
-            metadata_source="inferred",  # TODO: Determine actual metadata source
+            metadata_source=metadata_source,
             pattern_used=pattern_used,
         )
 
@@ -194,6 +197,36 @@ class ProposalGenerator:
         score += 1.0 * weights["conflicts"]
 
         return min(1.0, max(0.0, score))
+
+    def _determine_metadata_source(self, metadata: dict[str, str]) -> str:
+        """Determine the source of metadata based on available fields.
+
+        Args:
+            metadata: Metadata dictionary
+
+        Returns:
+            String identifying the metadata source
+        """
+        if not metadata:
+            return "empty"
+
+        # Check for key metadata fields to determine source
+        has_artist = bool(metadata.get("artist") and metadata["artist"].lower() not in ["unknown", ""])
+        has_title = bool(metadata.get("title") and metadata["title"].lower() not in ["unknown", "untitled", ""])
+        has_album = bool(metadata.get("album") and metadata["album"].lower() not in ["unknown", ""])
+        has_bpm = bool(metadata.get("bpm"))
+        has_key = bool(metadata.get("key"))
+
+        # Determine source based on field combination
+        if has_artist and has_title and has_album:
+            if has_bpm and has_key:
+                return "complete"  # Full metadata from analysis
+            return "id3"  # Standard ID3 tags
+        if has_bpm or has_key:
+            return "analysis"  # Audio analysis metadata
+        if has_artist or has_title:
+            return "partial"  # Partial metadata
+        return "inferred"  # Inferred from filename or other sources
 
     def _check_for_issues(self, proposal: RenameProposal) -> None:
         """Check for potential issues with the proposal.

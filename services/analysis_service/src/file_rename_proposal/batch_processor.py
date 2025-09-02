@@ -8,7 +8,7 @@ from typing import Any
 from uuid import UUID
 
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
-from shared.core_types.src.repositories import RecordingRepository
+from shared.core_types.src.repositories import MetadataRepository, RecordingRepository
 
 from .confidence_scorer import ConfidenceScorer
 from .conflict_detector import ConflictDetector
@@ -58,6 +58,7 @@ class BatchProcessor:
         confidence_scorer: ConfidenceScorer,
         proposal_repo: RenameProposalRepository,
         recording_repo: RecordingRepository,
+        metadata_repo: MetadataRepository,
     ) -> None:
         """Initialize batch processor.
 
@@ -67,12 +68,14 @@ class BatchProcessor:
             confidence_scorer: Confidence scoring service
             proposal_repo: Proposal repository
             recording_repo: Recording repository
+            metadata_repo: Metadata repository
         """
         self.proposal_generator = proposal_generator
         self.conflict_detector = conflict_detector
         self.confidence_scorer = confidence_scorer
         self.proposal_repo = proposal_repo
         self.recording_repo = recording_repo
+        self.metadata_repo = metadata_repo
         self.logger = logger
 
         # Active jobs tracking
@@ -257,14 +260,17 @@ class BatchProcessor:
             }
 
         try:
-            # Generate proposal - need to get metadata separately
-            # For now, use empty metadata and derive file extension
+            # Get metadata from MetadataRepository
+            metadata_list = self.metadata_repo.get_by_recording(recording_id)
+            metadata_dict = {m.key: m.value for m in metadata_list} if metadata_list else {}
+
+            # Derive file extension
             file_path = Path(recording.file_name)
             file_extension = file_path.suffix[1:].lower() if file_path.suffix else "mp3"
             proposal = self.proposal_generator.generate_proposal(
                 recording_id=recording_id,
                 original_path=recording.file_path,
-                metadata={},  # TODO: Get actual metadata from MetadataRepository
+                metadata=metadata_dict,
                 file_extension=file_extension,
             )
 
@@ -315,7 +321,7 @@ class BatchProcessor:
 
             # Calculate confidence score
             confidence, components = self.confidence_scorer.calculate_confidence(
-                metadata={},  # TODO: Use actual metadata
+                metadata=metadata_dict,
                 original_filename=recording.file_name,
                 proposed_filename=resolved_filename,
                 conflicts=conflicts,

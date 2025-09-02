@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 from services.analysis_service.src.file_rename_executor.executor import FileRenameExecutor
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
-from shared.core_types.src.repositories import RecordingRepository
+from shared.core_types.src.repositories import MetadataRepository, RecordingRepository
 
 from .batch_processor import BatchProcessor
 from .confidence_scorer import ConfidenceScorer
@@ -58,6 +58,7 @@ class RenameProposalMessageInterface:
         confidence_scorer: ConfidenceScorer,
         proposal_repo: RenameProposalRepository,
         recording_repo: RecordingRepository,
+        metadata_repo: MetadataRepository,
         batch_processor: BatchProcessor | None = None,
         rename_executor: FileRenameExecutor | None = None,
     ) -> None:
@@ -69,6 +70,7 @@ class RenameProposalMessageInterface:
             confidence_scorer: Confidence scoring service
             proposal_repo: Proposal repository
             recording_repo: Recording repository
+            metadata_repo: Metadata repository
             batch_processor: Optional batch processor (will create if not provided)
             rename_executor: Optional file rename executor for executing renames
         """
@@ -77,6 +79,7 @@ class RenameProposalMessageInterface:
         self.confidence_scorer = confidence_scorer
         self.proposal_repo = proposal_repo
         self.recording_repo = recording_repo
+        self.metadata_repo = metadata_repo
         self.rename_executor = rename_executor
 
         if batch_processor:
@@ -88,6 +91,7 @@ class RenameProposalMessageInterface:
                 confidence_scorer=confidence_scorer,
                 proposal_repo=proposal_repo,
                 recording_repo=recording_repo,
+                metadata_repo=metadata_repo,
             )
 
         self.logger = logger
@@ -178,14 +182,17 @@ class RenameProposalMessageInterface:
                     "RECORDING_NOT_FOUND",
                 )
 
-            # Generate proposal - need to get metadata separately
-            # For now, use empty metadata and derive file extension
+            # Get metadata from MetadataRepository
+            metadata_list = self.metadata_repo.get_by_recording(recording_id)
+            metadata_dict = {m.key: m.value for m in metadata_list} if metadata_list else {}
+
+            # Derive file extension
             path_obj = Path(recording.file_name)
             file_extension = path_obj.suffix[1:].lower() if path_obj.suffix else "mp3"
             proposal = self.proposal_generator.generate_proposal(
                 recording_id=recording_id,
                 original_path=recording.file_path,
-                metadata={},  # TODO: Get actual metadata from MetadataRepository
+                metadata=metadata_dict,
                 file_extension=file_extension,
             )
             if not proposal:
@@ -200,7 +207,7 @@ class RenameProposalMessageInterface:
 
             # Calculate confidence
             confidence, components = self.confidence_scorer.calculate_confidence(
-                metadata={},  # TODO: Use actual metadata
+                metadata=metadata_dict,
                 original_filename=recording.file_name,
                 proposed_filename=proposal.proposed_filename,
                 conflicts=conflicts_result["conflicts"],
