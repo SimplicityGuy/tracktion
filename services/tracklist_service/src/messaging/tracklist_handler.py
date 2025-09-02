@@ -22,10 +22,10 @@ from aio_pika.abc import (
     AbstractRobustConnection,
 )
 
-from src.cache.redis_cache import RedisCache
-from src.config import get_config
-from src.models.tracklist_models import Tracklist, TracklistRequest
-from src.scraper.tracklist_scraper import TracklistScraper
+from services.tracklist_service.src.cache.redis_cache import RedisCache
+from services.tracklist_service.src.config import get_config
+from services.tracklist_service.src.models.tracklist_models import Tracklist, TracklistRequest
+from services.tracklist_service.src.scraper.tracklist_scraper import TracklistScraper
 
 logger = logging.getLogger(__name__)
 

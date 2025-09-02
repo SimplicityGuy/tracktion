@@ -17,7 +17,14 @@ import structlog
 from bs4 import BeautifulSoup, PageElement, Tag
 from dateutil import parser
 
-from src.models.tracklist import CuePoint, Track, Tracklist, TracklistMetadata, Transition, TransitionType
+from services.tracklist_service.src.models.tracklist import (
+    CuePoint,
+    Track,
+    Tracklist,
+    TracklistMetadata,
+    Transition,
+    TransitionType,
+)
 
 from .async_base_scraper import AsyncScraperBase
 

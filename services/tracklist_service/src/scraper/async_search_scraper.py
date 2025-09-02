@@ -12,7 +12,13 @@ from urllib.parse import urlencode, urljoin
 import structlog
 from bs4 import BeautifulSoup, NavigableString, PageElement, Tag
 
-from src.models.search import PaginationInfo, SearchRequest, SearchResponse, SearchResult, SearchType
+from services.tracklist_service.src.models.search import (
+    PaginationInfo,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+    SearchType,
+)
 
 from .async_base_scraper import AsyncScraperBase
 

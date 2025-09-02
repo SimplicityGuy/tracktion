@@ -32,10 +32,16 @@ progress_tracker = AsyncProgressTracker(
     update_interval_seconds=0.5,  # More frequent updates for better UX
 )
 
-# Initialize progress tracker on startup
-# Store reference to avoid RUF006 warning
-_tracker_task_ref = asyncio.create_task(progress_tracker.initialize())
-_tracker_task = _tracker_task_ref  # Keep reference to prevent garbage collection
+# Initialize progress tracker lazily on first use
+# This will be set when the app starts up with an event loop
+_tracker_task: asyncio.Task | None = None
+
+
+async def ensure_tracker_initialized() -> None:
+    """Ensure the progress tracker is initialized."""
+    global _tracker_task  # noqa: PLW0603 - Global needed for singleton initialization
+    if _tracker_task is None:
+        _tracker_task = asyncio.create_task(progress_tracker.initialize())
 
 
 async def generate_audio_chunks(

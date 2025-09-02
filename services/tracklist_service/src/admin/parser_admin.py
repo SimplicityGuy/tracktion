@@ -10,14 +10,20 @@ import requests
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
+from services.tracklist_service.src.auth.admin_auth import AdminUser, require_parser_admin, require_readonly
+from services.tracklist_service.src.cache.fallback_cache import FallbackCache
+from services.tracklist_service.src.models.operation_history import OperationHistoryRepository
+from services.tracklist_service.src.monitoring.alert_manager import AlertManager
+from services.tracklist_service.src.monitoring.structure_monitor import StructureMonitor
+from services.tracklist_service.src.scrapers.adaptive_parser import AdaptiveParser
+from services.tracklist_service.src.scrapers.resilient_extractor import (
+    CSSStrategy,
+    RegexStrategy,
+    ResilientExtractor,
+    TextStrategy,
+    XPathStrategy,
+)
 from shared.core_types.src.database import DatabaseManager
-from src.auth.admin_auth import AdminUser, require_parser_admin, require_readonly
-from src.cache.fallback_cache import FallbackCache
-from src.models.operation_history import OperationHistoryRepository
-from src.monitoring.alert_manager import AlertManager
-from src.monitoring.structure_monitor import StructureMonitor
-from src.scrapers.adaptive_parser import AdaptiveParser
-from src.scrapers.resilient_extractor import CSSStrategy, RegexStrategy, ResilientExtractor, TextStrategy, XPathStrategy
 
 from .models import (
     AdminOperation,

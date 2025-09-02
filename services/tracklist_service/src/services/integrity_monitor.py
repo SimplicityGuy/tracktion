@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from src.utils.integrity_validator import IntegrityValidator
+from services.tracklist_service.src.utils.integrity_validator import IntegrityValidator
 
 logger = logging.getLogger(__name__)
 

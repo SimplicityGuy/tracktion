@@ -1,7 +1,5 @@
 """Unit tests for watchdog event handler."""
 
-# Import the handler to test
-import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -16,11 +14,7 @@ from watchdog.events import (
     FileMovedEvent,
 )
 
-sys.path.insert(
-    0,
-    str(Path(__file__).parent.parent.parent.parent / "services" / "file_watcher" / "src"),
-)
-from watchdog_handler import TracktionEventHandler
+from services.file_watcher.src.watchdog_handler import TracktionEventHandler
 
 
 class TestTracktionEventHandler:

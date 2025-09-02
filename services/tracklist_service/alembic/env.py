@@ -10,7 +10,7 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 
 sys.path.append(str(Path(__file__).parent.parent))
-from src.models.tracklist import Base
+from services.tracklist_service.src.models.tracklist import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

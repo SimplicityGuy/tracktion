@@ -13,12 +13,12 @@ from uuid import UUID
 
 import redis
 
-from src.config import get_config
-from src.models.tracklist import TrackEntry, Tracklist
-from src.models.tracklist_models import Track as ScrapedTrack
-from src.models.tracklist_models import Tracklist as ScrapedTracklist
-from src.scraper.tracklist_scraper import TracklistScraper
-from src.utils.time_utils import milliseconds_to_timedelta, parse_time_string
+from services.tracklist_service.src.config import get_config
+from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
+from services.tracklist_service.src.models.tracklist_models import Track as ScrapedTrack
+from services.tracklist_service.src.models.tracklist_models import Tracklist as ScrapedTracklist
+from services.tracklist_service.src.scraper.tracklist_scraper import TracklistScraper
+from services.tracklist_service.src.utils.time_utils import milliseconds_to_timedelta, parse_time_string
 
 logger = logging.getLogger(__name__)
 

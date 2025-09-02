@@ -9,8 +9,8 @@ import logging
 from datetime import timedelta
 from typing import Any
 
-from src.models.tracklist import TrackEntry
-from src.utils.time_utils import parse_time_string
+from services.tracklist_service.src.models.tracklist import TrackEntry
+from services.tracklist_service.src.utils.time_utils import parse_time_string
 
 logger = logging.getLogger(__name__)
 

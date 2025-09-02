@@ -12,8 +12,13 @@ from typing import Any
 import redis
 from redis.exceptions import RedisError
 
-from src.config import get_config
-from src.models.search_models import CachedSearchResponse, CacheKey, SearchRequest, SearchResponse
+from services.tracklist_service.src.config import get_config
+from services.tracklist_service.src.models.search_models import (
+    CachedSearchResponse,
+    CacheKey,
+    SearchRequest,
+    SearchResponse,
+)
 
 logger = logging.getLogger(__name__)
 

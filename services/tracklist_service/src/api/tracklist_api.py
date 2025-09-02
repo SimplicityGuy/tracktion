@@ -16,10 +16,10 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from src.cache.redis_cache import RedisCache
-from src.messaging.simple_handler import MessageHandler
-from src.models.tracklist_models import Tracklist, TracklistRequest, TracklistResponse
-from src.scraper.tracklist_scraper import TracklistScraper
+from services.tracklist_service.src.cache.redis_cache import RedisCache
+from services.tracklist_service.src.messaging.simple_handler import MessageHandler
+from services.tracklist_service.src.models.tracklist_models import Tracklist, TracklistRequest, TracklistResponse
+from services.tracklist_service.src.scraper.tracklist_scraper import TracklistScraper
 
 logger = logging.getLogger(__name__)
 

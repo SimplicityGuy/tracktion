@@ -8,8 +8,8 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.auth.dependencies import authenticate_from_request
-from src.rate_limiting.limiter import RateLimiter
+from services.tracklist_service.src.auth.dependencies import authenticate_from_request
+from services.tracklist_service.src.rate_limiting.limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 

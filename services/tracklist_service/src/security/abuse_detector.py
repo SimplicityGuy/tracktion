@@ -9,7 +9,7 @@ from typing import Any
 import redis.asyncio as redis
 from fastapi import Request
 
-from src.auth.models import User
+from services.tracklist_service.src.auth.models import User
 
 from .models import AbuseScore, AbuseType
 

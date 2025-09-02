@@ -13,10 +13,10 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
 
-from src.cache.redis_cache import get_cache
-from src.config import get_config
-from src.models.search_models import SearchError, SearchRequest, SearchResponse, SearchType
-from src.scraper.search_scraper import SearchScraper
+from services.tracklist_service.src.cache.redis_cache import get_cache
+from services.tracklist_service.src.config import get_config
+from services.tracklist_service.src.models.search_models import SearchError, SearchRequest, SearchResponse, SearchType
+from services.tracklist_service.src.scraper.search_scraper import SearchScraper
 
 logger = logging.getLogger(__name__)
 

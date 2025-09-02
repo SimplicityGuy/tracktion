@@ -1,0 +1,70 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.11.13, pytest-8.4.1, pluggy-1.6.0 -- /Users/Robert/Code/public/tracktion/.venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /Users/Robert/Code/public/tracktion
+configfile: pyproject.toml
+plugins: asyncio-1.1.0, anyio-4.10.0, cov-6.2.1, mock-3.14.1
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 54 items / 1 error
+
+==================================== ERRORS ====================================
+_________ ERROR collecting tests/integration/test_analysis_service.py __________
+ImportError while importing test module '/Users/Robert/Code/public/tracktion/tests/integration/test_analysis_service.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../../../.local/share/uv/python/cpython-3.11.13-macos-aarch64-none/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/integration/test_analysis_service.py:19: in <module>
+    from main import AnalysisService
+services/analysis_service/src/main.py:24: in <module>
+    from message_consumer import MessageConsumer
+services/analysis_service/src/message_consumer.py:18: in <module>
+    from .audio_cache import AudioCache
+E   ImportError: attempted relative import with no known parent package
+=============================== warnings summary ===============================
+.venv/lib/python3.11/site-packages/pydantic/_internal/_config.py:323
+  /Users/Robert/Code/public/tracktion/.venv/lib/python3.11/site-packages/pydantic/_internal/_config.py:323: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+services/file_rename_service/api/feedback_routes.py:53
+  /Users/Robert/Code/public/tracktion/services/file_rename_service/api/feedback_routes.py:53: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    @validator("proposal_id")
+
+services/file_rename_service/api/feedback_routes.py:59
+  /Users/Robert/Code/public/tracktion/services/file_rename_service/api/feedback_routes.py:59: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    @validator("original_filename", "proposed_filename")
+
+services/file_rename_service/api/feedback_routes.py:65
+  /Users/Robert/Code/public/tracktion/services/file_rename_service/api/feedback_routes.py:65: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    @validator("user_filename")
+
+services/file_rename_service/api/feedback_routes.py:73
+  /Users/Robert/Code/public/tracktion/services/file_rename_service/api/feedback_routes.py:73: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    @validator("confidence_score")
+
+services/file_rename_service/api/feedback_routes.py:79
+  /Users/Robert/Code/public/tracktion/services/file_rename_service/api/feedback_routes.py:79: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    @validator("model_version")
+
+services/file_rename_service/api/feedback_routes.py:85
+  /Users/Robert/Code/public/tracktion/services/file_rename_service/api/feedback_routes.py:85: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    @validator("context_metadata")
+
+services/file_rename_service/api/feedback_routes.py:119
+  /Users/Robert/Code/public/tracktion/services/file_rename_service/api/feedback_routes.py:119: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    @validator("name")
+
+services/file_rename_service/api/feedback_routes.py:125
+  /Users/Robert/Code/public/tracktion/services/file_rename_service/api/feedback_routes.py:125: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    @validator("variant_a", "variant_b")
+
+services/file_rename_service/api/feedback_routes.py:131
+  /Users/Robert/Code/public/tracktion/services/file_rename_service/api/feedback_routes.py:131: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    @validator("description")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR tests/integration/test_analysis_service.py
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+======================== 10 warnings, 1 error in 13.32s ========================

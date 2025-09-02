@@ -1,21 +1,13 @@
 """Unit tests for main file watcher service."""
 
 import signal
-
-# Import the service to test
-import sys
 import threading
 import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-sys.path.insert(
-    0,
-    str(Path(__file__).parent.parent.parent.parent / "services" / "file_watcher" / "src"),
-)
-from main import FileWatcherService
+from services.file_watcher.src.main import FileWatcherService
 
 
 class TestFileWatcherService:
@@ -84,7 +76,7 @@ class TestFileWatcherService:
         service = FileWatcherService()
         assert str(service.scan_path) == str(new_path)
 
-    @patch("main.signal.signal")  # Mock signal handling
+    @patch("services.file_watcher.src.main.signal.signal")  # Mock signal handling
     def test_invalid_directory_path(self, mock_signal, monkeypatch, tmp_path):
         """Test that service exits with error when directory doesn't exist."""
         non_existent = tmp_path / "non_existent_path"
@@ -98,8 +90,8 @@ class TestFileWatcherService:
 
         assert exc_info.value.code == 1
 
-    @patch("main.signal.signal")  # Mock signal handling
-    @patch("main.os.access")
+    @patch("services.file_watcher.src.main.signal.signal")  # Mock signal handling
+    @patch("services.file_watcher.src.main.os.access")
     def test_permission_denied(self, mock_access, mock_signal, monkeypatch, tmp_path):
         """Test that service exits with error when no read permission."""
         test_path = tmp_path / "no_permission"
@@ -117,10 +109,10 @@ class TestFileWatcherService:
 
         assert exc_info.value.code == 1
 
-    @patch("main.signal.signal")  # Mock signal handling
-    @patch("main.MessagePublisher")
-    @patch("main.Observer")
-    @patch("main.TracktionEventHandler")
+    @patch("services.file_watcher.src.main.signal.signal")  # Mock signal handling
+    @patch("services.file_watcher.src.main.MessagePublisher")
+    @patch("services.file_watcher.src.main.Observer")
+    @patch("services.file_watcher.src.main.TracktionEventHandler")
     def test_start_with_successful_connection(
         self,
         mock_handler_class,
@@ -166,9 +158,9 @@ class TestFileWatcherService:
         assert mock_observer.join.called
         assert mock_publisher.disconnect.called
 
-    @patch("main.signal.signal")  # Mock signal handling
-    @patch("main.MessagePublisher")
-    @patch("main.Observer")
+    @patch("services.file_watcher.src.main.signal.signal")  # Mock signal handling
+    @patch("services.file_watcher.src.main.MessagePublisher")
+    @patch("services.file_watcher.src.main.Observer")
     def test_start_with_rabbitmq_connection_failure(
         self, mock_observer_class, mock_publisher_class, mock_signal, mock_env
     ):
@@ -200,9 +192,9 @@ class TestFileWatcherService:
         service.running = False
         service_thread.join(timeout=2)
 
-    @patch("main.signal.signal")  # Mock signal handling
-    @patch("main.MessagePublisher")
-    @patch("main.Observer")
+    @patch("services.file_watcher.src.main.signal.signal")  # Mock signal handling
+    @patch("services.file_watcher.src.main.MessagePublisher")
+    @patch("services.file_watcher.src.main.Observer")
     def test_observer_restart_on_failure(self, mock_observer_class, mock_publisher_class, mock_signal, mock_env):
         """Test that observer is restarted if it dies."""
         mock_publisher = MagicMock()
@@ -247,8 +239,8 @@ class TestFileWatcherService:
 
         assert service.running is False
 
-    @patch("main.MessagePublisher")
-    @patch("main.Observer")
+    @patch("services.file_watcher.src.main.MessagePublisher")
+    @patch("services.file_watcher.src.main.Observer")
     def test_cleanup_with_running_observer(self, mock_observer_class, mock_publisher_class, mock_env):
         """Test cleanup with running observer."""
         mock_publisher = MagicMock()
@@ -266,8 +258,8 @@ class TestFileWatcherService:
         assert mock_observer.join.called
         assert mock_publisher.disconnect.called
 
-    @patch("main.MessagePublisher")
-    @patch("main.Observer")
+    @patch("services.file_watcher.src.main.MessagePublisher")
+    @patch("services.file_watcher.src.main.Observer")
     def test_cleanup_with_stuck_observer(self, mock_observer_class, mock_publisher_class, mock_env):
         """Test cleanup when observer doesn't stop within timeout."""
         mock_publisher = MagicMock()
@@ -294,9 +286,9 @@ class TestFileWatcherService:
         # Should not raise any exceptions
         service._cleanup()
 
-    @patch("main.signal.signal")  # Mock signal handling
-    @patch("main.MessagePublisher")
-    @patch("main.Observer")
+    @patch("services.file_watcher.src.main.signal.signal")  # Mock signal handling
+    @patch("services.file_watcher.src.main.MessagePublisher")
+    @patch("services.file_watcher.src.main.Observer")
     def test_observer_schedule_failure(self, mock_observer_class, mock_publisher_class, mock_signal, mock_env):
         """Test handling of observer schedule failure."""
         mock_publisher = MagicMock()

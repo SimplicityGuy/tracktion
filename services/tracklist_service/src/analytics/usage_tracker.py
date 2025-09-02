@@ -10,7 +10,7 @@ from typing import Any
 
 import redis.asyncio as redis
 
-from src.auth.models import User
+from services.tracklist_service.src.auth.models import User
 
 logger = logging.getLogger(__name__)
 

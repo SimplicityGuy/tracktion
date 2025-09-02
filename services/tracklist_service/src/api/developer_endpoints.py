@@ -14,9 +14,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
-from src.analytics.usage_tracker import AggregationPeriod, UsageTracker
-from src.auth.authentication import AuthenticationManager
-from src.auth.models import User
+from services.tracklist_service.src.analytics.usage_tracker import AggregationPeriod, UsageTracker
+from services.tracklist_service.src.auth.authentication import AuthenticationManager
+from services.tracklist_service.src.auth.models import User
 
 logger = logging.getLogger(__name__)
 

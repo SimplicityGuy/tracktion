@@ -10,8 +10,8 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.cue_file import CueFileDB
-from src.repository.cue_file_repository import CueFileRepository
+from services.tracklist_service.src.models.cue_file import CueFileDB
+from services.tracklist_service.src.repository.cue_file_repository import CueFileRepository
 
 
 @pytest.fixture

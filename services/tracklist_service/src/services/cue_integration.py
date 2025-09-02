@@ -29,9 +29,9 @@ from cue_handler.format_mappings import (
 from cue_handler.models import CueTime
 
 # Local imports
-from src.models.cue_file import CueFormat
-from src.models.tracklist import Tracklist
-from src.utils.time_utils import timedelta_to_milliseconds
+from services.tracklist_service.src.models.cue_file import CueFormat
+from services.tracklist_service.src.models.tracklist import Tracklist
+from services.tracklist_service.src.utils.time_utils import timedelta_to_milliseconds
 
 # Add the analysis service to the path so we can import from it
 analysis_service_path = Path(__file__).parent.parent.parent.parent / "analysis_service" / "src"

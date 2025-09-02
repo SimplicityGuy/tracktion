@@ -12,7 +12,13 @@ from uuid import uuid4
 
 from bs4 import BeautifulSoup, Tag
 
-from src.models.search_models import PaginationInfo, SearchRequest, SearchResponse, SearchResult, SearchType
+from services.tracklist_service.src.models.search_models import (
+    PaginationInfo,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+    SearchType,
+)
 
 from .base_scraper import ScraperBase
 

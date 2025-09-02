@@ -30,16 +30,16 @@ from services.analysis_service.src.cue_handler import (
     TraktorGenerator,
 )
 
+# Import request/response models from models.cue_file to avoid duplication
+from services.tracklist_service.src.models.cue_file import BatchCueGenerationResponse as ModelBatchCueGenerationResponse
+from services.tracklist_service.src.models.cue_file import BatchGenerateCueRequest as ModelBatchGenerateCueRequest
+from services.tracklist_service.src.models.cue_file import CueGenerationResponse as ModelCueGenerationResponse
+from services.tracklist_service.src.models.cue_file import GenerateCueRequest as ModelGenerateCueRequest
+
 # Import time utilities
 from services.tracklist_service.src.utils.time_utils import parse_cue_time
 from shared.core_types.src.database import DatabaseManager
 from shared.core_types.src.repositories import JobRepository, JobStatus
-
-# Import request/response models from models.cue_file to avoid duplication
-from src.models.cue_file import BatchCueGenerationResponse as ModelBatchCueGenerationResponse
-from src.models.cue_file import BatchGenerateCueRequest as ModelBatchGenerateCueRequest
-from src.models.cue_file import CueGenerationResponse as ModelCueGenerationResponse
-from src.models.cue_file import GenerateCueRequest as ModelGenerateCueRequest
 
 CUE_HANDLER_AVAILABLE = True
 

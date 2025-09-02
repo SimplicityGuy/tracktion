@@ -1,0 +1,43 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.11.13, pytest-8.4.1, pluggy-1.6.0 -- /Users/Robert/Code/public/tracktion/.venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /Users/Robert/Code/public/tracktion
+configfile: pyproject.toml
+plugins: asyncio-1.1.0, anyio-4.10.0, cov-6.2.1, mock-3.14.1
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... /Users/Robert/Code/public/tracktion/.venv/lib/python3.11/site-packages/_pytest/unraisableexception.py:33: RuntimeWarning: coroutine 'AsyncProgressTracker.initialize' was never awaited
+  gc.collect()
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+collected 0 items / 1 error
+
+==================================== ERRORS ====================================
+_________ ERROR collecting tests/unit/analysis_service/api/test_app.py _________
+tests/unit/analysis_service/api/test_app.py:8: in <module>
+    from services.analysis_service.src.api.app import app
+services/analysis_service/src/api/__init__.py:3: in <module>
+    from .app import app
+services/analysis_service/src/api/app.py:11: in <module>
+    from .endpoints import (
+services/analysis_service/src/api/endpoints/__init__.py:7: in <module>
+    from .streaming import router as streaming_router
+services/analysis_service/src/api/endpoints/streaming.py:37: in <module>
+    _tracker_task_ref = asyncio.create_task(progress_tracker.initialize())
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.11.13-macos-aarch64-none/lib/python3.11/asyncio/tasks.py:381: in create_task
+    loop = events.get_running_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: no running event loop
+------------------------------- Captured stderr --------------------------------
+Attempt 1 failed, retrying in 2.0s: (psycopg2.OperationalError) connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+connection to server at "localhost" (::1), port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Attempt 2 failed, retrying in 4.0s: Couldn't connect to localhost:7687 (resolved to ('127.0.0.1:7687', '[::1]:7687')):
+Failed to establish connection to ResolvedIPv4Address(('127.0.0.1', 7687)) (reason [Errno 61] Connection refused)
+Failed to establish connection to ResolvedIPv6Address(('::1', 7687, 0, 0)) (reason [Errno 61] Connection refused)
+=========================== short test summary info ============================
+ERROR tests/unit/analysis_service/api/test_app.py - RuntimeError: no running ...
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+=============================== 1 error in 1.83s ===============================

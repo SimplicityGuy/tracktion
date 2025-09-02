@@ -7,7 +7,7 @@ from typing import Any
 
 import redis.asyncio as redis
 
-from src.auth.models import User, UserTier
+from services.tracklist_service.src.auth.models import User, UserTier
 
 from .models import QuotaAlert, QuotaLimits, QuotaResult, QuotaStatus, QuotaType, QuotaUpgrade, QuotaUsage
 

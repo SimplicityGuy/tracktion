@@ -13,8 +13,8 @@ from uuid import UUID
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
+from services.tracklist_service.src.models.tracklist import TrackEntry
 from shared.core_types.src.models import Metadata, Recording
-from src.models.tracklist import TrackEntry
 
 logger = logging.getLogger(__name__)
 

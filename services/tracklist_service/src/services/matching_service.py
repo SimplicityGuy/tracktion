@@ -17,8 +17,8 @@ from uuid import UUID
 if TYPE_CHECKING:
     from src.models.tracklist import Tracklist
 
-from src.models.tracklist_models import CuePoint, Track, TracklistMetadata
-from src.models.tracklist_models import Tracklist as ScrapedTracklist
+from services.tracklist_service.src.models.tracklist_models import CuePoint, Track, TracklistMetadata
+from services.tracklist_service.src.models.tracklist_models import Tracklist as ScrapedTracklist
 
 logger = logging.getLogger(__name__)
 

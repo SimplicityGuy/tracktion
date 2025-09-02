@@ -14,7 +14,14 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Tag
 
-from src.models.tracklist_models import CuePoint, Track, Tracklist, TracklistMetadata, Transition, TransitionType
+from services.tracklist_service.src.models.tracklist_models import (
+    CuePoint,
+    Track,
+    Tracklist,
+    TracklistMetadata,
+    Transition,
+    TransitionType,
+)
 
 from .base_scraper import ScraperBase
 

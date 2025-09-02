@@ -17,9 +17,9 @@ import aio_pika
 from aio_pika import ExchangeType, Message
 from aio_pika.abc import AbstractIncomingMessage
 
-from src.config import get_config
-from src.exceptions import MessageQueueError
-from src.models.tracklist import ImportTracklistRequest
+from services.tracklist_service.src.config import get_config
+from services.tracklist_service.src.exceptions import MessageQueueError
+from services.tracklist_service.src.models.tracklist import ImportTracklistRequest
 
 if TYPE_CHECKING:
     from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractExchange

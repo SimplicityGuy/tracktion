@@ -15,8 +15,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from src.cache.redis_cache import RedisCache
-from src.exceptions import (
+from services.tracklist_service.src.cache.redis_cache import RedisCache
+from services.tracklist_service.src.exceptions import (
     CueGenerationError,
     DatabaseError,
     ImportError,
@@ -27,15 +27,15 @@ from src.exceptions import (
     TimingError,
     ValidationError,
 )
-from src.messaging.import_handler import ImportJobMessage, import_message_handler
-from src.messaging.simple_handler import MessageHandler
-from src.models.cue_file import CueFormat
-from src.models.tracklist import ImportTracklistRequest, ImportTracklistResponse, TracklistDB
-from src.retry.retry_manager import FailureType, RetryManager, RetryPolicy
-from src.services.cue_integration import CueIntegrationService
-from src.services.import_service import ImportService
-from src.services.matching_service import MatchingService
-from src.services.timing_service import TimingService
+from services.tracklist_service.src.messaging.import_handler import ImportJobMessage, import_message_handler
+from services.tracklist_service.src.messaging.simple_handler import MessageHandler
+from services.tracklist_service.src.models.cue_file import CueFormat
+from services.tracklist_service.src.models.tracklist import ImportTracklistRequest, ImportTracklistResponse, TracklistDB
+from services.tracklist_service.src.retry.retry_manager import FailureType, RetryManager, RetryPolicy
+from services.tracklist_service.src.services.cue_integration import CueIntegrationService
+from services.tracklist_service.src.services.import_service import ImportService
+from services.tracklist_service.src.services.matching_service import MatchingService
+from services.tracklist_service.src.services.timing_service import TimingService
 
 logger = logging.getLogger(__name__)
 

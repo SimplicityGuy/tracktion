@@ -11,7 +11,7 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from src.exceptions import (
+from services.tracklist_service.src.exceptions import (
     AudioFileError,
     ConcurrentEditError,
     CueGenerationError,

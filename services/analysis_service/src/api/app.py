@@ -17,6 +17,7 @@ from .endpoints import (
     tracklist_router,
     websocket_router,
 )
+from .endpoints.streaming import ensure_tracker_initialized
 from .errors import register_error_handlers
 from .middleware import ErrorHandlingMiddleware, RequestIDMiddleware, TimingMiddleware
 from .rate_limiter import RateLimitConfig, RateLimitMiddleware
@@ -32,7 +33,8 @@ async def lifespan(app: FastAPI) -> Any:
     logger.info("Starting Analysis Service API", extra={"service": "analysis_service"})
 
     # Initialize async resources here
-    # e.g., database connections, message queues, etc.
+    # Initialize the progress tracker from streaming endpoint
+    await ensure_tracker_initialized()
 
     yield
 

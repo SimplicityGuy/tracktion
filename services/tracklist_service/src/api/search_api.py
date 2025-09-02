@@ -14,8 +14,8 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from src.cache.redis_cache import RedisCache
-from src.services.import_service import ImportService
+from services.tracklist_service.src.cache.redis_cache import RedisCache
+from services.tracklist_service.src.services.import_service import ImportService
 
 logger = logging.getLogger(__name__)
 
