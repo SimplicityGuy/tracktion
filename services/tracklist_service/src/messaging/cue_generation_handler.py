@@ -33,6 +33,7 @@ from services.tracklist_service.src.models.cue_file import (
     CueGenerationResponse,
     GenerateCueRequest,
 )
+from services.tracklist_service.src.models.tracklist import Tracklist, TracklistDB
 from services.tracklist_service.src.services.cue_generation_service import CueGenerationService
 from services.tracklist_service.src.services.storage_service import StorageService
 
@@ -77,8 +78,8 @@ class CueGenerationMessageHandler:
         logger.info(f"Processing CUE generation request {message.job_id} for tracklist {message.tracklist_id}")
 
         try:
-            # Get tracklist (placeholder - implement actual retrieval)
-            tracklist = await self._get_tracklist_by_id(message.tracklist_id)
+            # Get tracklist from database
+            tracklist = await self.get_tracklist(message.tracklist_id)
             if not tracklist:
                 await self._send_completion_message(
                     message,
@@ -163,8 +164,8 @@ class CueGenerationMessageHandler:
         )
 
         try:
-            # Get tracklist
-            tracklist = await self._get_tracklist_by_id(message.tracklist_id)
+            # Get tracklist from database
+            tracklist = await self.get_tracklist(message.tracklist_id)
             if not tracklist:
                 await self._send_batch_completion_message(
                     message,
@@ -382,38 +383,37 @@ class CueGenerationMessageHandler:
             )
             await rabbitmq_message.reject(requeue=True)
 
-    async def _get_tracklist_by_id(self, tracklist_id: UUID) -> Any | None:
-        """Get tracklist by ID (placeholder implementation)."""
-        # TODO: Implement actual tracklist retrieval from database
-        # This would interface with the tracklist repository/service
-        logger.debug(f"Retrieving tracklist {tracklist_id} (placeholder)")
+    async def get_tracklist(self, tracklist_id: UUID) -> Tracklist | None:
+        """
+        Get tracklist by ID from database.
 
-        # Return mock tracklist for testing until database integration is complete
-        # In production, this would query the actual tracklist database
+        Args:
+            tracklist_id: UUID of the tracklist to retrieve
 
-        class MockTrack:
-            def __init__(self, idx: int):
-                self.title = f"Track {idx}"
-                self.artist = f"Artist {idx}"
-                self.start_time = f"{(idx - 1) * 5:02d}:00:00"
-                self.end_time = f"{idx * 5:02d}:00:00" if idx < 10 else None
-                self.bpm = 120 + idx
-                self.key = "Am" if idx % 2 else "C"
+        Returns:
+            Tracklist model if found, None otherwise
 
-        class MockTracklist:
-            def __init__(self, tracklist_id: UUID):
-                self.id = tracklist_id
-                self.title = "Test Mix"
-                self.artist = "Test DJ"
-                self.audio_file_path = "audio.wav"
-                self.created_at = datetime.now(UTC)
-                self.tracks = [MockTrack(i) for i in range(1, 6)]
-                self.genre = "Electronic"
-                self.source = "test"
+        Raises:
+            Exception: If database query fails
+        """
+        try:
+            async with self.session_factory() as session:
+                # Query the tracklist from database
+                tracklist_db = await session.get(TracklistDB, tracklist_id)
 
-        # Return mock data for testing
-        # This ensures the service can function until proper DB integration
-        return MockTracklist(tracklist_id)
+                if not tracklist_db:
+                    logger.warning(f"Tracklist {tracklist_id} not found in database")
+                    return None
+
+                # Convert to Pydantic model for use by CUE generation service
+                tracklist_model: Tracklist = tracklist_db.to_model()
+
+                logger.debug(f"Retrieved tracklist {tracklist_id} with {len(tracklist_model.tracks)} tracks")
+                return tracklist_model
+
+        except Exception as e:
+            logger.error(f"Error retrieving tracklist {tracklist_id} from database: {e}", exc_info=True)
+            raise
 
     async def _send_completion_message(
         self,

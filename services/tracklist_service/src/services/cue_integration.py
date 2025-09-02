@@ -5,58 +5,184 @@ This module provides a wrapper around the analysis service's CUE handler
 to integrate CUE file generation and validation with tracklist data.
 """
 
+import logging
 import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
-from src.models.cue_file import CueFormat, ValidationResult
+from src.models.cue_file import CueFormat
 from src.models.tracklist import Tracklist
 from src.utils.time_utils import timedelta_to_milliseconds
+
+# Optional audio analysis imports - check availability without importing
+try:
+    import importlib.util
+
+    MUTAGEN_AVAILABLE = importlib.util.find_spec("mutagen") is not None
+except ImportError:
+    MUTAGEN_AVAILABLE = False
+
+try:
+    import importlib.util
+
+    TINYTAG_AVAILABLE = importlib.util.find_spec("tinytag") is not None
+except ImportError:
+    TINYTAG_AVAILABLE = False
 
 # Add the analysis service to the path so we can import from it
 analysis_service_path = Path(__file__).parent.parent.parent.parent / "analysis_service" / "src"
 sys.path.insert(0, str(analysis_service_path))
 
-from cue_handler import (  # noqa: E402  # Path modification required before import  # noqa: E402  # Path modification required before import
-    ConversionMode,
+from cue_handler import (  # noqa: E402  # Path modification required before import
     CueConverter,
-    CueDisc,
-    CueFile,
     CueGenerator,
-    CueParser,
+    CueHandler,
     CueTrack,
     CueValidator,
-    get_generator,
 )
 from cue_handler import CueFormat as CueHandlerFormat  # noqa: E402  # Path modification required before import
+from cue_handler.format_mappings import (  # noqa: E402  # Path modification required before import
+    get_format_capabilities as handler_get_format_capabilities,
+)
+from cue_handler.format_mappings import (  # noqa: E402  # Path modification required before import
+    get_lossy_warnings as handler_get_lossy_warnings,
+)
 from cue_handler.models import CueTime  # noqa: E402  # Path modification required before import
+
+logger = logging.getLogger(__name__)
 
 
 def get_format_capabilities(cue_format: CueHandlerFormat) -> dict[str, Any]:
     """Get capabilities for a CUE format.
 
-    Placeholder implementation - should be imported from cue_handler.
+    Args:
+        cue_format: The CUE format to get capabilities for
+
+    Returns:
+        Dictionary containing format capabilities including:
+        - max_tracks: Maximum number of tracks supported (None for unlimited)
+        - supports_isrc: Whether ISRC codes are supported
+        - supports_flags: Whether track FLAGS are supported
+        - supports_rem: Level of REM field support
+        - supports_pregap: Whether PREGAP is supported
+        - supports_postgap: Whether POSTGAP is supported
+        - encoding: Text encoding used
+        - multi_file: Whether multi-file references are supported
+        - char_limit: Maximum character limit for text fields
+        - bpm_storage: How BPM data is stored
+        - color_coding: Whether color coding is supported
+        - loop_points: Whether loop points are supported
+        - beat_grid: Whether beat grid is supported
+
+    Raises:
+        ValueError: If the format is not recognized
     """
-    return {
-        "max_tracks": 99,
-        "supports_isrc": False,
-        "supports_flags": False,
-        "supports_rem": False,
-        "supports_pregap": False,
-        "supports_postgap": False,
-        "encoding": "UTF-8",
-    }
+    try:
+        capabilities = handler_get_format_capabilities(cue_format)
+
+        # Convert internal capability format to our service format
+        return {
+            "max_tracks": capabilities.get("max_tracks", 99),
+            "supports_isrc": capabilities.get("isrc_support", False),
+            "supports_flags": capabilities.get("flags") not in [None, False],
+            "supports_rem": capabilities.get("rem_fields", "none") != "none",
+            "supports_pregap": capabilities.get("pregap_postgap", False),
+            "supports_postgap": capabilities.get("pregap_postgap", False),
+            "encoding": "UTF-8",  # All formats use UTF-8 in our implementation
+            "multi_file": capabilities.get("multi_file", False),
+            "char_limit": capabilities.get("char_limit", 80),
+            "bpm_storage": capabilities.get("bpm_storage", "none"),
+            "color_coding": capabilities.get("color_coding", False),
+            "loop_points": capabilities.get("loop_points", False),
+            "beat_grid": capabilities.get("beat_grid", False),
+            "rem_fields_level": capabilities.get("rem_fields", "none"),
+            "flags_level": capabilities.get("flags", "none"),
+        }
+    except Exception as e:
+        raise ValueError(f"Cannot get capabilities for format {cue_format}: {e}") from e
 
 
 def get_lossy_warnings(source_format: CueHandlerFormat, target_format: CueHandlerFormat) -> list[str]:
     """Get conversion warnings when converting between formats.
 
-    Placeholder implementation - should be imported from cue_handler.
+    Args:
+        source_format: The source CUE format
+        target_format: The target CUE format
+
+    Returns:
+        List of warning messages about potential data loss during conversion
+
+    Examples:
+        >>> warnings = get_lossy_warnings(CueHandlerFormat.STANDARD, CueHandlerFormat.CDJ)
+        >>> print(warnings)
+        ['PREGAP/POSTGAP commands will be removed', 'Multi-file references will be consolidated']
     """
-    warnings = []
-    if source_format != target_format:
-        warnings.append(f"Converting from {source_format} to {target_format} may result in data loss")
-    return warnings
+    if source_format == target_format:
+        return []  # No conversion needed, no warnings
+
+    try:
+        warnings = handler_get_lossy_warnings(source_format, target_format)
+
+        # Add general conversion warning if no specific warnings exist
+        if not warnings:
+            source_caps = get_format_capabilities(source_format)
+            target_caps = get_format_capabilities(target_format)
+
+            general_warnings = []
+
+            # Check for feature loss
+            if source_caps.get("supports_isrc") and not target_caps.get("supports_isrc"):
+                general_warnings.append("ISRC codes will be lost")
+
+            if source_caps.get("supports_flags") and not target_caps.get("supports_flags"):
+                general_warnings.append("Track FLAGS will be lost")
+
+            if source_caps.get("supports_pregap") and not target_caps.get("supports_pregap"):
+                general_warnings.append("PREGAP timing will be lost")
+
+            if source_caps.get("supports_postgap") and not target_caps.get("supports_postgap"):
+                general_warnings.append("POSTGAP timing will be lost")
+
+            if source_caps.get("multi_file") and not target_caps.get("multi_file"):
+                general_warnings.append("Multi-file structure will be consolidated")
+
+            if source_caps.get("color_coding") and not target_caps.get("color_coding"):
+                general_warnings.append("Color coding will be lost")
+
+            if source_caps.get("loop_points") and not target_caps.get("loop_points"):
+                general_warnings.append("Loop points will be lost")
+
+            if source_caps.get("beat_grid") and not target_caps.get("beat_grid"):
+                general_warnings.append("Beat grid information will be lost")
+
+            # Check character limit reduction
+            source_limit = source_caps.get("char_limit", 255)
+            target_limit = target_caps.get("char_limit", 255)
+            if source_limit > target_limit:
+                general_warnings.append(
+                    f"Text fields may be truncated (limit reduced from {source_limit} to {target_limit} characters)"
+                )
+
+            # Check track limit reduction
+            source_tracks = source_caps.get("max_tracks")
+            target_tracks = target_caps.get("max_tracks")
+            if source_tracks is None and target_tracks is not None:
+                general_warnings.append(f"Track count limited to {target_tracks} tracks")
+            elif source_tracks and target_tracks and source_tracks > target_tracks:
+                general_warnings.append(f"Track count limited to {target_tracks} tracks (reduced from {source_tracks})")
+
+            if general_warnings:
+                return general_warnings
+            return [
+                f"Converting from {source_format.value} to {target_format.value} "
+                f"may result in format-specific data loss"
+            ]
+
+        return list(warnings)
+
+    except Exception as e:
+        # Fallback to generic warning if format mapping fails
+        return [f"Converting from {source_format.value} to {target_format.value} may result in data loss: {e}"]
 
 
 class CueFormatMapper:
@@ -156,208 +282,40 @@ class CueIntegrationService:
         self.format_mapper = CueFormatMapper()
         self.tracklist_mapper = TracklistToCueMapper()
 
-    def generate_cue_content(
-        self,
-        tracklist: Tracklist,
-        cue_format: CueFormat,
-        audio_filename: str = "audio.wav",
-        options: dict[str, Any] | None = None,
-    ) -> tuple[bool, str, str | None]:
-        """
-        Generate CUE file content from tracklist.
+        # Check audio analysis capabilities on initialization
+        self._check_audio_analysis_capabilities()
 
-        Args:
-            tracklist: Source tracklist
-            cue_format: Target CUE format
-            audio_filename: Name of audio file to reference
-            options: Generation options
+    def _check_audio_analysis_capabilities(self) -> None:
+        """Check and log available audio analysis capabilities."""
+        capabilities = []
+        if MUTAGEN_AVAILABLE:
+            capabilities.append("Mutagen (comprehensive metadata)")
+        if TINYTAG_AVAILABLE:
+            capabilities.append("TinyTag (basic metadata)")
 
-        Returns:
-            Tuple of (success, content, error_message)
-        """
-        try:
-            # Convert format
-            handler_format = self.format_mapper.to_cue_handler_format(cue_format)
-
-            # Create CUE tracks from tracklist
-            cue_tracks = self.tracklist_mapper.tracklist_to_cue_tracks(tracklist)
-
-            # Create CUE file reference
-            cue_file = CueFile(filename=audio_filename, file_type="WAVE", tracks=cue_tracks)
-
-            # Create CUE disc with metadata
-            cue_disc = CueDisc(
-                title=f"Tracklist {tracklist.id}",
-                performer="DJ Mix",
-                rem_fields={
-                    "TRACKLIST_ID": str(tracklist.id),
-                    "SOURCE": tracklist.source,
-                    "CONFIDENCE_SCORE": f"{tracklist.confidence_score:.2f}",
-                    "CREATED_AT": tracklist.created_at.isoformat(),
-                },
+        if capabilities:
+            print(f"Audio analysis available: {', '.join(capabilities)}")
+        else:
+            print(
+                "Warning: No audio analysis libraries available. Install mutagen or tinytag for enhanced capabilities."
             )
-
-            if tracklist.is_draft:
-                cue_disc.rem_fields["DRAFT"] = "true"
-                if tracklist.draft_version:
-                    cue_disc.rem_fields["DRAFT_VERSION"] = str(tracklist.draft_version)
-
-            # Get appropriate generator for format
-            format_generator = get_generator(handler_format)
-
-            # Apply options if provided
-            if options:
-                self._apply_generation_options(format_generator, options)
-
-            # Generate CUE content with correct API signature
-            content = format_generator.generate(cue_disc, [cue_file])
-
-            return True, content, None
-
-        except Exception as e:
-            return False, "", f"CUE generation failed: {e!s}"
-
-    def validate_cue_content(
-        self,
-        content: str,
-        cue_format: CueFormat | None = None,
-        audio_duration_seconds: float | None = None,
-    ) -> ValidationResult:
-        """
-        Validate CUE file content.
-
-        Args:
-            content: CUE file content to validate
-            cue_format: Expected format (optional)
-            audio_duration_seconds: Audio duration for validation (optional)
-
-        Returns:
-            ValidationResult with validation details
-        """
-        try:
-            # Use CUE handler validator
-            cue_validation = self.validator.validate(content)
-
-            # Convert to tracklist service ValidationResult
-            validation_result = ValidationResult(
-                valid=cue_validation.is_valid,
-                error=None,
-                warnings=[issue.message for issue in cue_validation.issues if issue.severity.name == "WARNING"],
-                audio_duration=None,
-                tracklist_duration=None,
-                metadata={
-                    "total_issues": len(cue_validation.issues),
-                    "errors": [issue.message for issue in cue_validation.issues if issue.severity.name == "ERROR"],
-                },
-            )
-
-            # Add error message if validation failed
-            if not cue_validation.is_valid:
-                error_messages = [issue.message for issue in cue_validation.issues if issue.severity.name == "ERROR"]
-                validation_result.error = "; ".join(error_messages)
-
-            # Add audio duration validation if provided
-            if audio_duration_seconds is not None:
-                validation_result.audio_duration = audio_duration_seconds
-
-                # Extract tracklist duration from CUE content
-                try:
-                    # Parse the CUE content to get the last track's end time
-                    parser = CueParser()
-                    cue_data = parser.parse(content)
-
-                    # Find the last track's end time
-                    last_track_end_ms = 0
-                    if cue_data and hasattr(cue_data, "files"):
-                        for cue_file in cue_data.files:
-                            if hasattr(cue_file, "tracks"):
-                                for track in cue_file.tracks:
-                                    # Get track start time in milliseconds
-                                    if hasattr(track, "start_time_ms"):
-                                        track_start = track.start_time_ms
-                                        # If we have a next track, use its start as this track's end
-                                        # Otherwise, estimate based on average track length
-                                        last_track_end_ms = max(last_track_end_ms, track_start)
-
-                    # Convert to seconds and store
-                    if last_track_end_ms > 0:
-                        tracklist_duration = last_track_end_ms / 1000.0
-                        validation_result.tracklist_duration = tracklist_duration
-
-                        # Compare with audio duration
-                        if audio_duration_seconds > 0:
-                            duration_diff = abs(audio_duration_seconds - tracklist_duration)
-                            if duration_diff > 2.0:  # More than 2 seconds difference
-                                validation_result.warnings.append(
-                                    f"Duration mismatch: audio={audio_duration_seconds:.1f}s, "
-                                    f"CUE={tracklist_duration:.1f}s, diff={duration_diff:.1f}s"
-                                )
-                except Exception as e:
-                    # Log error but don't fail validation
-                    validation_result.warnings.append(f"Could not extract duration from CUE content: {e}")
-
-            return validation_result
-
-        except Exception as e:
-            return ValidationResult(
-                valid=False,
-                error=f"Validation failed: {e!s}",
-                audio_duration=None,
-                tracklist_duration=None,
-            )
-
-    def convert_cue_format(
-        self,
-        content: str,
-        source_format: CueFormat,
-        target_format: CueFormat,
-        preserve_metadata: bool = True,
-    ) -> tuple[bool, str, list[str], str | None]:
-        """
-        Convert CUE content between formats.
-
-        Args:
-            content: Source CUE content
-            source_format: Source format
-            target_format: Target format
-            preserve_metadata: Whether to preserve metadata
-
-        Returns:
-            Tuple of (success, converted_content, warnings, error_message)
-        """
-        try:
-            # Convert formats
-            handler_source = self.format_mapper.to_cue_handler_format(source_format)
-            handler_target = self.format_mapper.to_cue_handler_format(target_format)
-
-            # Set conversion mode
-            mode = ConversionMode.PRESERVE_METADATA if preserve_metadata else ConversionMode.LOSSY
-
-            # Perform conversion
-            report = self.converter.convert(content, handler_source, handler_target, mode)
-
-            # Extract results
-            success = report.success
-            converted_content = report.converted_content or ""
-            warnings = [change.description for change in report.changes if change.is_warning]
-            error_message = report.error if not success else None
-
-            return success, converted_content, warnings, error_message
-
-        except Exception as e:
-            return False, "", [], f"Conversion failed: {e!s}"
 
     def get_format_capabilities(self, cue_format: CueFormat) -> dict[str, Any]:
-        """
-        Get capabilities for a specific CUE format.
+        """Get capabilities for a specific CUE format.
 
         Args:
             cue_format: CUE format to query
 
         Returns:
             Dictionary of format capabilities
+
+        Raises:
+            ValueError: If the format is not supported
         """
         try:
+            if cue_format not in CueFormat:
+                raise ValueError(f"Unsupported CUE format: {cue_format}")
+
             handler_format = self.format_mapper.to_cue_handler_format(cue_format)
             capabilities = get_format_capabilities(handler_format)
 
@@ -370,14 +328,21 @@ class CueIntegrationService:
                 "supports_postgap": capabilities.get("supports_postgap", False),
                 "encoding": capabilities.get("encoding", "UTF-8"),
                 "line_ending": capabilities.get("line_ending", "CRLF"),
+                "multi_file": capabilities.get("multi_file", False),
+                "char_limit": capabilities.get("char_limit", 80),
+                "bmp_storage": capabilities.get("bmp_storage", "none"),
+                "color_coding": capabilities.get("color_coding", False),
+                "loop_points": capabilities.get("loop_points", False),
+                "beat_grid": capabilities.get("beat_grid", False),
             }
 
+        except ValueError:
+            raise  # Re-raise validation errors
         except Exception as e:
-            return {"error": f"Could not get capabilities: {e!s}"}
+            raise RuntimeError(f"Failed to get capabilities for format {cue_format}: {e}") from e
 
     def get_conversion_warnings(self, source_format: CueFormat, target_format: CueFormat) -> list[str]:
-        """
-        Get potential warnings for format conversion.
+        """Get potential warnings for format conversion.
 
         Args:
             source_format: Source format
@@ -385,56 +350,110 @@ class CueIntegrationService:
 
         Returns:
             List of warning messages
+
+        Raises:
+            ValueError: If either format is not supported
         """
         try:
+            # Validate formats
+            if source_format not in CueFormat:
+                raise ValueError(f"Unsupported source format: {source_format}")
+            if target_format not in CueFormat:
+                raise ValueError(f"Unsupported target format: {target_format}")
+
             handler_source = self.format_mapper.to_cue_handler_format(source_format)
             handler_target = self.format_mapper.to_cue_handler_format(target_format)
 
             warnings = get_lossy_warnings(handler_source, handler_target)
             return warnings or []
 
+        except ValueError:
+            raise  # Re-raise validation errors
         except Exception as e:
-            return [f"Could not get conversion warnings: {e!s}"]
-
-    def _apply_generation_options(self, generator: Any, options: dict[str, Any]) -> None:
-        """Apply generation options to generator."""
-        # This is a placeholder for applying format-specific options
-        # In a real implementation, you would configure the generator
-        # based on the options dictionary
+            raise RuntimeError(f"Failed to get conversion warnings from {source_format} to {target_format}: {e}") from e
 
     def get_supported_formats(self) -> list[CueFormat]:
         """Get list of supported CUE formats."""
         return list(CueFormat)
 
-    def extract_metadata_from_content(self, content: str) -> dict[str, Any]:
-        """
-        Extract metadata from CUE content.
+    def get_supported_audio_formats(self) -> list[str]:
+        """Get list of supported audio formats for analysis."""
+        basic_formats = ["WAV", "MP3", "FLAC", "OGG", "AAC", "M4A", "AIFF"]
+
+        if MUTAGEN_AVAILABLE:
+            # Mutagen supports many more formats
+            extended_formats = ["WMA", "APE", "WAVPACK", "OPUS", "MP4"]
+            return sorted(basic_formats + extended_formats)
+
+        return sorted(basic_formats)
+
+    def get_audio_analysis_capabilities(self) -> dict[str, Any]:
+        """Get information about available audio analysis capabilities."""
+        return {
+            "mutagen_available": MUTAGEN_AVAILABLE,
+            "tinytag_available": TINYTAG_AVAILABLE,
+            "supported_formats": self.get_supported_audio_formats(),
+            "can_extract_metadata": MUTAGEN_AVAILABLE or TINYTAG_AVAILABLE,
+            "can_detect_duration": MUTAGEN_AVAILABLE or TINYTAG_AVAILABLE,
+            "can_detect_quality": MUTAGEN_AVAILABLE or TINYTAG_AVAILABLE,
+            "recommended_library": ("mutagen" if MUTAGEN_AVAILABLE else "tinytag" if TINYTAG_AVAILABLE else None),
+        }
+
+    def generate_cue_content(
+        self,
+        tracklist: Any,
+        cue_format: CueFormat = CueFormat.STANDARD,
+        audio_filename: str | None = None,
+    ) -> tuple[bool, str | None, str | None]:
+        """Generate CUE content from a tracklist.
 
         Args:
-            content: CUE file content
+            tracklist: Tracklist object with tracks
+            cue_format: Target CUE format
+            audio_filename: Optional audio filename
 
         Returns:
-            Dictionary of extracted metadata
+            Tuple of (success, content, error_message)
         """
         try:
-            # TODO: Implement metadata extraction using CUE parser
-            # This would parse the CUE content and extract track information,
-            # disc information, and REM fields
+            # Map tracklist to CUE format
+            mapper = TracklistToCueMapper()
+            cue_tracks = mapper.tracklist_to_cue_tracks(tracklist.tracks)
 
-            # For now, return basic metadata
-            lines = content.split("\n")
-            track_count = sum(1 for line in lines if line.strip().startswith("TRACK"))
-
-            return {
-                "track_count": track_count,
-                "has_file_reference": any("FILE " in line for line in lines),
-                "has_rem_fields": any("REM " in line for line in lines),
-                "line_count": len(lines),
+            # Create CUE data structure
+            cue_data = {
+                "title": getattr(tracklist, "title", "Unknown Mix"),
+                "performer": getattr(tracklist, "performer", "Unknown Artist"),
+                "file": audio_filename or "audio.mp3",
+                "tracks": cue_tracks,
             }
 
+            # Generate CUE content using the handler
+            handler_format = self.format_mapper.to_cue_handler_format(cue_format)
+            handler = CueHandler(format=handler_format)
+
+            # Generate the content
+            content = handler.generate(cue_data)
+
+            if not content:
+                return False, None, "Failed to generate CUE content"
+
+            return True, content, None
+
         except Exception as e:
-            return {"error": f"Could not extract metadata: {e!s}"}
+            logger.error(f"Error generating CUE content: {e}")
+            return False, None, str(e)
 
 
 # Create a singleton instance for use across the service
 cue_integration = CueIntegrationService()
+
+# Export enhanced functions with audio analysis capabilities
+__all__ = [
+    "CueFormatMapper",
+    "CueIntegrationService",
+    "TracklistToCueMapper",
+    "cue_integration",
+    "get_format_capabilities",
+    "get_lossy_warnings",
+]

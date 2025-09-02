@@ -12,6 +12,13 @@ from typing import Any, ClassVar
 import essentia.standard as es
 import numpy as np
 
+from services.analysis_service.src.exceptions import (
+    AnalysisServiceError,
+    CorruptedFileError,
+    InvalidAudioFileError,
+    UnsupportedFormatError,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -104,9 +111,27 @@ class KeyDetector:
 
             return final_result
 
+        except FileNotFoundError as e:
+            logger.error(f"Audio file not found: {audio_file} - {e!s}")
+            raise InvalidAudioFileError(f"Audio file not found: {audio_file}") from e
+        except PermissionError as e:
+            logger.error(f"Permission denied accessing audio file: {audio_file} - {e!s}")
+            raise InvalidAudioFileError(f"Permission denied: {audio_file}") from e
+        except (OSError, RuntimeError) as e:
+            error_msg = str(e).lower()
+            if "corrupt" in error_msg or "invalid" in error_msg or "unsupported" in error_msg:
+                logger.error(f"Corrupted or unsupported audio file: {audio_file} - {e!s}")
+                if "format" in error_msg or "codec" in error_msg:
+                    raise UnsupportedFormatError(f"Unsupported audio format: {audio_file}") from e
+                raise CorruptedFileError(f"Corrupted audio file: {audio_file}") from e
+            logger.error(f"Audio processing error for {audio_file}: {e!s}")
+            raise InvalidAudioFileError(f"Audio processing failed: {audio_file}") from e
+        except MemoryError as e:
+            logger.error(f"Out of memory during key detection for {audio_file}: {e!s}")
+            raise AnalysisServiceError(f"Out of memory analyzing {audio_file}: File too large") from e
         except Exception as e:
-            logger.error(f"Error detecting key for {audio_file}: {e!s}")
-            return None
+            logger.error(f"Unexpected error detecting key for {audio_file}: {e!s}", exc_info=True)
+            raise AnalysisServiceError(f"Key detection failed for {audio_file}: {e!s}") from e
 
     def _detect_with_key_extractor(self, audio: np.ndarray, es: Any) -> tuple[str, str, float]:
         """
@@ -127,9 +152,44 @@ class KeyDetector:
 
             return key, scale, strength
 
+        except RuntimeError as e:
+            error_msg = str(e).lower()
+            if "essentia" in error_msg or "algorithm" in error_msg:
+                logger.error(f"KeyExtractor algorithm error: {e!s}")
+                # Try to recover with simplified parameters or fallback
+                try:
+                    # Retry with simplified KeyExtractor configuration
+                    logger.info("Retrying KeyExtractor with fallback configuration")
+                    key_extractor_simple = es.KeyExtractor(profileType="temperley")
+                    key_simple, scale_simple, strength_simple = key_extractor_simple(audio)
+                    logger.debug(
+                        f"KeyExtractor fallback result: {key_simple} {scale_simple} (strength: {strength_simple:.3f})"
+                    )
+                    return key_simple, scale_simple, strength_simple
+                except Exception as fallback_error:
+                    logger.error(f"KeyExtractor fallback also failed: {fallback_error!s}")
+                    return "C", "major", 0.0
+            else:
+                logger.error(f"KeyExtractor runtime error: {e!s}")
+                return "C", "major", 0.0
+        except MemoryError as e:
+            logger.error(f"Out of memory in KeyExtractor: {e!s}")
+            # Try with reduced audio length for memory-constrained systems
+            try:
+                logger.info("Retrying KeyExtractor with reduced audio length")
+                # Use first 60 seconds to reduce memory usage
+                reduced_audio = audio[: min(len(audio), 60 * 22050)]  # 60s at 22kHz
+                key_extractor = es.KeyExtractor()
+                key_reduced, scale_reduced, strength_reduced = key_extractor(reduced_audio)
+                logger.debug(
+                    f"KeyExtractor reduced result: {key_reduced} {scale_reduced} (strength: {strength_reduced:.3f})"
+                )
+                return key_reduced, scale_reduced, strength_reduced * 0.8  # Penalize confidence for reduced analysis
+            except Exception as memory_fallback_error:
+                logger.error(f"KeyExtractor memory fallback failed: {memory_fallback_error!s}")
+                return "C", "major", 0.0
         except Exception as e:
-            logger.error(f"KeyExtractor failed: {e!s}")
-            # Return default values on error
+            logger.error(f"Unexpected KeyExtractor error: {e!s}", exc_info=True)
             return "C", "major", 0.0
 
     def _detect_with_hpcp(self, audio: np.ndarray, es: Any) -> tuple[str, str, float]:
@@ -157,9 +217,53 @@ class KeyDetector:
 
             return key, scale, strength
 
+        except RuntimeError as e:
+            error_msg = str(e).lower()
+            if "essentia" in error_msg or "algorithm" in error_msg:
+                logger.error(f"HPCP algorithm error: {e!s}")
+                # Try alternative HPCP configuration
+                try:
+                    logger.info("Retrying HPCP with alternative configuration")
+                    # Use simpler HPCP configuration
+                    hpcp_simple = es.HPCP(size=12, windowSize=1.0)
+                    spectrum = es.Spectrum()
+                    peaks = es.SpectralPeaks()
+
+                    # Simplified processing
+                    hpcp_values = []
+                    for frame in es.FrameGenerator(audio, frameSize=4096, hopSize=2048):
+                        spec = spectrum(frame)
+                        freqs, mags = peaks(spec)
+                        if len(freqs) > 0:
+                            hpcp_frame = hpcp_simple(freqs, mags)
+                            hpcp_values.append(hpcp_frame)
+
+                    if hpcp_values:
+                        hpcp_mean = np.mean(hpcp_values, axis=0)
+                        # Use a simple template matching approach
+                        major_template = [1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1]  # C major template
+                        correlation = np.correlate(hpcp_mean, major_template, mode="full")
+                        best_key_idx = np.argmax(correlation) % 12
+                        keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+                        return keys[best_key_idx], "major", 0.3  # Low confidence for fallback method
+                    logger.warning("No HPCP values generated in fallback")
+                    return "C", "major", 0.0
+                except Exception as fallback_error:
+                    logger.error(f"HPCP fallback failed: {fallback_error!s}")
+                    return "C", "major", 0.0
+            else:
+                logger.error(f"HPCP runtime error: {e!s}")
+                return "C", "major", 0.0
+        except MemoryError as e:
+            logger.error(f"Out of memory in HPCP key detection: {e!s}")
+            # Return low confidence result to indicate reduced reliability
+            return "C", "major", 0.0
+        except (ValueError, IndexError) as e:
+            logger.error(f"Invalid data in HPCP processing: {e!s}")
+            # Data processing error - likely due to audio characteristics
+            return "C", "major", 0.0
         except Exception as e:
-            logger.error(f"HPCP key detection failed: {e!s}")
-            # Return default values on error
+            logger.error(f"Unexpected HPCP error: {e!s}", exc_info=True)
             return "C", "major", 0.0
 
     def _combine_results(

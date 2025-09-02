@@ -15,7 +15,10 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 from pydantic import BaseModel, Field
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -277,7 +280,7 @@ class FilesystemBackend(StorageBackend):
 
 
 class S3Backend(StorageBackend):
-    """AWS S3 storage backend."""
+    """AWS S3 storage backend with retry logic and error handling."""
 
     def __init__(self, config: dict[str, Any]):
         """Initialize S3 backend with configuration."""
@@ -285,44 +288,315 @@ class S3Backend(StorageBackend):
         self.prefix = config.get("prefix", "cue_files/")
         self.acl = config.get("acl", "private")
         self.storage_class = config.get("storage_class", "STANDARD_IA")
+        self.region = config.get("region", "us-east-1")
 
-        # S3 client would be initialized here
-        self.s3_client = None  # Placeholder
-        logger.info(f"S3 backend initialized for bucket: {self.bucket}")
+        # Initialize S3 client with configuration
+        try:
+            self.s3_client = boto3.client(
+                "s3",
+                region_name=self.region,
+                # AWS credentials will be picked up from environment variables,
+                # IAM roles, or AWS credentials file
+            )
 
+            # Test connection by checking if bucket exists
+            self._verify_bucket_access()
+            logger.info(f"S3 backend initialized for bucket: {self.bucket}")
+
+        except NoCredentialsError as e:
+            logger.error(
+                "AWS credentials not found. Configure credentials via environment variables, "
+                "IAM roles, or AWS credentials file."
+            )
+            raise RuntimeError("AWS credentials not configured") from e
+        except Exception as e:
+            logger.error(f"Failed to initialize S3 client: {e}")
+            raise RuntimeError(f"S3 initialization failed: {e}") from e
+
+    def _verify_bucket_access(self) -> None:
+        """Verify bucket exists and we have access."""
+        try:
+            self.s3_client.head_bucket(Bucket=self.bucket)
+            logger.debug(f"Verified access to S3 bucket: {self.bucket}")
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code == "404":
+                raise RuntimeError(f"S3 bucket '{self.bucket}' does not exist") from e
+            if error_code == "403":
+                raise RuntimeError(f"Access denied to S3 bucket '{self.bucket}'. Check bucket permissions.") from e
+            raise RuntimeError(f"Failed to access S3 bucket '{self.bucket}': {e}") from e
+
+    def _get_s3_key(self, file_path: str) -> str:
+        """Generate S3 key from file path."""
+        # Remove leading slash if present and combine with prefix
+        clean_path = file_path.lstrip("/")
+        return f"{self.prefix}{clean_path}"
+
+    @retry(
+        retry=retry_if_exception_type((ClientError, BotoCoreError)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True,
+    )
     def store(self, content: str, file_path: str, metadata: dict[str, Any] | None = None) -> StorageResult:
-        """Store content to S3."""
-        # Placeholder implementation
-        logger.warning("S3 storage not implemented, using placeholder")
-        return StorageResult(
-            success=False,
-            file_path="",
-            checksum="",
-            file_size=0,
-            version=0,
-            error="S3 backend not implemented",
-            metadata={},
-        )
+        """Store content to S3 with retry logic."""
+        try:
+            s3_key = self._get_s3_key(file_path)
+            content_bytes = content.encode("utf-8")
 
+            # Calculate checksum
+            checksum = hashlib.sha256(content_bytes).hexdigest()
+            file_size = len(content_bytes)
+
+            # Prepare S3 metadata
+            s3_metadata = {
+                "checksum": checksum,
+                "content-type": "text/plain; charset=utf-8",
+                "original-filename": file_path.split("/")[-1],
+            }
+
+            # Add custom metadata if provided
+            if metadata:
+                for key, value in metadata.items():
+                    # S3 metadata keys must be lowercase and cannot contain underscores
+                    clean_key = str(key).lower().replace("_", "-")
+                    s3_metadata[clean_key] = str(value)
+
+            # Check if file already exists to determine version
+            version = 1
+            try:
+                existing_versions = self._list_object_versions(s3_key)
+                if existing_versions:
+                    version = len(existing_versions) + 1
+            except Exception as e:
+                logger.warning(f"Could not determine version for {s3_key}: {e}")
+
+            # Upload to S3
+            upload_args = {
+                "Bucket": self.bucket,
+                "Key": s3_key,
+                "Body": content_bytes,
+                "ContentType": "text/plain; charset=utf-8",
+                "Metadata": s3_metadata,
+                "StorageClass": self.storage_class,
+            }
+
+            # Add ACL if specified and not None
+            if self.acl and self.acl.lower() != "none":
+                upload_args["ACL"] = self.acl
+
+            self.s3_client.put_object(**upload_args)
+
+            # Generate S3 URL
+            s3_url = f"s3://{self.bucket}/{s3_key}"
+
+            logger.info(f"Stored file to S3: {s3_url} (size: {file_size}, checksum: {checksum[:8]}...)")
+
+            return StorageResult(
+                success=True,
+                file_path=s3_url,
+                checksum=checksum,
+                file_size=file_size,
+                version=version,
+                error=None,
+                metadata=metadata or {},
+            )
+
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            error_message = e.response["Error"]["Message"]
+
+            if error_code == "NoSuchBucket":
+                error_msg = f"S3 bucket '{self.bucket}' does not exist"
+            elif error_code == "AccessDenied":
+                error_msg = f"Access denied to S3 bucket '{self.bucket}'. Check IAM permissions."
+            else:
+                error_msg = f"S3 error ({error_code}): {error_message}"
+
+            logger.error(f"Failed to store file to S3 {file_path}: {error_msg}", exc_info=True)
+            return StorageResult(
+                success=False,
+                file_path="",
+                checksum="",
+                file_size=0,
+                version=0,
+                error=error_msg,
+                metadata={},
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to store file to S3 {file_path}: {e}", exc_info=True)
+            return StorageResult(
+                success=False,
+                file_path="",
+                checksum="",
+                file_size=0,
+                version=0,
+                error=str(e),
+                metadata={},
+            )
+
+    @retry(
+        retry=retry_if_exception_type((ClientError, BotoCoreError)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True,
+    )
     def retrieve(self, file_path: str) -> tuple[bool, str | None, str | None]:
-        """Retrieve content from S3."""
-        # Placeholder implementation
-        return False, None, "S3 backend not implemented"
+        """Retrieve content from S3 with retry logic."""
+        try:
+            # Handle both S3 URLs and relative paths
+            if file_path.startswith("s3://"):
+                # Extract key from S3 URL: s3://bucket/key
+                parts = file_path[5:].split("/", 1)
+                if len(parts) != 2 or parts[0] != self.bucket:
+                    return False, None, f"Invalid S3 URL or wrong bucket: {file_path}"
+                s3_key = parts[1]
+            else:
+                s3_key = self._get_s3_key(file_path)
 
+            # Get object from S3
+            response = self.s3_client.get_object(Bucket=self.bucket, Key=s3_key)
+
+            # Read content
+            content = response["Body"].read().decode("utf-8")
+
+            logger.debug(f"Retrieved file from S3: s3://{self.bucket}/{s3_key} ({len(content)} bytes)")
+            return True, content, None
+
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+
+            if error_code == "NoSuchKey":
+                error_msg = f"File not found in S3: {file_path}"
+            elif error_code == "NoSuchBucket":
+                error_msg = f"S3 bucket '{self.bucket}' does not exist"
+            elif error_code == "AccessDenied":
+                error_msg = f"Access denied to S3 object: {file_path}"
+            else:
+                error_msg = f"S3 error ({error_code}): {e.response['Error']['Message']}"
+
+            logger.error(f"Failed to retrieve file from S3 {file_path}: {error_msg}")
+            return False, None, error_msg
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve file from S3 {file_path}: {e}", exc_info=True)
+            return False, None, str(e)
+
+    @retry(
+        retry=retry_if_exception_type((ClientError, BotoCoreError)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True,
+    )
     def delete(self, file_path: str) -> bool:
-        """Delete file from S3."""
-        # Placeholder implementation
-        return False
+        """Delete file from S3 with retry logic."""
+        try:
+            # Handle both S3 URLs and relative paths
+            if file_path.startswith("s3://"):
+                parts = file_path[5:].split("/", 1)
+                if len(parts) != 2 or parts[0] != self.bucket:
+                    logger.error(f"Invalid S3 URL or wrong bucket: {file_path}")
+                    return False
+                s3_key = parts[1]
+            else:
+                s3_key = self._get_s3_key(file_path)
+
+            # Check if file exists before deletion
+            if not self._object_exists(s3_key):
+                logger.warning(f"File not found for deletion: s3://{self.bucket}/{s3_key}")
+                return False
+
+            # Delete from S3
+            self.s3_client.delete_object(Bucket=self.bucket, Key=s3_key)
+
+            logger.info(f"Deleted file from S3: s3://{self.bucket}/{s3_key}")
+            return True
+
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            logger.error(f"Failed to delete file from S3 {file_path}: {error_code} - {e.response['Error']['Message']}")
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to delete file from S3 {file_path}: {e}", exc_info=True)
+            return False
 
     def exists(self, file_path: str) -> bool:
         """Check if file exists in S3."""
-        # Placeholder implementation
-        return False
+        try:
+            # Handle both S3 URLs and relative paths
+            if file_path.startswith("s3://"):
+                parts = file_path[5:].split("/", 1)
+                if len(parts) != 2 or parts[0] != self.bucket:
+                    return False
+                s3_key = parts[1]
+            else:
+                s3_key = self._get_s3_key(file_path)
+
+            return self._object_exists(s3_key)
+
+        except Exception as e:
+            logger.error(f"Error checking if file exists in S3 {file_path}: {e}")
+            return False
+
+    def _object_exists(self, s3_key: str) -> bool:
+        """Check if S3 object exists."""
+        try:
+            self.s3_client.head_object(Bucket=self.bucket, Key=s3_key)
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                return False
+            raise
 
     def list_versions(self, file_path: str) -> list[dict[str, Any]]:
         """List all versions of a file in S3."""
-        # Placeholder implementation
-        return []
+        try:
+            # Handle both S3 URLs and relative paths
+            if file_path.startswith("s3://"):
+                parts = file_path[5:].split("/", 1)
+                if len(parts) != 2 or parts[0] != self.bucket:
+                    return []
+                s3_key = parts[1]
+            else:
+                s3_key = self._get_s3_key(file_path)
+
+            return self._list_object_versions(s3_key)
+
+        except Exception as e:
+            logger.error(f"Failed to list versions for S3 file {file_path}: {e}", exc_info=True)
+            return []
+
+    def _list_object_versions(self, s3_key: str) -> list[dict[str, Any]]:
+        """List versions of an S3 object."""
+        try:
+            # List object versions
+            response = self.s3_client.list_object_versions(Bucket=self.bucket, Prefix=s3_key)
+
+            # Use list comprehension as suggested by ruff
+            versions = [
+                {
+                    "version": version["VersionId"] if version.get("VersionId") != "null" else "current",
+                    "path": f"s3://{self.bucket}/{s3_key}",
+                    "size": version["Size"],
+                    "modified": version["LastModified"].isoformat(),
+                    "storage_class": version.get("StorageClass", "STANDARD"),
+                    "etag": version["ETag"].strip('"'),
+                }
+                for version in response.get("Versions", [])
+                if version["Key"] == s3_key
+            ]
+
+            # Sort by modification date, most recent first
+            return sorted(versions, key=lambda x: x["modified"], reverse=True)
+
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "NoSuchBucket":
+                logger.error(f"S3 bucket '{self.bucket}' does not exist")
+            else:
+                logger.error(f"Failed to list object versions: {e}")
+            return []
 
 
 class StorageService:

@@ -2,7 +2,7 @@
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -11,6 +11,20 @@ from services.file_rename_service.app.ml.models import FeedbackData, ModelAlgori
 from services.file_rename_service.app.ml.predictor import Predictor
 from services.file_rename_service.app.ml.trainer import Trainer
 from services.file_rename_service.app.ml.versioning import ModelVersionManager
+
+# Import the shared cache service for training jobs
+if TYPE_CHECKING:
+    from services.shared.production_cache_service import ProductionCacheService
+
+try:
+    from services.shared.production_cache_service import ProductionCacheService
+
+    _cache_available = True
+    _ProductionCacheServiceClass: type["ProductionCacheService"] | None = ProductionCacheService
+except ImportError:
+    # Fallback for development environments
+    _ProductionCacheServiceClass = None
+    _cache_available = False
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +35,53 @@ ml_router = APIRouter(prefix="/model", tags=["ML Model Management"])
 trainer = Trainer()
 predictor = Predictor()
 version_manager = ModelVersionManager()
+
+# Initialize training jobs cache
+training_jobs_cache: "ProductionCacheService | None" = None
+if _cache_available and _ProductionCacheServiceClass is not None:
+    try:
+        training_jobs_cache = _ProductionCacheServiceClass(
+            redis_db=2,  # Use different DB for training jobs
+            service_prefix="training_jobs",
+            default_ttl=7 * 24 * 60 * 60,  # 7 days for training jobs
+            enabled=True,
+        )
+        logger.info("Initialized Redis cache for training jobs")
+    except Exception as e:
+        logger.warning(f"Failed to initialize training jobs cache: {e}. Using fallback.")
+        training_jobs_cache = None
+
+# Fallback in-memory storage when Redis is not available
+_fallback_jobs: dict[str, dict[str, Any]] = {}
+
+
+# Helper functions for training job management
+def get_training_job(job_id: str) -> dict[str, Any] | None:
+    """Get training job status from cache or fallback storage."""
+    if training_jobs_cache:
+        return training_jobs_cache.get(job_id)
+    return _fallback_jobs.get(job_id)
+
+
+def set_training_job(job_id: str, job_data: dict[str, Any], ttl: int | None = None) -> None:
+    """Set training job status in cache or fallback storage."""
+    if training_jobs_cache:
+        training_jobs_cache.set(job_id, job_data, ttl=ttl)
+    else:
+        _fallback_jobs[job_id] = job_data
+
+
+def update_training_job(job_id: str, updates: dict[str, Any]) -> None:
+    """Update training job status in cache or fallback storage."""
+    if training_jobs_cache:
+        # Get current job data, update it, then set it back
+        job_data = training_jobs_cache.get(job_id) or {}
+        job_data.update(updates)
+        training_jobs_cache.set(job_id, job_data)
+    else:
+        if job_id not in _fallback_jobs:
+            _fallback_jobs[job_id] = {}
+        _fallback_jobs[job_id].update(updates)
 
 
 # Pydantic models for API
@@ -130,15 +191,10 @@ class ModelMetricsResponse(BaseModel):
     sample_count: int
 
 
-# Global training jobs tracker (in production, use Redis or database)
-training_jobs: dict[str, dict[str, Any]] = {}
-
-
 async def run_training_job(job_id: str, training_data: list[TrainingData], request: TrainRequest) -> None:
     """Background task to run model training."""
     try:
-        training_jobs[job_id]["status"] = "running"
-        training_jobs[job_id]["progress"] = 0.1
+        update_training_job(job_id, {"status": "running", "progress": 0.1})
 
         # Convert algorithm string to enum
         algorithm = ModelAlgorithm(request.algorithm)
@@ -153,15 +209,27 @@ async def run_training_job(job_id: str, training_data: list[TrainingData], reque
         )
 
         # Update job status
-        training_jobs[job_id]["status"] = "completed"
-        training_jobs[job_id]["progress"] = 1.0
-        training_jobs[job_id]["metrics"] = model_metadata.training_metrics
-        training_jobs[job_id]["model_version"] = model_metadata.version
+        update_training_job(
+            job_id,
+            {
+                "status": "completed",
+                "progress": 1.0,
+                "metrics": model_metadata.training_metrics,
+                "model_version": model_metadata.version,
+                "completed_at": datetime.now(tz=UTC).isoformat(),
+            },
+        )
 
     except Exception as e:
         logger.error(f"Training job {job_id} failed: {e}")
-        training_jobs[job_id]["status"] = "failed"
-        training_jobs[job_id]["error"] = str(e)
+        update_training_job(
+            job_id,
+            {
+                "status": "failed",
+                "error": str(e),
+                "failed_at": datetime.now(tz=UTC).isoformat(),
+            },
+        )
 
 
 @ml_router.post("/train", response_model=TrainResponse)
@@ -198,11 +266,14 @@ async def train_model(
         ]
 
         # Initialize job tracking
-        training_jobs[job_id] = {
-            "status": "pending",
-            "progress": 0.0,
-            "started_at": datetime.now(tz=UTC).isoformat(),
-        }
+        set_training_job(
+            job_id,
+            {
+                "status": "pending",
+                "progress": 0.0,
+                "started_at": datetime.now(tz=UTC).isoformat(),
+            },
+        )
 
         # Start background training
         background_tasks.add_task(run_training_job, job_id, training_data, request)
@@ -229,13 +300,13 @@ async def get_training_status(job_id: str) -> TrainingStatusResponse:
     Returns the current status, progress, and metrics (if completed)
     for the specified training job.
     """
-    if job_id not in training_jobs:
+    job = get_training_job(job_id)
+    if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Training job {job_id} not found",
         )
 
-    job = training_jobs[job_id]
     return TrainingStatusResponse(
         job_id=job_id,
         status=job["status"],

@@ -10,21 +10,57 @@ import numpy as np
 from .models import FeedbackData, MLModel
 from .trainer import Trainer
 
+# Import the shared cache service
+try:
+    from services.shared.production_cache_service import ProductionCacheService, generate_cache_key
+except ImportError:
+    # Fallback for development environments
+    ProductionCacheService = None  # type: ignore[misc,assignment]  # Conditional import fallback - assigning None to class type
+
+    def generate_cache_key(*args: Any) -> str:
+        """Generate cache key from arguments."""
+        return ":".join(str(arg) for arg in args)
+
+
 logger = logging.getLogger(__name__)
 
 
 class Predictor:
-    """Handle model predictions with caching and optimization."""
+    """Handle model predictions with Redis caching and optimization."""
 
-    def __init__(self, model_dir: str = "models/"):
-        """Initialize predictor with model directory."""
+    def __init__(
+        self,
+        model_dir: str = "models/",
+        redis_host: str = "localhost",
+        redis_port: int = 6379,
+        enable_cache: bool = True,
+    ):
+        """Initialize predictor with model directory and Redis cache."""
         self.model_dir = Path(model_dir)
         self.trainer = Trainer(model_dir)
         self.model_loaded = False
-        self.prediction_cache: dict[str, dict[str, Any]] = {}
-        self.cache_size = 1000  # Maximum cache entries
         self.feedback_buffer: list[FeedbackData] = []
         self.feedback_buffer_size = 100
+
+        # Initialize Redis cache
+        self.cache_enabled = enable_cache and ProductionCacheService is not None
+        self.cache: ProductionCacheService | None = None
+
+        if self.cache_enabled:
+            try:
+                self.cache = ProductionCacheService(
+                    redis_host=redis_host,
+                    redis_port=redis_port,
+                    redis_db=1,  # Use different DB for ML predictions
+                    service_prefix="ml_predictions",
+                    default_ttl=24 * 60 * 60,  # 24 hours for predictions
+                    enabled=True,
+                )
+                logger.info("Initialized Redis cache for ML predictions")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Redis cache: {e}. Using no cache.")
+                self.cache = None
+                self.cache_enabled = False
 
     def load_latest_model(self) -> MLModel:
         """Load the most recent deployed model."""
@@ -62,11 +98,13 @@ class Predictor:
         if not self.model_loaded:
             self.load_latest_model()
 
-        # Check cache
-        cache_key = self._generate_cache_key(filename)
-        if use_cache and cache_key in self.prediction_cache:
-            logger.debug(f"Cache hit for {filename}")
-            return self.prediction_cache[cache_key]
+        # Check Redis cache
+        cache_key = self._generate_cache_key(filename, return_probabilities, top_k)
+        if use_cache and self.cache_enabled and self.cache:
+            cached_result = self.cache.get(cache_key)
+            if cached_result:
+                logger.debug(f"Cache hit for {filename}")
+                return cached_result  # type: ignore[no-any-return]  # Cache returns Any but we know it's dict[str, Any] from our usage
 
         start_time = time.time()
 
@@ -124,9 +162,12 @@ class Predictor:
             ),
         }
 
-        # Update cache
-        if use_cache:
-            self._update_cache(cache_key, result)
+        # Update Redis cache
+        if use_cache and self.cache_enabled and self.cache:
+            # Cache with shorter TTL for low-confidence predictions
+            confidence = predictions[0].get("confidence", 0.0) if predictions else 0.0
+            ttl = 4 * 60 * 60 if confidence < 0.5 else 24 * 60 * 60  # 4h vs 24h
+            self.cache.set(cache_key, result, ttl=ttl)
 
         logger.info(f"Prediction for '{filename}' completed in {inference_time:.2f}ms")
         return result
@@ -144,12 +185,13 @@ class Predictor:
         uncached_samples = []
         cached_results = {}
 
-        # Check cache for all samples
-        if use_cache:
+        # Check Redis cache for all samples
+        if use_cache and self.cache_enabled and self.cache:
             for filename, tokens in samples:
-                cache_key = self._generate_cache_key(filename)
-                if cache_key in self.prediction_cache:
-                    cached_results[filename] = self.prediction_cache[cache_key]
+                cache_key = self._generate_cache_key(filename, False, 3)  # Default params for batch
+                cached_result = self.cache.get(cache_key)
+                if cached_result:
+                    cached_results[filename] = cached_result
                 else:
                     uncached_samples.append((filename, tokens))
         else:
@@ -201,10 +243,12 @@ class Predictor:
                     ),
                 }
 
-                # Update cache
-                if use_cache:
-                    cache_key = self._generate_cache_key(filename)
-                    self._update_cache(cache_key, result)
+                # Update Redis cache
+                if use_cache and self.cache_enabled and self.cache:
+                    cache_key = self._generate_cache_key(filename, False, 3)  # Default params for batch
+                    confidence = result["predictions"][0].get("confidence", 0.0)
+                    ttl = 4 * 60 * 60 if confidence < 0.5 else 24 * 60 * 60  # 4h vs 24h
+                    self.cache.set(cache_key, result, ttl=ttl)
 
                 results.append(result)
 
@@ -247,25 +291,34 @@ class Predictor:
         self.feedback_buffer.clear()
         logger.info("Processed feedback buffer")
 
-    def _generate_cache_key(self, filename: str) -> str:
-        """Generate cache key for filename."""
+    def _generate_cache_key(self, filename: str, return_probabilities: bool = False, top_k: int = 3) -> str:
+        """Generate cache key for filename with prediction parameters."""
         version = self.trainer.current_model_metadata.version if self.trainer.current_model_metadata else "unknown"
-        return f"{version}:{filename}"
-
-    def _update_cache(self, key: str, value: dict[str, Any]) -> None:
-        """Update prediction cache with LRU eviction."""
-        # Simple LRU: remove oldest if cache is full
-        if len(self.prediction_cache) >= self.cache_size:
-            # Remove first (oldest) item
-            oldest_key = next(iter(self.prediction_cache))
-            del self.prediction_cache[oldest_key]
-
-        self.prediction_cache[key] = value
+        if self.cache_enabled:
+            return generate_cache_key(version, filename, return_probabilities, top_k)
+        return f"{version}:{filename}:{return_probabilities}:{top_k}"
 
     def clear_cache(self) -> None:
         """Clear prediction cache."""
-        self.prediction_cache.clear()
-        logger.info("Prediction cache cleared")
+        if self.cache_enabled and self.cache:
+            # Clear all ML prediction cache entries
+            deleted = self.cache.clear_pattern("*")
+            logger.info(f"Cleared {deleted} prediction cache entries from Redis")
+        else:
+            logger.info("No cache to clear")
+
+    def invalidate_model_cache(self, model_version: str) -> None:
+        """Invalidate all cache entries for a specific model version."""
+        if self.cache_enabled and self.cache:
+            pattern = f"{model_version}:*"
+            deleted = self.cache.clear_pattern(pattern)
+            logger.info(f"Invalidated {deleted} cache entries for model version {model_version}")
+
+    def get_cache_stats(self) -> dict[str, Any]:
+        """Get cache statistics."""
+        if self.cache_enabled and self.cache:
+            return self.cache.get_stats()
+        return {"enabled": False, "message": "Cache not available"}
 
     def get_model_info(self) -> dict[str, Any] | None:
         """Get information about the loaded model."""

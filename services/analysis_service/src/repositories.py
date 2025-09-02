@@ -8,7 +8,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
 from shared.core_types.src.async_database import AsyncDatabaseManager
-from shared.core_types.src.models import Metadata, Recording, Tracklist
+from shared.core_types.src.models import AnalysisResult, Metadata, Recording, Tracklist
 
 logger = logging.getLogger(__name__)
 
@@ -310,6 +310,208 @@ class AsyncTracklistRepository:
             return cast("Tracklist | None", result.scalar_one_or_none())
 
 
-# TODO: Enable when AnalysisResult model is available in shared models
-# AsyncAnalysisResultRepository will be implemented once the AnalysisResult model
-# import issue is resolved with shared/core_types/src/models.py
+class AsyncAnalysisResultRepository:
+    """Async repository for AnalysisResult entity operations."""
+
+    def __init__(self, db_manager: AsyncDatabaseManager) -> None:
+        """Initialize repository with async database manager.
+
+        Args:
+            db_manager: Async database manager instance
+        """
+        self.db = db_manager
+
+    async def get_by_recording_id(self, recording_id: UUID) -> list[AnalysisResult]:
+        """Get all analysis results for a recording.
+
+        Args:
+            recording_id: UUID of the recording
+
+        Returns:
+            List of analysis results
+        """
+        async with self.db.get_db_session() as session:
+            result = await session.execute(
+                select(AnalysisResult)
+                .where(AnalysisResult.recording_id == recording_id)
+                .order_by(AnalysisResult.created_at.desc())
+            )
+            return list(result.scalars().all())
+
+    async def get_by_id(self, analysis_result_id: UUID) -> AnalysisResult | None:
+        """Get analysis result by ID.
+
+        Args:
+            analysis_result_id: UUID of the analysis result
+
+        Returns:
+            AnalysisResult instance or None if not found
+        """
+        async with self.db.get_db_session() as session:
+            result = await session.execute(
+                select(AnalysisResult)
+                .where(AnalysisResult.id == analysis_result_id)
+                .options(selectinload(AnalysisResult.recording))
+            )
+            return cast("AnalysisResult | None", result.scalar_one_or_none())
+
+    async def get_by_recording_and_type(self, recording_id: UUID, analysis_type: str) -> AnalysisResult | None:
+        """Get analysis result by recording ID and analysis type.
+
+        Args:
+            recording_id: UUID of the recording
+            analysis_type: Type of analysis (e.g., 'bpm', 'key', 'mood')
+
+        Returns:
+            AnalysisResult instance or None if not found
+        """
+        async with self.db.get_db_session() as session:
+            result = await session.execute(
+                select(AnalysisResult)
+                .where(
+                    AnalysisResult.recording_id == recording_id,
+                    AnalysisResult.analysis_type == analysis_type,
+                    AnalysisResult.status == "completed",
+                )
+                .order_by(AnalysisResult.created_at.desc())
+                .limit(1)
+            )
+            return cast("AnalysisResult | None", result.scalar_one_or_none())
+
+    async def get_completed_results_for_recording(self, recording_id: UUID) -> dict[str, Any]:
+        """Get all completed analysis results for a recording formatted for API response.
+
+        Args:
+            recording_id: UUID of the recording
+
+        Returns:
+            Dictionary with analysis results (bpm, key, mood, etc.)
+        """
+        async with self.db.get_db_session() as session:
+            result = await session.execute(
+                select(AnalysisResult)
+                .where(AnalysisResult.recording_id == recording_id, AnalysisResult.status == "completed")
+                .order_by(AnalysisResult.created_at.desc())
+            )
+            analysis_results = result.scalars().all()
+
+            # Build response dictionary from analysis results
+            results_dict: dict[str, Any] = {}
+            for analysis in analysis_results:
+                if analysis.result_data:
+                    # For different analysis types, extract relevant data
+                    if analysis.analysis_type == "bpm" and "bpm" in analysis.result_data:
+                        results_dict["bpm"] = analysis.result_data["bpm"]
+                    elif analysis.analysis_type == "key" and "key" in analysis.result_data:
+                        results_dict["key"] = analysis.result_data["key"]
+                    elif analysis.analysis_type == "mood" and "mood" in analysis.result_data:
+                        results_dict["mood"] = analysis.result_data["mood"]
+
+            return results_dict
+
+    async def create(
+        self,
+        recording_id: UUID,
+        analysis_type: str,
+        result_data: dict[str, Any] | None = None,
+        confidence_score: float | None = None,
+        status: str = "pending",
+        processing_time_ms: int | None = None,
+    ) -> AnalysisResult:
+        """Create a new analysis result.
+
+        Args:
+            recording_id: UUID of the recording
+            analysis_type: Type of analysis
+            result_data: Analysis result data
+            confidence_score: Confidence score of the analysis
+            status: Analysis status
+            processing_time_ms: Processing time in milliseconds
+
+        Returns:
+            Created AnalysisResult instance
+        """
+        async with self.db.get_db_session() as session:
+            analysis_result = AnalysisResult(
+                recording_id=recording_id,
+                analysis_type=analysis_type,
+                result_data=result_data,
+                confidence_score=confidence_score,
+                status=status,
+                processing_time_ms=processing_time_ms,
+            )
+            session.add(analysis_result)
+            await session.flush()
+            await session.refresh(analysis_result)
+            await session.commit()
+            return analysis_result
+
+    async def update_status(
+        self,
+        analysis_id: UUID,
+        status: str,
+        result_data: dict[str, Any] | None = None,
+        error_message: str | None = None,
+        processing_time_ms: int | None = None,
+    ) -> bool:
+        """Update analysis result status and data.
+
+        Args:
+            analysis_id: UUID of the analysis result
+            status: New status
+            result_data: Updated result data
+            error_message: Error message if failed
+            processing_time_ms: Processing time in milliseconds
+
+        Returns:
+            True if updated, False if not found
+        """
+        async with self.db.get_db_session() as session:
+            update_data = {"status": status, "updated_at": func.current_timestamp()}
+            if result_data is not None:
+                update_data["result_data"] = result_data
+            if error_message is not None:
+                update_data["error_message"] = error_message
+            if processing_time_ms is not None:
+                update_data["processing_time_ms"] = processing_time_ms
+
+            result = await session.execute(
+                update(AnalysisResult).where(AnalysisResult.id == analysis_id).values(**update_data)
+            )
+            return cast("bool", result.rowcount > 0)
+
+    async def update_result(
+        self,
+        analysis_result_id: UUID,
+        result_data: dict[str, Any],
+        confidence_score: float | None = None,
+        status: str = "completed",
+        processing_time_ms: int | None = None,
+    ) -> bool:
+        """Update analysis result with final data.
+
+        Args:
+            analysis_result_id: UUID of the analysis result
+            result_data: Result data as JSON
+            confidence_score: Optional confidence score
+            status: Status to set (default: "completed")
+            processing_time_ms: Optional processing time in milliseconds
+
+        Returns:
+            True if updated, False if not found
+        """
+        async with self.db.get_db_session() as session:
+            update_values = {
+                "result_data": result_data,
+                "status": status,
+                "updated_at": func.current_timestamp(),
+            }
+            if confidence_score is not None:
+                update_values["confidence_score"] = confidence_score
+            if processing_time_ms is not None:
+                update_values["processing_time_ms"] = processing_time_ms
+
+            result = await session.execute(
+                update(AnalysisResult).where(AnalysisResult.id == analysis_result_id).values(**update_values)
+            )
+            return cast("bool", result.rowcount > 0)

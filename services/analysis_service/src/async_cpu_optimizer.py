@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+import librosa
 import numpy as np
 import psutil
 
@@ -495,18 +496,34 @@ class ParallelFFTOptimizer:
 
         return int(fft_size)
 
-    async def benchmark_fft_performance(self, test_duration_seconds: float = 1.0) -> dict[str, float]:
+    async def benchmark_fft_performance(
+        self, test_duration_seconds: float = 1.0, audio_file_path: str | None = None
+    ) -> dict[str, float]:
         """
         Benchmark FFT performance with different configurations.
 
         Args:
-            test_duration_seconds: Duration of test audio
+            test_duration_seconds: Duration of test audio (ignored if audio_file_path provided)
+            audio_file_path: Optional path to real audio file for testing
 
         Returns:
             Performance metrics
         """
         sample_rate = 44100
-        test_audio = np.random.default_rng().standard_normal(int(sample_rate * test_duration_seconds))
+
+        if audio_file_path is not None:
+            # Load real audio file
+            try:
+                test_audio, loaded_sample_rate = librosa.load(audio_file_path, sr=sample_rate, mono=True)
+                test_audio = test_audio.astype(np.float32)
+                logger.info(f"Loaded audio file '{audio_file_path}' with {len(test_audio)} samples")
+            except Exception as e:
+                raise FileNotFoundError(f"Failed to load audio file '{audio_file_path}': {e}") from e
+        else:
+            # Generate test audio for benchmarking when no file is provided
+            test_audio = np.random.default_rng().standard_normal(int(sample_rate * test_duration_seconds))
+            logger.info(f"Generated {test_duration_seconds}s of test audio for benchmarking")
+
         results = {}
 
         for fft_size in self.common_fft_sizes:

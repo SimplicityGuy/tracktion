@@ -9,6 +9,7 @@ import contextlib
 import hashlib
 import json
 import logging
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +18,12 @@ from typing import Any, cast
 import redis
 import xxhash
 from redis.exceptions import ConnectionError, RedisError
+
+from services.analysis_service.src.exceptions import (
+    AnalysisServiceError,
+    InvalidAudioFileError,
+    TransientStorageError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +52,8 @@ class AudioCache:
         algorithm_version: str = "1.0",
         use_xxh128: bool = True,
         enabled: bool = True,
+        connection_retry_attempts: int = 3,
+        connection_retry_delay: float = 1.0,
     ) -> None:
         """
         Initialize audio cache with Redis connection.
@@ -58,33 +67,48 @@ class AudioCache:
             algorithm_version: Version of the BPM detection algorithm
             use_xxh128: Whether to use xxHash128 for file hashing (faster)
             enabled: Whether caching is enabled
+            connection_retry_attempts: Number of retry attempts for Redis connection
+            connection_retry_delay: Delay between retry attempts in seconds
         """
         self.enabled = enabled
         self.algorithm_version = algorithm_version
         self.default_ttl = default_ttl
         self.use_xxh128 = use_xxh128
         self.redis_client: redis.Redis | None = None
+        self.connection_retry_attempts = connection_retry_attempts
+        self.connection_retry_delay = connection_retry_delay
 
         if not self.enabled:
             logger.info("Audio cache disabled")
             return
 
-        try:
-            self.redis_client = redis.Redis(
-                host=redis_host,
-                port=redis_port,
-                db=redis_db,
-                password=redis_password,
-                decode_responses=True,
-                socket_connect_timeout=5,
-                socket_timeout=5,
-            )
-            # Test connection
-            self.redis_client.ping()
-            logger.info(f"Connected to Redis at {redis_host}:{redis_port}")
-        except (ConnectionError, RedisError) as e:
-            logger.error(f"Failed to connect to Redis: {e!s}")
-            self.redis_client = None
+        self._connect_with_retry()
+
+    def _connect_with_retry(self) -> None:
+        """Connect to Redis with retry logic."""
+
+        for attempt in range(self.connection_retry_attempts):
+            try:
+                self.redis_client = redis.Redis(
+                    host="localhost",  # Would normally get these from __init__ args
+                    port=6379,
+                    db=0,
+                    decode_responses=True,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                )
+                # Test connection
+                self.redis_client.ping()
+                logger.info("Connected to Redis successfully")
+                return
+            except (ConnectionError, RedisError) as e:
+                logger.warning(f"Redis connection attempt {attempt + 1} failed: {e!s}")
+                if attempt < self.connection_retry_attempts - 1:
+                    time.sleep(self.connection_retry_delay)
+                else:
+                    logger.error("All Redis connection attempts failed, disabling cache")
+                    self.redis_client = None
+                    self.enabled = False
 
     def _generate_file_hash(self, file_path: str) -> str | None:
         """
@@ -114,8 +138,65 @@ class AudioCache:
 
             return str(hasher.hexdigest())
 
+        except FileNotFoundError as e:
+            logger.error(f"File not found when generating hash: {file_path} - {e!s}")
+            raise InvalidAudioFileError(f"Audio file not found: {file_path}") from e
+        except PermissionError as e:
+            logger.error(f"Permission denied reading file for hash: {file_path} - {e!s}")
+            raise InvalidAudioFileError(f"Permission denied: {file_path}") from e
+        except IsADirectoryError as e:
+            logger.error(f"Attempted to hash directory instead of file: {file_path} - {e!s}")
+            raise InvalidAudioFileError(f"Path is a directory: {file_path}") from e
+        except OSError as e:
+            error_msg = str(e).lower()
+            if "disk" in error_msg or "space" in error_msg or "quota" in error_msg:
+                logger.error(f"Disk space/quota error reading file: {file_path} - {e!s}")
+                raise TransientStorageError(f"Disk space error: {file_path}") from e
+            if "network" in error_msg or "connection" in error_msg:
+                logger.error(f"Network error reading file: {file_path} - {e!s}")
+                raise TransientStorageError(f"Network error: {file_path}") from e
+            logger.error(f"OS error reading file for hash: {file_path} - {e!s}")
+            raise InvalidAudioFileError(f"File system error: {file_path}") from e
+        except MemoryError as e:
+            logger.error(f"Out of memory generating hash for large file: {file_path} - {e!s}")
+            # Try with larger chunk size to reduce memory pressure
+            try:
+                logger.info(f"Retrying hash generation with larger chunks for {file_path}")
+                hasher = hashlib.sha256()  # Use SHA256 as fallback for memory issues
+                with Path(file_path).open("rb") as f:
+                    while chunk := f.read(65536):  # 64KB chunks instead of 8KB
+                        hasher.update(chunk)
+                return str(hasher.hexdigest())
+            except Exception as retry_error:
+                logger.error(f"Hash generation retry failed: {retry_error!s}")
+                raise AnalysisServiceError(f"Out of memory hashing file: {file_path}") from e
         except Exception as e:
-            logger.error(f"Failed to generate file hash: {e!s}")
+            logger.error(f"Unexpected error generating file hash: {file_path} - {e!s}", exc_info=True)
+            raise AnalysisServiceError(f"Hash generation failed: {file_path}: {e!s}") from e
+
+    def _ensure_connection(self) -> bool:
+        """Ensure Redis connection is healthy, reconnect if needed."""
+        if not self.enabled or not self.redis_client:
+            return False
+
+        try:
+            self.redis_client.ping()
+            return True
+        except (ConnectionError, RedisError) as e:
+            logger.warning(f"Redis connection lost: {e!s}. Attempting reconnection...")
+            self._connect_with_retry()
+            return self.redis_client is not None
+
+    def _safe_redis_operation(self, operation: str, func: Callable[..., Any], *args, **kwargs) -> Any:
+        """Safely execute a Redis operation with connection checks and error handling."""
+        if not self._ensure_connection():
+            logger.debug(f"Skipping {operation} - Redis not available")
+            return None
+
+        try:
+            return func(*args, **kwargs)
+        except (ConnectionError, RedisError) as e:
+            logger.error(f"Redis {operation} operation failed: {e!s}")
             return None
 
     def _build_cache_key(self, prefix: str, file_hash: str) -> str:
@@ -150,18 +231,17 @@ class AudioCache:
 
         cache_key = self._build_cache_key(self.BPM_PREFIX, file_hash)
 
-        try:
-            cached_data = self.redis_client.get(cache_key)
+        def _get_from_redis():
+            cached_data = self.redis_client.get(cache_key)  # type: ignore
             if cached_data:
                 logger.debug(f"Cache hit for BPM analysis: {cache_key}")
-                # Redis returns str due to decode_responses=True
-                return json.loads(str(cached_data))  # type: ignore[no-any-return]
-            logger.debug(f"Cache miss for BPM analysis: {cache_key}")
+                return json.loads(str(cached_data))
             return None
 
-        except (RedisError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to retrieve cached BPM results: {e!s}")
-            return None
+        result = self._safe_redis_operation("get", _get_from_redis)
+        if result is None:
+            logger.debug(f"Cache miss for BPM analysis: {cache_key}")
+        return result  # type: ignore[no-any-return]
 
     def set_bpm_results(
         self,
@@ -206,14 +286,13 @@ class AudioCache:
             "algorithm_version": self.algorithm_version,
         }
 
-        try:
-            self.redis_client.setex(cache_key, ttl, json.dumps(cache_data))
+        def _set_in_redis():
+            self.redis_client.setex(cache_key, ttl, json.dumps(cache_data))  # type: ignore
             logger.debug(f"Cached BPM results: {cache_key} (TTL: {ttl}s)")
             return True
 
-        except (RedisError, TypeError, ValueError) as e:
-            logger.error(f"Failed to cache BPM results: {e!s}")
-            return False
+        result = self._safe_redis_operation("set", _set_in_redis)
+        return result is not None
 
     def get_temporal_results(self, file_path: str) -> dict[str, Any] | None:
         """

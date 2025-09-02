@@ -6,12 +6,20 @@ scoring using pre-trained models from Essentia.
 """
 
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 import essentia.standard as es
 import numpy as np
+from tensorflow.python.framework.errors_impl import ResourceExhaustedError
 
+from services.analysis_service.src.exceptions import (
+    AnalysisServiceError,
+    CorruptedFileError,
+    InvalidAudioFileError,
+    UnsupportedFormatError,
+)
 from services.analysis_service.src.model_manager import ModelManager
 
 logger = logging.getLogger(__name__)
@@ -185,9 +193,27 @@ class MoodAnalyzer:
 
             return result
 
+        except FileNotFoundError as e:
+            logger.error(f"Audio file not found: {audio_file} - {e!s}")
+            raise InvalidAudioFileError(f"Audio file not found: {audio_file}") from e
+        except PermissionError as e:
+            logger.error(f"Permission denied accessing audio file: {audio_file} - {e!s}")
+            raise InvalidAudioFileError(f"Permission denied: {audio_file}") from e
+        except (OSError, RuntimeError) as e:
+            error_msg = str(e).lower()
+            if "corrupt" in error_msg or "invalid" in error_msg or "unsupported" in error_msg:
+                logger.error(f"Corrupted or unsupported audio file: {audio_file} - {e!s}")
+                if "format" in error_msg or "codec" in error_msg:
+                    raise UnsupportedFormatError(f"Unsupported audio format: {audio_file}") from e
+                raise CorruptedFileError(f"Corrupted audio file: {audio_file}") from e
+            logger.error(f"Audio processing error for {audio_file}: {e!s}")
+            raise InvalidAudioFileError(f"Audio processing failed: {audio_file}") from e
+        except MemoryError as e:
+            logger.error(f"Out of memory during mood analysis for {audio_file}: {e!s}")
+            raise AnalysisServiceError(f"Out of memory analyzing {audio_file}: File too large") from e
         except Exception as e:
-            logger.error(f"Error analyzing mood for {audio_file}: {e!s}")
-            return None
+            logger.error(f"Unexpected error analyzing mood for {audio_file}: {e!s}", exc_info=True)
+            raise AnalysisServiceError(f"Mood analysis failed for {audio_file}: {e!s}") from e
 
     def _analyze_mood_dimensions(self, audio: np.ndarray) -> dict[str, float]:
         """
@@ -252,8 +278,36 @@ class MoodAnalyzer:
 
             return min(max(score, 0.0), 1.0)  # Clamp to [0, 1]
 
+        except FileNotFoundError as e:
+            logger.error(f"Model file not found for {model_id}: {e!s}")
+            # Return None to gracefully degrade - this model won't contribute to analysis
+            return None
+        except ResourceExhaustedError as e:
+            logger.warning(f"GPU/Memory exhausted running model {model_id}: {e!s}")
+            # Implement retry with exponential backoff for resource exhaustion
+            time.sleep(min(2.0 ** getattr(self, "_retry_count", 0), 10.0))
+            self._retry_count = getattr(self, "_retry_count", 0) + 1
+            if self._retry_count <= 3:
+                logger.info(f"Retrying model {model_id} (attempt {self._retry_count + 1}/4)")
+                return self._run_mood_model(model_id, audio)
+            logger.error(f"Max retries exceeded for model {model_id} due to resource exhaustion")
+            self._retry_count = 0  # Reset for next call
+            return None
+        except MemoryError as e:
+            logger.error(f"Out of memory running model {model_id}: {e!s}")
+            # Clear model cache to free memory and return None for graceful degradation
+            if model_id in self._loaded_models:
+                del self._loaded_models[model_id]
+                logger.info(f"Cleared model {model_id} from cache due to memory error")
+            return None
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid input/output for model {model_id}: {e!s}")
+            # Model input/output format error - not retryable
+            return None
         except Exception as e:
-            logger.error(f"Error running mood model {model_id}: {e!s}")
+            logger.error(f"Unexpected error running mood model {model_id}: {e!s}", exc_info=True)
+            # Reset retry count on unexpected errors
+            self._retry_count = 0
             return None
 
     def _analyze_genre(self, audio: np.ndarray) -> list[dict[str, Any]]:

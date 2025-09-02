@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -44,9 +45,13 @@ class CacheConfig(BaseModel):
     cache_warming_enabled: bool = True
     popular_formats: list[str] = ["standard", "cdj", "traktor"]
 
+    # Memory cache settings (fallback)
+    memory_cache_max_size: int = 1000
+    memory_cache_ttl: int = 300
+
 
 class MemoryCache:
-    """Fallback in-memory cache implementation."""
+    """Fallback in-memory cache implementation with LRU eviction."""
 
     def __init__(self, max_size: int = 1000, default_ttl: int = 300):
         """Initialize memory cache."""
@@ -54,6 +59,62 @@ class MemoryCache:
         self.default_ttl = default_ttl
         self._cache: dict[str, tuple[Any, float]] = {}  # key -> (value, expiry_time)
         self._access_order: list[str] = []  # For LRU eviction
+        self._time = time
+
+    def get(self, key: str) -> Any | None:
+        """Get value from memory cache."""
+        if key not in self._cache:
+            return None
+
+        value, expiry_time = self._cache[key]
+        current_time = self._time.time()
+
+        # Check if expired
+        if current_time > expiry_time:
+            self._remove(key)
+            return None
+
+        # Update access order for LRU
+        if key in self._access_order:
+            self._access_order.remove(key)
+        self._access_order.append(key)
+
+        return value
+
+    def set(self, key: str, value: Any, ttl: int | None = None) -> bool:
+        """Set value in memory cache."""
+        ttl = ttl or self.default_ttl
+        expiry_time = self._time.time() + ttl
+
+        # Remove existing entry if present
+        if key in self._cache:
+            self._remove(key)
+
+        # Evict LRU if at capacity
+        while len(self._cache) >= self.max_size:
+            if self._access_order:
+                lru_key = self._access_order.pop(0)
+                self._remove(lru_key)
+            else:
+                break
+
+        # Add new entry
+        self._cache[key] = (value, expiry_time)
+        self._access_order.append(key)
+        return True
+
+    def delete(self, key: str) -> bool:
+        """Delete value from memory cache."""
+        if key in self._cache:
+            self._remove(key)
+            return True
+        return False
+
+    def _remove(self, key: str) -> None:
+        """Remove key from cache and access order."""
+        self._cache.pop(key, None)
+        if key in self._access_order:
+            self._access_order.remove(key)
 
     def size(self) -> int:
         """Get number of items in cache."""
@@ -63,6 +124,16 @@ class MemoryCache:
         """Clear all cache entries."""
         self._cache.clear()
         self._access_order.clear()
+
+    def cleanup_expired(self) -> int:
+        """Remove expired entries and return count removed."""
+        current_time = self._time.time()
+        expired_keys = [key for key, (_, expiry) in self._cache.items() if current_time > expiry]
+
+        for key in expired_keys:
+            self._remove(key)
+
+        return len(expired_keys)
 
 
 class CacheMetrics(BaseModel):
@@ -207,6 +278,42 @@ class CacheService:
             self.metrics.errors += 1
             return None
 
+    async def _get_with_fallback(self, key: str) -> Any | None:
+        """Get value with Redis primary, memory fallback."""
+        # First try memory cache for fastest access
+        memory_result = self.memory_cache.get(key)
+        if memory_result is not None:
+            logger.debug(f"Memory cache hit for key: {key}")
+            return memory_result
+
+        # Try Redis cache
+        if self._redis_available:
+            redis_result = await self._get_redis(key)
+            if redis_result is not None:
+                # Store in memory cache for future fast access
+                self.memory_cache.set(key, redis_result, ttl=300)  # 5 min memory cache
+                logger.debug(f"Redis cache hit for key: {key}")
+                return redis_result
+
+        logger.debug(f"Cache miss for key: {key}")
+        return None
+
+    async def _set_with_fallback(self, key: str, value: Any, ttl: int) -> bool:
+        """Set value in both Redis and memory cache."""
+        success = True
+
+        # Always store in memory cache
+        self.memory_cache.set(key, value, ttl=min(ttl, 300))  # Max 5 min in memory
+
+        # Try to store in Redis
+        if self._redis_available:
+            redis_success = await self._set_redis(key, value, ttl)
+            if not redis_success:
+                success = False
+                logger.warning(f"Failed to store in Redis, using memory cache only for key: {key}")
+
+        return success
+
     async def _delete_redis(self, key: str) -> bool:
         """Delete key from Redis including compressed variants."""
         if not self.redis_client:
@@ -235,7 +342,7 @@ class CacheService:
         """
         key = self._generate_cache_key("cue_content", tracklist_id, cue_format)
 
-        content = await self._get_redis(key)
+        content = await self._get_with_fallback(key)
         if content:
             self.metrics.hits += 1
             logger.debug(f"Cache hit for CUE content: {key}")
@@ -259,7 +366,7 @@ class CacheService:
         """
         key = self._generate_cache_key("cue_content", tracklist_id, cue_format)
 
-        success = await self._set_redis(key, content, self.config.cue_content_ttl)
+        success = await self._set_with_fallback(key, content, self.config.cue_content_ttl)
         if success:
             self.metrics.sets += 1
             logger.debug(f"Cached CUE content: {key}")
@@ -286,7 +393,7 @@ class CacheService:
         else:
             key = self._generate_cache_key("validation", cue_file_id)
 
-        result = await self._get_redis(key)
+        result = await self._get_with_fallback(key)
         if result:
             self.metrics.hits += 1
             return dict(result) if isinstance(result, dict) else result
@@ -317,7 +424,7 @@ class CacheService:
         else:
             key = self._generate_cache_key("validation", cue_file_id)
 
-        success = await self._set_redis(key, result, self.config.validation_ttl)
+        success = await self._set_with_fallback(key, result, self.config.validation_ttl)
         if success:
             self.metrics.sets += 1
             return True
@@ -336,7 +443,7 @@ class CacheService:
         """
         key = self._generate_cache_key("format_capabilities", cue_format)
 
-        capabilities = await self._get_redis(key)
+        capabilities = await self._get_with_fallback(key)
         if capabilities:
             self.metrics.hits += 1
             return dict(capabilities) if isinstance(capabilities, dict) else capabilities
@@ -357,7 +464,7 @@ class CacheService:
         """
         key = self._generate_cache_key("format_capabilities", cue_format)
 
-        success = await self._set_redis(key, capabilities, self.config.format_capabilities_ttl)
+        success = await self._set_with_fallback(key, capabilities, self.config.format_capabilities_ttl)
         if success:
             self.metrics.sets += 1
             return True
@@ -451,8 +558,13 @@ class CacheService:
         """
         stats = {
             "cache_service": "healthy",
-            "redis_available": self.redis_client is not None,
+            "redis_available": self._redis_available,
             "metrics": self.metrics.to_dict(),
+            "memory_cache": {
+                "size": self.memory_cache.size(),
+                "max_size": self.memory_cache.max_size,
+                "default_ttl": self.memory_cache.default_ttl,
+            },
             "config": {
                 "compression_enabled": self.config.enable_compression,
                 "cache_warming_enabled": self.config.cache_warming_enabled,
@@ -495,6 +607,11 @@ class CacheService:
         """
         cleared = 0
 
+        # Clear memory cache
+        if not pattern:  # Only clear all memory cache if no pattern specified
+            self.memory_cache.clear()
+            cleared += 1
+
         # Clear Redis cache
         if self.redis_client:
             try:
@@ -513,6 +630,10 @@ class CacheService:
 
         logger.info(f"Cleared {cleared} cache entries")
         return cleared
+
+    def cleanup_memory_cache(self) -> int:
+        """Clean up expired entries in memory cache."""
+        return self.memory_cache.cleanup_expired()
 
 
 # Global cache service instance

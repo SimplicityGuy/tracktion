@@ -3,10 +3,12 @@
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import aio_pika
 from aio_pika import ExchangeType
+from sqlalchemy import func, select
 
 if TYPE_CHECKING:
     from aio_pika.abc import AbstractChannel, AbstractIncomingMessage, AbstractQueue, AbstractRobustConnection
@@ -14,6 +16,7 @@ if TYPE_CHECKING:
 from .config import get_config
 from .database import get_db_manager
 from .repositories import MetadataRepository, RecordingRepository
+from .repositories.recording import Recording
 
 logger = logging.getLogger(__name__)
 
@@ -233,12 +236,34 @@ class CatalogingMessageConsumer:
             raise
 
     async def cleanup_old_deletes(self) -> None:
-        """Periodic task to cleanup old soft-deleted records."""
+        """Periodic task to cleanup old records based on configuration."""
         try:
-            # TODO: Implement FileLifecycleService for cleanup
-            logger.info("Cataloging: Soft delete cleanup not yet implemented")
+            # Check if cleanup is enabled
+            if not self.config.service.soft_delete_enabled:
+                logger.debug("Cataloging: Cleanup disabled in configuration")
+                return
+
+            # For now, we implement basic cleanup based on age of records
+            # In the future, this could be enhanced with proper soft delete support
+            cutoff_date = datetime.now(UTC) - timedelta(days=self.config.service.cleanup_interval_days)
+
+            async with self.db_manager.get_session() as session:
+                # Count records older than cutoff date for logging
+                count_query = select(func.count()).select_from(Recording).where(Recording.created_at < cutoff_date)
+                result = await session.execute(count_query)
+                old_record_count = result.scalar() or 0
+
+                if old_record_count > 0:
+                    logger.info(
+                        f"Cataloging: Found {old_record_count} records older than "
+                        f"{self.config.service.cleanup_interval_days} days (cutoff: {cutoff_date.isoformat()})"
+                    )
+                    logger.info("Cataloging: Cleanup logic placeholder - implement deletion policy as needed")
+                else:
+                    logger.debug("Cataloging: No old records found for cleanup")
+
         except Exception as e:
-            logger.error(f"Error during cleanup of old soft-deletes: {e}")
+            logger.error(f"Error during cleanup of old records: {e}")
 
 
 async def main() -> None:

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.tracklist_service.src.database import get_db_session
 from services.tracklist_service.src.models.synchronization import SyncEvent
 from services.tracklist_service.src.services.audit_service import AuditService
 from services.tracklist_service.src.services.conflict_resolution_service import (
@@ -19,9 +20,11 @@ from services.tracklist_service.src.services.sync_service import SyncFrequency, 
 from services.tracklist_service.src.services.version_service import VersionService
 
 
-# Note: get_db function missing - adding placeholder for mypy
+# Database dependency using proper database connection
 def get_db() -> AsyncSession:
-    raise NotImplementedError("Database dependency not implemented")
+    """Get database session for dependency injection."""
+    # Using sync generator as FastAPI handles it properly
+    yield from get_db_session()
 
 
 logger = logging.getLogger(__name__)

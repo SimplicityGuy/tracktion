@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import essentia.standard as es
+import librosa
 import numpy as np
 import psutil
 
@@ -127,17 +128,18 @@ class AudioStreamer:
             essentia.streaming or librosa streaming capabilities.
         """
         try:
-            # For large files, we'll use Essentia's streaming mode
-            # This is a simplified implementation
+            # First try to load with Essentia for better performance with streaming
             loader = es.MonoLoader(filename=file_path, sampleRate=sample_rate)
-            # Load audio in chunks (this is conceptual - actual implementation
-            # would use Essentia's streaming algorithms)
             audio = loader()
         except (ImportError, RuntimeError) as e:
-            # Fallback for testing when Essentia is not available or file is invalid
-            # In production, Essentia would be required
-            logger.warning(f"Using mock audio for testing: {e}")
-            audio = np.random.default_rng().random(44100).astype(np.float32)  # 1 second of mock audio
+            # Fallback to librosa if Essentia fails
+            logger.info(f"Essentia failed, using librosa: {e}")
+            try:
+                audio, loaded_sample_rate = librosa.load(file_path, sr=sample_rate, mono=mono)
+                # Convert to float32 for consistency with Essentia
+                audio = audio.astype(np.float32)
+            except Exception as audio_error:
+                raise FileNotFoundError(f"Failed to load audio file '{file_path}': {audio_error}") from audio_error
         chunk_samples = self.chunk_size // 4  # 4 bytes per float32 sample
 
         for i in range(0, len(audio), chunk_samples):

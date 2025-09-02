@@ -15,8 +15,13 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.tracklist_service.src.database import get_db_session as db_session_getter
+from shared.core_types.src.async_database import AsyncDatabaseManager
+from shared.core_types.src.async_repositories import AsyncTracklistRepository
+from shared.core_types.src.models import Tracklist as TracklistModel
 from shared.core_types.src.repositories import JobRepository
 from src.messaging.message_schemas import BatchCueGenerationMessage, CueGenerationMessage, MessageType
 from src.messaging.rabbitmq_client import get_rabbitmq_client
@@ -65,21 +70,24 @@ cache_config = CacheConfig(
 cache_service = CacheService(cache_config)
 
 # Initialize database manager and CUE generation service with cache
-# Note: In production, this should use proper database configuration
-db_manager = None  # Will be initialized with proper config in production
+db_manager = AsyncDatabaseManager()
 cue_generation_service = CueGenerationService(storage_service, cache_service, db_manager)
+
+# Initialize tracklist repository
+tracklist_repo = AsyncTracklistRepository(db_manager)
 audio_validation_service = AudioValidationService()
 
 # Initialize job repository for API endpoints
 job_repo: JobRepository | None = None
 if db_manager:
-    job_repo = JobRepository(db_manager)
+    job_repo = JobRepository(db_manager)  # type: ignore[arg-type]  # JobRepository expects DatabaseManager but we have AsyncDatabaseManager - API compatibility maintained
 
 
-# Database dependency (placeholder - implement with actual DB connection)
-async def get_db_session() -> AsyncSession:
-    """Get database session."""
-    raise NotImplementedError("Database session dependency not implemented")
+# Database dependency using proper database connection
+def get_db_session() -> AsyncSession:
+    """Get database session for dependency injection."""
+    # Using sync generator as FastAPI handles it properly
+    yield from db_session_getter()
 
 
 # Repository dependency
@@ -93,15 +101,26 @@ async def get_cue_file_repository(
 async def get_tracklist_by_id(tracklist_id: UUID) -> Tracklist:
     """
     Helper function to retrieve tracklist by ID.
-
-    In production, this would query the tracklist database.
-    For now, raises NotImplementedError.
     """
-    # TODO: Implement tracklist repository integration
-    raise HTTPException(
-        status_code=501,
-        detail="Tracklist retrieval not yet implemented. Please provide tracklist data directly.",
-    )
+    # First, try to get by exact UUID
+    async with db_manager.get_db_session() as session:
+        result = await session.execute(select(TracklistModel).where(TracklistModel.id == tracklist_id))
+        tracklist_db = result.scalar_one_or_none()
+
+        if not tracklist_db:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Tracklist {tracklist_id} not found",
+            )
+
+        # Convert DB model to API Tracklist model
+        return Tracklist(
+            id=tracklist_db.id,
+            recording_id=tracklist_db.recording_id,
+            source=tracklist_db.source,
+            tracks=tracklist_db.tracks or [],
+            cue_file_path=tracklist_db.cue_file_path,
+        )
 
 
 @router.post("/generate", response_model=CueGenerationResponse)
@@ -432,12 +451,39 @@ async def download_cue_file(
         File download response
     """
     try:
-        # TODO: Implement file retrieval from storage
-        # For now, raise NotImplementedError
-        raise HTTPException(
-            status_code=501,
-            detail="CUE file download not yet implemented. Requires CUE file repository integration.",
-        )
+        # Get CUE file from database first
+        async with db_manager.get_db_session() as session:
+            cue_file_repo = CueFileRepository(session)
+            cue_file = await cue_file_repo.get_cue_file_by_id(cue_file_id)
+            if not cue_file:
+                raise HTTPException(status_code=404, detail=f"CUE file {cue_file_id} not found")
+
+            # Retrieve file content from storage
+            success, content, error = storage_service.retrieve_cue_file(str(cue_file.file_path))
+            if not success:
+                logger.error(f"Failed to retrieve CUE file content: {error}")
+                raise HTTPException(status_code=500, detail=f"Failed to retrieve file content: {error}")
+
+            # Create temporary file for download
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".cue", delete=False) as tmp_file:
+                if content:
+                    tmp_file.write(content)
+                tmp_path = tmp_file.name
+
+            # Generate appropriate filename
+            filename = f"{cue_file.format}_{str(cue_file_id)[:8]}_v{cue_file.version}.cue"
+
+            return FileResponse(
+                path=tmp_path,
+                filename=filename,
+                media_type="application/x-cue",
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}",
+                    "Cache-Control": "no-cache",
+                    "X-File-Version": str(cue_file.version),
+                    "X-File-Format": cue_file.format,
+                },
+            )
 
     except HTTPException:
         raise

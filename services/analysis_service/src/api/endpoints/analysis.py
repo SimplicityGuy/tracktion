@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from services.analysis_service.src.api_message_publisher import APIMessagePublisher
 from services.analysis_service.src.repositories import (
-    # AsyncAnalysisResultRepository,  # TODO: Enable when implemented
+    AsyncAnalysisResultRepository,
     AsyncRecordingRepository,
 )
 from services.analysis_service.src.structured_logging import get_logger
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/v1/analysis", tags=["analysis"])
 db_manager = AsyncDatabaseManager()
 message_publisher = APIMessagePublisher(rabbitmq_url=os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"))
 recording_repo = AsyncRecordingRepository(db_manager)
-# analysis_repo = AsyncAnalysisResultRepository(db_manager)  # TODO: Enable when implemented
+analysis_repo = AsyncAnalysisResultRepository(db_manager)
 
 
 class AnalysisRequest(BaseModel):
@@ -124,21 +124,48 @@ async def get_analysis_status(recording_id: UUID) -> AnalysisResponse:
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
 
-    # TODO: Enable when AsyncAnalysisResultRepository is implemented
     # Get analysis results from database
-    # analysis_results = await analysis_repo.get_by_recording_id(recording_id)
+    analysis_results = await analysis_repo.get_by_recording_id(recording_id)
 
-    # Temporary implementation - return pending status
-    result_items: list[AnalysisResult] = []
-    status_str = "pending"
-    progress = 0.0
+    # Convert analysis results to response format
+    result_items: list[AnalysisResult] = [
+        AnalysisResult(
+            type=analysis.analysis_type,
+            value=analysis.result_data,
+            confidence=analysis.confidence_score or 0.0,
+            metadata={
+                "processing_time_ms": analysis.processing_time_ms,
+                "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
+            },
+        )
+        for analysis in analysis_results
+        if analysis.result_data and analysis.status == "completed"
+    ]
+
+    # Determine overall status and progress
+    if not analysis_results:
+        status_str = "pending"
+        progress = 0.0
+    elif any(r.status == "failed" for r in analysis_results):
+        status_str = "failed"
+        progress = 1.0
+    elif any(r.status == "processing" for r in analysis_results):
+        status_str = "processing"
+        completed_count = sum(1 for r in analysis_results if r.status == "completed")
+        progress = completed_count / len(analysis_results)
+    elif all(r.status == "completed" for r in analysis_results):
+        status_str = "completed"
+        progress = 1.0
+    else:
+        status_str = "processing"
+        completed_count = sum(1 for r in analysis_results if r.status == "completed")
+        progress = completed_count / len(analysis_results)
 
     # Get timestamps from recording
     started_at = recording.created_at.isoformat() if recording.created_at else None
     completed_at = None
-    # TODO: Enable when analysis results are available
-    # if status_str == "completed" and recording.updated_at:
-    #     completed_at = recording.updated_at.isoformat()
+    if status_str == "completed" and recording.updated_at:
+        completed_at = recording.updated_at.isoformat()
 
     return AnalysisResponse(
         recording_id=recording_id,
@@ -165,12 +192,21 @@ async def get_bpm_analysis(recording_id: UUID) -> dict[str, Any]:
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
 
-    # TODO: Enable when AsyncAnalysisResultRepository is implemented
     # Get BPM analysis result from database
-    # bpm_result = await analysis_repo.get_latest_by_type(recording_id, "bpm")
+    bpm_result = await analysis_repo.get_by_recording_and_type(recording_id, "bpm")
 
-    # Temporary implementation - return not found
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BPM analysis not implemented yet")
+    if not bpm_result or bpm_result.status != "completed":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BPM analysis not found")
+
+    return {
+        "recording_id": str(recording_id),
+        "analysis_type": "bpm",
+        "result": bpm_result.result_data,
+        "confidence": bpm_result.confidence_score,
+        "status": bpm_result.status,
+        "created_at": bpm_result.created_at.isoformat() if bpm_result.created_at else None,
+        "processing_time_ms": bpm_result.processing_time_ms,
+    }
 
 
 @router.get("/{recording_id}/key")
@@ -188,12 +224,21 @@ async def get_key_analysis(recording_id: UUID) -> dict[str, Any]:
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
 
-    # TODO: Enable when AsyncAnalysisResultRepository is implemented
     # Get key analysis result from database
-    # key_result = await analysis_repo.get_latest_by_type(recording_id, "key")
+    key_result = await analysis_repo.get_by_recording_and_type(recording_id, "key")
 
-    # Temporary implementation - return not found
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Key analysis not implemented yet")
+    if not key_result or key_result.status != "completed":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Key analysis not found")
+
+    return {
+        "recording_id": str(recording_id),
+        "analysis_type": "key",
+        "result": key_result.result_data,
+        "confidence": key_result.confidence_score,
+        "status": key_result.status,
+        "created_at": key_result.created_at.isoformat() if key_result.created_at else None,
+        "processing_time_ms": key_result.processing_time_ms,
+    }
 
 
 @router.get("/{recording_id}/mood")
@@ -211,12 +256,21 @@ async def get_mood_analysis(recording_id: UUID) -> dict[str, Any]:
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
 
-    # TODO: Enable when AsyncAnalysisResultRepository is implemented
     # Get mood analysis result from database
-    # mood_result = await analysis_repo.get_latest_by_type(recording_id, "mood")
+    mood_result = await analysis_repo.get_by_recording_and_type(recording_id, "mood")
 
-    # Temporary implementation - return not found
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mood analysis not implemented yet")
+    if not mood_result or mood_result.status != "completed":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mood analysis not found")
+
+    return {
+        "recording_id": str(recording_id),
+        "analysis_type": "mood",
+        "result": mood_result.result_data,
+        "confidence": mood_result.confidence_score,
+        "status": mood_result.status,
+        "created_at": mood_result.created_at.isoformat() if mood_result.created_at else None,
+        "processing_time_ms": mood_result.processing_time_ms,
+    }
 
 
 @router.post("/{recording_id}/waveform")

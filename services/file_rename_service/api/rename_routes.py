@@ -34,6 +34,26 @@ logger = logging.getLogger(__name__)
 proposal_router = APIRouter(prefix="/rename", tags=["Rename Proposals"])
 
 
+# Authentication dependency - gets user context for template management
+async def get_user_context() -> dict[str, str]:
+    """
+    Get user context for template management.
+
+    In a production system with proper user authentication, this would extract
+    user_id from JWT token or session. For now, returns default user context
+    that works with the existing API key authentication system.
+
+    Returns:
+        Dictionary with user context including user_id
+    """
+    # TODO: Integrate with proper user authentication when available
+    # This could be enhanced to:
+    # 1. Extract user_id from JWT token claims
+    # 2. Get user_id from API key to user mapping
+    # 3. Use session-based authentication
+    return {"user_id": "default_user", "auth_type": "api_key"}
+
+
 # Dependency to get database session
 def get_db() -> Generator[Session]:
     """Get database session."""
@@ -164,6 +184,7 @@ async def propose_single_rename(
 async def propose_batch_rename(
     request: BatchProposalRequest,
     db: Annotated[Session, Depends(get_db)],
+    user_context: Annotated[dict[str, str], Depends(get_user_context)],
 ) -> BatchProposalResponse:
     """
     Generate rename proposals for multiple files in batch.
@@ -200,9 +221,8 @@ async def propose_batch_rename(
             max_concurrent_tasks=request.max_concurrent,
         )
 
-        # Get user templates (assuming user_id is available from auth context)
-        # TODO: Get user_id from authentication context
-        user_id = "system"  # Placeholder for authentication
+        # Get user templates from authentication context
+        user_id = user_context["user_id"]
         templates_list = await template_manager.get_user_templates(user_id)
         templates = [template for template in templates_list if template.is_active]
 

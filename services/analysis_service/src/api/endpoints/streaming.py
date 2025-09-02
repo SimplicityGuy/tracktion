@@ -11,7 +11,8 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 
-from services.analysis_service.src.repositories import AsyncRecordingRepository
+from services.analysis_service.src.async_progress_tracker import AsyncProgressTracker
+from services.analysis_service.src.repositories import AsyncAnalysisResultRepository, AsyncRecordingRepository
 from services.analysis_service.src.structured_logging import get_logger
 from shared.core_types.src.async_database import AsyncDatabaseManager
 
@@ -22,6 +23,19 @@ router = APIRouter(prefix="/v1/streaming", tags=["streaming"])
 # Initialize database components
 db_manager = AsyncDatabaseManager()
 recording_repo = AsyncRecordingRepository(db_manager)
+analysis_result_repo = AsyncAnalysisResultRepository(db_manager)
+
+# Initialize progress tracker
+progress_tracker = AsyncProgressTracker(
+    redis_url=None,  # Use in-memory tracking for now
+    enable_websocket=False,  # SSE instead of WebSocket
+    update_interval_seconds=0.5,  # More frequent updates for better UX
+)
+
+# Initialize progress tracker on startup
+# Store reference to avoid RUF006 warning
+_tracker_task_ref = asyncio.create_task(progress_tracker.initialize())
+_tracker_task = _tracker_task_ref  # Keep reference to prevent garbage collection
 
 
 async def generate_audio_chunks(
@@ -180,48 +194,189 @@ async def stream_audio(
 async def generate_analysis_events(
     recording_id: str,
 ) -> AsyncGenerator[dict[str, Any]]:
-    """Generate Server-Sent Events for analysis progress.
+    """Generate Server-Sent Events for real analysis progress.
 
     Args:
         recording_id: Recording being analyzed
 
     Yields:
-        SSE events with analysis progress
+        SSE events with analysis progress from actual job status
     """
-    # Simulate analysis progress
-    stages = [
-        ("loading", 0.1, "Loading audio file"),
-        ("preprocessing", 0.2, "Preprocessing audio"),
-        ("bpm_detection", 0.4, "Detecting BPM"),
-        ("key_detection", 0.6, "Detecting key"),
-        ("mood_analysis", 0.8, "Analyzing mood"),
-        ("complete", 1.0, "Analysis complete"),
-    ]
-
-    for stage, progress, message in stages:
-        await asyncio.sleep(1)  # Simulate processing time
-
-        event_data = {
-            "recording_id": recording_id,
-            "stage": stage,
-            "progress": progress,
-            "message": message,
-            "timestamp": asyncio.get_event_loop().time(),
+    try:
+        recording_uuid = UUID(recording_id)
+    except ValueError:
+        # Invalid UUID format, send error and return
+        yield {
+            "event": "error",
+            "data": json.dumps(
+                {
+                    "recording_id": recording_id,
+                    "error": "Invalid recording ID format",
+                    "timestamp": asyncio.get_event_loop().time(),
+                }
+            ),
         }
+        return
 
-        # Yield SSE event
-        yield {"event": "progress", "data": json.dumps(event_data)}
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_uuid)
+    if not recording:
+        yield {
+            "event": "error",
+            "data": json.dumps(
+                {
+                    "recording_id": recording_id,
+                    "error": "Recording not found",
+                    "timestamp": asyncio.get_event_loop().time(),
+                }
+            ),
+        }
+        return
 
-    # Send completion event
+    # Track analysis progress using real database queries
+    last_status = None
+    last_progress = 0.0
+    analysis_complete = False
+    max_iterations = 300  # Maximum 5 minutes of polling (300 * 1s)
+    iteration = 0
+
+    # Send initial status
     yield {
-        "event": "complete",
+        "event": "started",
         "data": json.dumps(
             {
                 "recording_id": recording_id,
-                "results": {"bpm": 128.5, "key": "Am", "mood": "energetic"},
+                "message": "Starting analysis monitoring",
+                "timestamp": asyncio.get_event_loop().time(),
             }
         ),
     }
+
+    while not analysis_complete and iteration < max_iterations:
+        iteration += 1
+
+        # Query current recording status
+        current_recording = await recording_repo.get_by_id(recording_uuid)
+        if not current_recording:
+            break
+
+        current_status = current_recording.processing_status
+
+        # Query analysis results to determine progress
+        analysis_results = await analysis_result_repo.get_by_recording_id(recording_uuid)
+
+        # Calculate progress based on analysis results
+        total_analyses = 4  # bpm, key, mood, energy (typical analysis types)
+        completed_analyses = len([r for r in analysis_results if r.status == "completed"])
+        in_progress_analyses = len([r for r in analysis_results if r.status == "processing"])
+        # Count failed analyses (tracked for potential future use)
+        _ = len([r for r in analysis_results if r.status == "failed"])
+
+        # Calculate progress percentage
+        if current_status == "completed":
+            current_progress = 100.0
+            analysis_complete = True
+        elif current_status == "failed":
+            current_progress = 0.0
+            analysis_complete = True
+        elif current_status == "processing":
+            # Base progress on completed + partial credit for in-progress
+            current_progress = min(95.0, (completed_analyses + (in_progress_analyses * 0.5)) / total_analyses * 100)
+        else:
+            # pending or other status
+            current_progress = 5.0
+
+        # Determine current stage based on analysis results
+        current_stage = "initializing"
+        stage_message = "Initializing analysis"
+
+        if analysis_results:
+            latest_result = max(analysis_results, key=lambda x: x.created_at)
+            if latest_result.analysis_type == "bpm":
+                current_stage = "bpm_detection"
+                stage_message = f"Detecting BPM ({latest_result.status})"
+            elif latest_result.analysis_type == "key":
+                current_stage = "key_detection"
+                stage_message = f"Detecting key ({latest_result.status})"
+            elif latest_result.analysis_type == "mood":
+                current_stage = "mood_analysis"
+                stage_message = f"Analyzing mood ({latest_result.status})"
+            elif latest_result.analysis_type == "energy":
+                current_stage = "energy_analysis"
+                stage_message = f"Analyzing energy ({latest_result.status})"
+
+        # Only send updates when status or progress changes significantly
+        progress_changed = abs(current_progress - last_progress) >= 1.0
+        status_changed = current_status != last_status
+
+        if status_changed or progress_changed or analysis_complete:
+            event_data = {
+                "recording_id": recording_id,
+                "stage": current_stage,
+                "progress": current_progress,
+                "message": stage_message,
+                "status": current_status,
+                "completed_analyses": completed_analyses,
+                "total_analyses": total_analyses,
+                "timestamp": asyncio.get_event_loop().time(),
+            }
+
+            # Add error details if analysis failed
+            if current_status == "failed" and current_recording.processing_error:
+                event_data["error"] = current_recording.processing_error
+
+            yield {"event": "progress", "data": json.dumps(event_data)}
+
+            last_status = current_status
+            last_progress = current_progress
+
+        # Handle completion
+        if analysis_complete:
+            if current_status == "completed":
+                # Get final results
+                results = await analysis_result_repo.get_completed_results_for_recording(recording_uuid)
+
+                yield {
+                    "event": "complete",
+                    "data": json.dumps(
+                        {
+                            "recording_id": recording_id,
+                            "results": results,
+                            "message": "Analysis completed successfully",
+                            "timestamp": asyncio.get_event_loop().time(),
+                        }
+                    ),
+                }
+            elif current_status == "failed":
+                yield {
+                    "event": "failed",
+                    "data": json.dumps(
+                        {
+                            "recording_id": recording_id,
+                            "error": current_recording.processing_error or "Analysis failed",
+                            "message": "Analysis failed",
+                            "timestamp": asyncio.get_event_loop().time(),
+                        }
+                    ),
+                }
+            break
+
+        # Wait before next poll (1 second interval)
+        await asyncio.sleep(1.0)
+
+    # Handle timeout case
+    if iteration >= max_iterations and not analysis_complete:
+        yield {
+            "event": "timeout",
+            "data": json.dumps(
+                {
+                    "recording_id": recording_id,
+                    "error": "Analysis monitoring timed out",
+                    "message": "Analysis is taking longer than expected",
+                    "timestamp": asyncio.get_event_loop().time(),
+                }
+            ),
+        }
 
 
 @router.get("/events/{recording_id}")
@@ -234,9 +389,16 @@ async def stream_analysis_events(recording_id: str) -> EventSourceResponse:
     Returns:
         SSE stream of analysis events
     """
-    logger.info("Starting SSE stream for analysis", extra={"recording_id": recording_id})
+    logger.info("Starting SSE stream for real analysis progress", extra={"recording_id": recording_id})
 
-    return EventSourceResponse(generate_analysis_events(recording_id))
+    return EventSourceResponse(
+        generate_analysis_events(recording_id),
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Recording-ID": recording_id,
+        },
+    )
 
 
 async def batch_process_generator(recording_ids: list[str], batch_size: int = 5) -> AsyncGenerator[str]:
@@ -299,41 +461,104 @@ async def stream_batch_processing(
 
 
 async def generate_log_stream(recording_id: str, follow: bool = False) -> AsyncGenerator[str]:
-    """Generate log stream for a recording's processing.
+    """Generate log stream for a recording's processing based on actual analysis status.
 
     Args:
         recording_id: Recording to get logs for
         follow: Whether to follow new logs
 
     Yields:
-        Log lines
+        Log lines from actual analysis progress
     """
-    # Simulate log streaming
-    logs = [
-        f"[INFO] Starting analysis for {recording_id}",
-        "[DEBUG] Loading audio file from storage",
-        "[DEBUG] Audio loaded: 44100Hz, 2 channels, 180.5s",
-        "[INFO] Running BPM detection",
-        "[DEBUG] BPM detected: 128.5 (confidence: 0.95)",
-        "[INFO] Running key detection",
-        "[DEBUG] Key detected: Am (confidence: 0.88)",
-        "[INFO] Analysis complete",
-    ]
+    try:
+        recording_uuid = UUID(recording_id)
+    except ValueError:
+        yield f"[ERROR] Invalid recording ID format: {recording_id}\n"
+        return
 
-    for log in logs:
-        await asyncio.sleep(0.3)
-        yield log + "\n"
+    # Verify recording exists
+    recording = await recording_repo.get_by_id(recording_uuid)
+    if not recording:
+        yield f"[ERROR] Recording not found: {recording_id}\n"
+        return
 
-    if follow:
-        # Continue streaming new logs
-        max_streaming_updates = 5  # Maximum number of streaming updates for demo
-        streaming_update_delay = 2  # Delay between streaming updates in seconds
+    yield f"[INFO] Starting log streaming for recording {recording_id}\n"
+    yield f"[INFO] File: {recording.file_path}\n"
+    yield f"[INFO] Status: {recording.processing_status}\n"
 
-        counter = 0
-        while counter < max_streaming_updates:
-            await asyncio.sleep(streaming_update_delay)
-            yield f"[DEBUG] Monitoring... (update {counter})\n"
-            counter += 1
+    # Get initial analysis results
+    analysis_results = await analysis_result_repo.get_by_recording_id(recording_uuid)
+
+    # Show historical analysis results
+    if analysis_results:
+        for result in sorted(analysis_results, key=lambda x: x.created_at):
+            created_time = result.created_at.strftime("%H:%M:%S") if result.created_at else "unknown"
+            yield f"[{created_time}] [{result.status.upper()}] {result.analysis_type} analysis"
+            if result.status == "completed":
+                if result.result_data and result.confidence_score:
+                    yield f" - Result: {result.result_data} (confidence: {result.confidence_score:.2f})"
+                elif result.processing_time_ms:
+                    yield f" - Processing time: {result.processing_time_ms}ms"
+            elif result.status == "failed" and result.error_message:
+                yield f" - Error: {result.error_message}"
+            yield "\n"
+
+    if not follow:
+        yield "[INFO] Log streaming complete (static mode)\n"
+        return
+
+    # Follow mode: monitor for changes
+    yield "[INFO] Following analysis progress...\n"
+
+    last_seen_results = len(analysis_results)
+    last_status = recording.processing_status
+    poll_count = 0
+    max_polls = 180  # 3 minutes maximum
+
+    while poll_count < max_polls:
+        await asyncio.sleep(1.0)
+        poll_count += 1
+
+        # Check for recording status changes
+        current_recording = await recording_repo.get_by_id(recording_uuid)
+        if not current_recording:
+            yield "[ERROR] Recording disappeared during monitoring\n"
+            break
+
+        # Log status changes
+        if current_recording.processing_status != last_status:
+            yield (
+                f"[{poll_count:03d}s] [STATUS] Changed from '{last_status}' "
+                f"to '{current_recording.processing_status}'\n"
+            )
+            last_status = current_recording.processing_status
+
+            # Check for completion or failure
+            if current_recording.processing_status == "completed":
+                yield f"[{poll_count:03d}s] [SUCCESS] Analysis completed successfully\n"
+                break
+            elif current_recording.processing_status == "failed":
+                error_msg = current_recording.processing_error or "Unknown error"
+                yield f"[{poll_count:03d}s] [FAILED] Analysis failed: {error_msg}\n"
+                break
+
+        # Check for new analysis results
+        current_results = await analysis_result_repo.get_by_recording_id(recording_uuid)
+        if len(current_results) > last_seen_results:
+            # New results found
+            new_results = sorted(current_results, key=lambda x: x.created_at)[last_seen_results:]
+            for result in new_results:
+                yield f"[{poll_count:03d}s] [NEW] {result.analysis_type} analysis: {result.status}\n"
+                if result.status == "completed" and result.processing_time_ms:
+                    yield f"[{poll_count:03d}s] [PERF] Processing time: {result.processing_time_ms}ms\n"
+            last_seen_results = len(current_results)
+
+        # Periodic heartbeat
+        if poll_count % 10 == 0:
+            yield f"[{poll_count:03d}s] [HEARTBEAT] Monitoring active (status: {last_status})\n"
+
+    if poll_count >= max_polls:
+        yield f"[{poll_count:03d}s] [TIMEOUT] Monitoring timeout reached\n"
 
 
 @router.get("/logs/{recording_id}")
