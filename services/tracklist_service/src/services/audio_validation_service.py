@@ -5,11 +5,19 @@ This service validates that CUE file track timings are consistent with
 the actual audio file duration and detects potential timing issues.
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
-from src.models.cue_file import ValidationResult
-from src.models.tracklist import Tracklist
+import mutagen
+from mutagen import MutagenError
+from pydub import AudioSegment
+from pydub.exceptions import CouldntDecodeError
+
+from services.tracklist_service.src.models.cue_file import ValidationResult
+from services.tracklist_service.src.models.tracklist import Tracklist
+
+logger = logging.getLogger(__name__)
 
 
 class AudioValidationService:
@@ -122,23 +130,37 @@ class AudioValidationService:
         """
         try:
             # Check if file exists
-            if not Path(audio_file_path).exists():
+            file_path = Path(audio_file_path)
+            if not file_path.exists():
+                logger.warning(f"Audio file not found: {audio_file_path}")
                 return None
 
-            # TODO: Implement actual audio duration detection
-            # This is a placeholder implementation
-            # In production, you would use:
-            # - librosa.get_duration(filename=audio_file_path)
-            # - or subprocess call to ffprobe
-            # - or pydub.AudioSegment.from_file(audio_file_path).duration_seconds
+            # Try mutagen first (fastest and most reliable for metadata)
+            try:
+                audio_file = mutagen.File(audio_file_path)
+                if audio_file is not None and hasattr(audio_file.info, "length"):
+                    duration = audio_file.info.length
+                    if duration is not None and duration > 0:
+                        logger.debug(f"Got duration {duration:.2f}s using mutagen for {audio_file_path}")
+                        return float(duration)
+            except (MutagenError, AttributeError) as e:
+                logger.debug(f"Mutagen failed for {audio_file_path}: {e}")
 
-            # For now, return a mock duration based on file extension
-            # This allows testing without actual audio libraries
-            if audio_file_path.endswith((".mp3", ".wav", ".flac")):
-                return 420.0  # Mock 7 minute duration
+            # Fallback to pydub (handles more formats but slower)
+            try:
+                audio_segment = AudioSegment.from_file(audio_file_path)
+                duration = len(audio_segment) / 1000.0  # Convert milliseconds to seconds
+                logger.debug(f"Got duration {duration:.2f}s using pydub for {audio_file_path}")
+                return float(duration)
+            except (CouldntDecodeError, FileNotFoundError, Exception) as e:
+                logger.warning(f"Pydub failed for {audio_file_path}: {e}")
+
+            # If both libraries fail, log error and return None
+            logger.error(f"Could not determine duration for {audio_file_path} using any method")
             return None
 
-        except Exception:
+        except Exception as e:
+            logger.error(f"Unexpected error getting audio duration for {audio_file_path}: {e}")
             return None
 
     async def validate_track_timings(

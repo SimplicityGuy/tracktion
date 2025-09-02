@@ -1019,8 +1019,7 @@ async def validate_cue_file(
                 # Get tracklist for audio validation
                 tracklist = await get_tracklist_by_id(UUID(str(cue_file.tracklist_id)))
 
-                # Validate timing against audio duration
-                # TODO: Get actual audio duration from file
+                # Validate timing against audio duration (now using real audio duration detection)
                 tolerance = 1.0  # Default tolerance
                 audio_validation = await audio_validation_service.validate_audio_duration(
                     audio_file_path, tracklist, tolerance

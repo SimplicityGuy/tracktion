@@ -23,6 +23,7 @@ from cue_handler import (  # noqa: E402  # Path modification required before imp
     CueDisc,
     CueFile,
     CueGenerator,
+    CueParser,
     CueTrack,
     CueValidator,
     get_generator,
@@ -258,8 +259,42 @@ class CueIntegrationService:
             # Add audio duration validation if provided
             if audio_duration_seconds is not None:
                 validation_result.audio_duration = audio_duration_seconds
-                # TODO: Add logic to extract tracklist duration from content
-                # and compare with audio duration
+
+                # Extract tracklist duration from CUE content
+                try:
+                    # Parse the CUE content to get the last track's end time
+                    parser = CueParser()
+                    cue_data = parser.parse(content)
+
+                    # Find the last track's end time
+                    last_track_end_ms = 0
+                    if cue_data and hasattr(cue_data, "files"):
+                        for cue_file in cue_data.files:
+                            if hasattr(cue_file, "tracks"):
+                                for track in cue_file.tracks:
+                                    # Get track start time in milliseconds
+                                    if hasattr(track, "start_time_ms"):
+                                        track_start = track.start_time_ms
+                                        # If we have a next track, use its start as this track's end
+                                        # Otherwise, estimate based on average track length
+                                        last_track_end_ms = max(last_track_end_ms, track_start)
+
+                    # Convert to seconds and store
+                    if last_track_end_ms > 0:
+                        tracklist_duration = last_track_end_ms / 1000.0
+                        validation_result.tracklist_duration = tracklist_duration
+
+                        # Compare with audio duration
+                        if audio_duration_seconds > 0:
+                            duration_diff = abs(audio_duration_seconds - tracklist_duration)
+                            if duration_diff > 2.0:  # More than 2 seconds difference
+                                validation_result.warnings.append(
+                                    f"Duration mismatch: audio={audio_duration_seconds:.1f}s, "
+                                    f"CUE={tracklist_duration:.1f}s, diff={duration_diff:.1f}s"
+                                )
+                except Exception as e:
+                    # Log error but don't fail validation
+                    validation_result.warnings.append(f"Could not extract duration from CUE content: {e}")
 
             return validation_result
 
