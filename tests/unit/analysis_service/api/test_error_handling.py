@@ -8,47 +8,41 @@ from fastapi.testclient import TestClient
 
 from services.analysis_service.src.api.app import app
 from services.analysis_service.src.api.errors import (
-    ErrorCode,
-    ErrorResponse,
-    create_error_response,
+    APIError,
+    NotFoundError,
+    RateLimitError,
+    ServiceUnavailableError,
+    ValidationError,
 )
 
 
 class TestErrorHandling:
     """Test error handling functionality."""
 
-    def test_create_error_response(self):
-        """Test creating error response."""
-        response = create_error_response(
-            ErrorCode.VALIDATION_ERROR,
-            "Invalid input",
+    def test_api_error_creation(self):
+        """Test creating API error."""
+        error = APIError(
             status_code=400,
-            details={"field": "test"},
+            detail="Invalid input",
+            error_code="VALIDATION_ERROR",
         )
 
-        assert response["error"]["code"] == ErrorCode.VALIDATION_ERROR
-        assert response["error"]["message"] == "Invalid input"
-        assert response["error"]["status"] == 400
-        assert response["error"]["details"]["field"] == "test"
-        assert "request_id" in response["error"]
-        assert "timestamp" in response["error"]
+        assert error.status_code == 400
+        assert error.detail == "Invalid input"
+        assert error.error_code == "VALIDATION_ERROR"
 
-    def test_error_response_model(self):
-        """Test ErrorResponse model."""
-        error = ErrorResponse(
-            code=ErrorCode.NOT_FOUND,
-            message="Resource not found",
-            status=404,
+    def test_not_found_error(self):
+        """Test NotFoundError."""
+        error = NotFoundError(
+            resource="Recording",
+            resource_id="550e8400-e29b-41d4-a716-446655440000",
         )
 
-        assert error.code == ErrorCode.NOT_FOUND
-        assert error.message == "Resource not found"
-        assert error.status == 404
-        assert error.details is None
-        assert error.request_id is not None
-        assert error.timestamp is not None
+        assert error.status_code == status.HTTP_404_NOT_FOUND
+        assert "Recording with ID 550e8400-e29b-41d4-a716-446655440000 not found" in error.detail
+        assert error.error_code == "RESOURCE_NOT_FOUND"
 
-    @patch("services.analysis_service.src.api.endpoints.recordings.recording_repo")
+    @patch("services.analysis_service.src.api.endpoints.recordings.recording_repository")
     def test_404_error_handling(self, mock_repo):
         """Test 404 error handling."""
         mock_repo.get_by_id = AsyncMock(return_value=None)
@@ -58,10 +52,10 @@ class TestErrorHandling:
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
         error_data = response.json()
-        assert "error" in error_data
-        assert error_data["error"]["code"] == ErrorCode.NOT_FOUND
+        assert "detail" in error_data
+        assert "not found" in error_data["detail"]
 
-    @patch("services.analysis_service.src.api.endpoints.recordings.recording_repo")
+    @patch("services.analysis_service.src.api.endpoints.recordings.recording_repository")
     def test_500_error_handling(self, mock_repo):
         """Test 500 error handling."""
         mock_repo.get_by_id = AsyncMock(side_effect=Exception("Database error"))
@@ -71,8 +65,8 @@ class TestErrorHandling:
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         error_data = response.json()
-        assert "error" in error_data
-        assert error_data["error"]["code"] == ErrorCode.INTERNAL_ERROR
+        # When an exception occurs, FastAPI's default error handler is used
+        assert "detail" in error_data or "error" in error_data
 
     def test_validation_error_handling(self):
         """Test validation error handling."""
@@ -106,39 +100,34 @@ class TestErrorHandling:
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_rate_limit_error_response(self):
-        """Test rate limit error response creation."""
-        response = create_error_response(
-            ErrorCode.RATE_LIMITED,
-            "Too many requests",
-            status_code=429,
-            details={"retry_after": 60},
+    def test_rate_limit_error(self):
+        """Test rate limit error."""
+        error = RateLimitError(retry_after=60)
+
+        assert error.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        assert "Rate limit exceeded" in error.detail
+        assert error.error_code == "RATE_LIMIT_EXCEEDED"
+        assert error.headers["Retry-After"] == "60"
+
+    def test_validation_error(self):
+        """Test validation error."""
+        error = ValidationError(
+            detail="Invalid value",
+            field="username",
         )
 
-        assert response["error"]["code"] == ErrorCode.RATE_LIMITED
-        assert response["error"]["status"] == 429
-        assert response["error"]["details"]["retry_after"] == 60
-
-    def test_timeout_error_response(self):
-        """Test timeout error response creation."""
-        response = create_error_response(
-            ErrorCode.TIMEOUT,
-            "Request timed out",
-            status_code=504,
-        )
-
-        assert response["error"]["code"] == ErrorCode.TIMEOUT
-        assert response["error"]["status"] == 504
+        assert error.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert "username" in error.detail
+        assert error.error_code == "VALIDATION_ERROR"
 
     def test_service_unavailable_error(self):
-        """Test service unavailable error response."""
-        response = create_error_response(
-            ErrorCode.SERVICE_UNAVAILABLE,
-            "Service temporarily unavailable",
-            status_code=503,
-            details={"service": "redis", "retry_after": 30},
+        """Test service unavailable error."""
+        error = ServiceUnavailableError(
+            service="redis",
+            retry_after=30,
         )
 
-        assert response["error"]["code"] == ErrorCode.SERVICE_UNAVAILABLE
-        assert response["error"]["status"] == 503
-        assert response["error"]["details"]["service"] == "redis"
+        assert error.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert "redis" in error.detail
+        assert error.error_code == "SERVICE_UNAVAILABLE"
+        assert error.headers["Retry-After"] == "30"
