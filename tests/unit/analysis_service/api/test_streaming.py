@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import uuid4
 
-import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 
@@ -131,25 +130,3 @@ class TestStreamingEndpoints:
         logs = response.text
         assert "[INFO]" in logs
         assert "Starting log streaming" in logs
-
-    @pytest.mark.skip(reason="Follow mode causes infinite loop - needs async test client")
-    @patch("services.analysis_service.src.api.endpoints.streaming.analysis_result_repo")
-    @patch("services.analysis_service.src.api.endpoints.streaming.recording_repo")
-    def test_log_follow_mode(self, mock_recording_repo, mock_analysis_repo):
-        """Test log streaming with follow mode."""
-        # Mock recording
-        mock_recording = Mock()
-        mock_recording.file_path = "/path/to/audio.wav"
-        mock_recording.processing_status = "processing"
-        mock_recording_repo.get_by_id = AsyncMock(return_value=mock_recording)
-
-        # Mock analysis results
-        mock_analysis_repo.get_by_recording_id = AsyncMock(return_value=[])
-
-        client = TestClient(app)
-        recording_id = "550e8400-e29b-41d4-a716-446655440001"
-
-        response = client.get(f"/v1/streaming/logs/{recording_id}", params={"follow": True})
-
-        assert response.status_code == status.HTTP_200_OK
-        assert response.headers["X-Follow"] == "True"

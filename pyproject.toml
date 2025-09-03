@@ -127,7 +127,14 @@ python_files = [ "test_*.py", "*_test.py",]
 python_classes = [ "Test*",]
 python_functions = [ "test_*",]
 addopts = "\n    -ra\n    --strict-markers\n    --ignore=docs\n    --ignore=setup.py\n    --ignore=ci\n    --ignore=.eggs\n    --tb=short\n    --maxfail=1\n"
-markers = [ "slow: marks tests as slow (deselect with '-m \"not slow\"')", "integration: marks tests as integration tests", "unit: marks tests as unit tests", "benchmark: marks tests as benchmark tests",]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests that require external dependencies",
+    "unit: marks tests as unit tests",
+    "benchmark: marks tests as benchmark tests",
+    "requires_db: marks tests that require database connections (PostgreSQL/Neo4j)",
+    "requires_redis: marks tests that require Redis server",
+]
 
 [tool.coverage.run]
 branch = true

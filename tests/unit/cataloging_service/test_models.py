@@ -48,12 +48,17 @@ try:
 except (OperationalError, Exception):
     pass
 
-pytestmark = pytest.mark.skipif(
-    not DB_AVAILABLE,
-    reason=(
-        "PostgreSQL database not available. Install PostgreSQL and create test_tracktion database to run these tests."
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.requires_db,
+    pytest.mark.skipif(
+        not DB_AVAILABLE,
+        reason=(
+            "PostgreSQL database not available. Install PostgreSQL "
+            "and create test_tracktion database to run these tests."
+        ),
     ),
-)
+]
 
 
 @pytest.fixture(scope="function")

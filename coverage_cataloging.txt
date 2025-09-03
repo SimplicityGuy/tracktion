@@ -1,0 +1,38 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.11.13, pytest-8.4.1, pluggy-1.6.0
+benchmark: 5.1.0 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /Users/Robert/Code/public/tracktion
+configfile: pyproject.toml
+plugins: asyncio-1.1.0, anyio-4.10.0, cov-6.2.1, mock-3.14.1, benchmark-5.1.0
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 176 items
+
+tests/unit/cataloging_service/test_api.py .............................. [ 17%]
+........                                                                 [ 21%]
+tests/unit/cataloging_service/test_async_catalog_service.py ...........  [ 27%]
+tests/unit/cataloging_service/test_cataloging_consumers.py ............. [ 35%]
+............F
+
+=============================== warnings summary ===============================
+.venv/lib/python3.11/site-packages/pydantic/_internal/_config.py:323
+.venv/lib/python3.11/site-packages/pydantic/_internal/_config.py:323
+.venv/lib/python3.11/site-packages/pydantic/_internal/_config.py:323
+  /Users/Robert/Code/public/tracktion/.venv/lib/python3.11/site-packages/pydantic/_internal/_config.py:323: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+tests/unit/cataloging_service/test_api.py::TestErrorHandling::test_invalid_json_request
+tests/unit/cataloging_service/test_api.py::TestErrorHandling::test_missing_content_type
+  /Users/Robert/Code/public/tracktion/.venv/lib/python3.11/site-packages/httpx/_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
+    headers, stream = encode_request(
+
+tests/unit/cataloging_service/test_cataloging_consumers.py::TestTracklistMessageConsumer::test_connect_success
+  /Users/Robert/.local/share/uv/python/cpython-3.11.13-macos-aarch64-none/lib/python3.11/tokenize.py:459: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    line = line.decode(encoding)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/unit/cataloging_service/test_cataloging_consumers.py::TestTracklistMessageConsumer::test_process_message_metadata_extracted
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+=================== 1 failed, 74 passed, 6 warnings in 1.08s ===================

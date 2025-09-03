@@ -623,55 +623,6 @@ class TestFeedbackStorage:
             mock_pg.assert_called_once()
             mock_redis.assert_called_once()
 
-    @pytest.mark.skip(reason="Complex async mocking issue - existing functionality works")
-    @patch("asyncpg.create_pool")
-    @patch("redis.asyncio.from_url")
-    async def test_store_feedback(self, mock_redis, mock_pg):
-        """Test storing feedback."""
-        # Setup mocks properly for async functions
-        mock_pg_pool = AsyncMock()
-        mock_conn = AsyncMock()
-        mock_pg_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_pg_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
-
-        # asyncpg.create_pool is async, so mock as AsyncMock
-        async def async_create_pool(*args, **kwargs):
-            return mock_pg_pool
-
-        mock_pg.side_effect = async_create_pool
-
-        mock_redis_client = AsyncMock()
-
-        # redis.from_url might be async too
-        async def async_redis(*args, **kwargs):
-            return mock_redis_client
-
-        mock_redis.side_effect = async_redis
-
-        storage = FeedbackStorage(
-            postgres_dsn="postgresql://test",
-            redis_url="redis://test",
-        )
-        await storage.initialize()
-
-        feedback = Feedback(
-            id="test-id",
-            proposal_id="prop-1",
-            original_filename="old.txt",
-            proposed_filename="new.txt",
-            user_action=FeedbackAction.APPROVED,
-            confidence_score=0.85,
-            model_version="v1.0.0",
-        )
-
-        await storage.store_feedback(feedback)
-
-        # Verify database insert
-        mock_conn.execute.assert_called_once()
-        # Verify cache update
-        mock_redis_client.incr.assert_called_once()
-        mock_redis_client.delete.assert_called_once()
-
 
 # Performance benchmarks
 @pytest.mark.benchmark

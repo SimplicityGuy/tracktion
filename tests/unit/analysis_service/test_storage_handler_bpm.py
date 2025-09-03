@@ -347,7 +347,8 @@ class TestStorageHandlerBPM:
 class TestStorageHandlerBPMIntegration:
     """Integration tests for BPM storage with real database operations."""
 
-    @pytest.mark.skip(reason="Requires database connections")
+    @pytest.mark.integration
+    @pytest.mark.requires_db
     def test_full_bpm_storage_flow(self):
         """Test complete BPM storage flow with real databases."""
         # This would test with actual PostgreSQL and Neo4j connections
