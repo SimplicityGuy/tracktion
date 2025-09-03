@@ -13,8 +13,8 @@ import pytest
 
 from services.analysis_service.src.bpm_detector import BPMDetector
 
-# Create a random number generator
-rng = np.random.default_rng()
+# Create a random number generator with fixed seed for deterministic tests
+rng = np.random.default_rng(42)
 
 
 class TestBPMDetector:
@@ -38,8 +38,8 @@ class TestBPMDetector:
         mock_intervals = np.array([0.5, 0.5, 0.5, 0.5])
 
         with patch.object(
-            self.detector.rhythm_extractor,
-            "__call__",
+            self.detector,
+            "_extract_rhythm",
             return_value=(128.0, mock_beats, 0.95, np.array([]), mock_intervals),
         ):
             # Create a temporary file path that exists
@@ -51,9 +51,9 @@ class TestBPMDetector:
             finally:
                 Path(tmp_path).unlink()
 
-            # BPM should be close to expected value (actual detection may vary)
-            assert 100 <= result["bpm"] <= 140  # Allow some variation
-            assert 0.8 <= result["confidence"] <= 1.0
+            # BPM should be the mocked value from rhythm extractor
+            assert result["bpm"] == 128.0  # Exact value from mock
+            assert result["confidence"] == 0.95  # Exact value from mock
             assert result["algorithm"] == "primary"
             assert result["needs_review"] is False
             assert len(result["beats"]) == 5
@@ -73,14 +73,14 @@ class TestBPMDetector:
 
         with (
             patch.object(
-                self.detector.rhythm_extractor,
-                "__call__",
+                self.detector,
+                "_extract_rhythm",
                 return_value=(120.0, mock_beats, 0.6, np.array([]), mock_intervals),
             ),
             # Mock Percival estimator with similar BPM
             patch.object(
-                self.detector.percival_estimator,
-                "__call__",
+                self.detector,
+                "_estimate_bpm_percival",
                 return_value=122.0,  # Within 5 BPM tolerance
             ),
             tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp,
@@ -93,7 +93,9 @@ class TestBPMDetector:
                 Path(tmp_path).unlink()
 
             assert result["bpm"] == 120.0
-            assert result["confidence"] == 0.9  # Boosted due to agreement
+            assert (
+                abs(result["confidence"] - 0.9) < 0.01
+            )  # Boosted due to agreement (allow small float precision error)
             assert result["algorithm"] == "consensus"
             assert result["needs_review"] is False
 
@@ -112,15 +114,21 @@ class TestBPMDetector:
 
         with (
             patch.object(
-                self.detector.rhythm_extractor,
-                "__call__",
+                self.detector,
+                "_extract_rhythm",
                 return_value=(120.0, mock_beats, 0.5, np.array([]), mock_intervals),
             ),
             # Mock Percival estimator with different BPM
             patch.object(
-                self.detector.percival_estimator,
-                "__call__",
+                self.detector,
+                "_estimate_bpm_percival",
                 return_value=140.0,  # Outside tolerance
+            ),
+            # Mock tempo stability to return False (unstable)
+            patch.object(
+                self.detector,
+                "_is_tempo_stable",
+                return_value=False,
             ),
             tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp,
         ):
@@ -169,8 +177,8 @@ class TestBPMDetector:
 
         # Mock rhythm extractor to raise an exception
         with patch.object(
-            self.detector.rhythm_extractor,
-            "__call__",
+            self.detector,
+            "_extract_rhythm",
             side_effect=RuntimeError("Processing failed"),
         ):
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
@@ -214,8 +222,8 @@ class TestBPMDetector:
         mock_intervals = np.array([0.5, 0.5])
 
         with patch.object(
-            self.detector.rhythm_extractor,
-            "__call__",
+            self.detector,
+            "_extract_rhythm",
             return_value=(128.5, mock_beats, 0.85, np.array([]), mock_intervals),
         ):
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
@@ -269,8 +277,8 @@ class TestBPMAccuracy:
         mock_intervals = np.full(len(mock_beats) - 1, 60.0 / expected_bpm)
 
         with patch.object(
-            detector.rhythm_extractor,
-            "__call__",
+            detector,
+            "_extract_rhythm",
             return_value=(expected_bpm, mock_beats, 0.92, np.array([]), mock_intervals),
         ):
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:

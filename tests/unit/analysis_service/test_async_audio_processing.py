@@ -6,11 +6,13 @@ and resource management components.
 """
 
 import asyncio
+import contextlib
 import time
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+import pytest_asyncio
 
 from services.analysis_service.src.async_audio_analysis import (
     AsyncAudioAnalyzer,
@@ -27,8 +29,8 @@ from services.analysis_service.src.async_resource_manager import AsyncResourceMa
 from services.analysis_service.src.key_detector import KeyDetectionResult
 from services.analysis_service.src.mood_analyzer import MoodAnalysisResult
 
-# Create a random number generator
-rng = np.random.default_rng()
+# Create a random number generator with fixed seed for deterministic tests
+rng = np.random.default_rng(42)
 
 
 class TestAsyncAudioProcessor:
@@ -45,10 +47,14 @@ class TestAsyncAudioProcessor:
             task_timeout_seconds=10,
         )
 
-    @pytest.fixture
-    def processor(self, processor_config):
-        """Create processor instance."""
-        return AsyncAudioProcessor(processor_config)
+    @pytest_asyncio.fixture
+    async def processor(self, processor_config):
+        """Create processor instance with proper cleanup."""
+        processor = AsyncAudioProcessor(processor_config)
+        yield processor
+        # Cleanup: shutdown processor and cancel any active tasks
+        with contextlib.suppress(Exception):
+            await processor.shutdown()
 
     @pytest.mark.asyncio
     async def test_processor_initialization(self, processor):
@@ -79,9 +85,9 @@ class TestAsyncAudioProcessor:
     async def test_process_audio_timeout(self, processor):
         """Test processing timeout."""
 
-        # Mock slow processing function
+        # Mock slow processing function that properly simulates timeout
         def slow_process(audio_file):
-            time.sleep(20)  # Exceed timeout
+            time.sleep(15)  # Exceed timeout - use blocking sleep
             return {"result": "processed"}
 
         # Should raise timeout error
@@ -94,8 +100,9 @@ class TestAsyncAudioProcessor:
     async def test_batch_process_audio(self, processor):
         """Test batch audio processing."""
 
-        # Mock processing function
+        # Mock processing function - must be sync function
         def mock_process(audio_file):
+            time.sleep(0.01)  # Small delay to simulate work
             return {"bpm": 120, "file": audio_file}
 
         # Process batch
@@ -150,6 +157,9 @@ class TestAsyncAudioProcessor:
 
         # Shutdown processor
         await processor.shutdown()
+
+        # Small delay to ensure cancellation is processed
+        await asyncio.sleep(0.01)
 
         # Tasks should be cancelled
         assert task1.cancelled()
@@ -267,8 +277,16 @@ class TestAsyncProgressTracker:
 
     @pytest.fixture
     def tracker(self):
-        """Create tracker instance."""
-        return AsyncProgressTracker(enable_websocket=False)
+        """Create tracker instance with proper cleanup."""
+        tracker = AsyncProgressTracker(enable_websocket=False)
+        yield tracker
+        # Cleanup: clear all task tracking data for test isolation
+        if hasattr(tracker, "active_tasks"):
+            tracker.active_tasks.clear()
+        if hasattr(tracker, "completed_tasks"):
+            tracker.completed_tasks.clear()
+        if hasattr(tracker, "failed_tasks"):
+            tracker.failed_tasks.clear()
 
     @pytest.mark.asyncio
     async def test_start_task(self, tracker):
@@ -316,13 +334,18 @@ class TestAsyncProgressTracker:
         events_received = []
 
         def listener(event):
+            # Use a synchronous lock here since this is called from sync context
             events_received.append(event)
 
         tracker.add_listener(listener)
 
-        # Generate events
+        # Generate events with proper synchronization
         await tracker.start_task("task1", total_stages=1)
+        # Add small delay to ensure event processing
+        await asyncio.sleep(0.01)
         await tracker.complete_task("task1")
+        # Add delay to ensure completion event is processed
+        await asyncio.sleep(0.01)
 
         assert len(events_received) == 2
         assert events_received[0].event_type == ProgressEventType.STARTED
@@ -335,11 +358,16 @@ class TestAsyncProgressTracker:
 
         # Start batch
         await aggregator.start_batch("batch1", ["task1", "task2", "task3"], metadata={"batch_type": "analysis"})
+        # Add delay to ensure batch initialization completes
+        await asyncio.sleep(0.01)
 
-        # Update individual tasks
+        # Update individual tasks with proper synchronization
         await aggregator.update_batch_task("batch1", "task1", 100.0)
+        await asyncio.sleep(0.01)
         await aggregator.update_batch_task("batch1", "task2", 50.0)
+        await asyncio.sleep(0.01)
         await aggregator.update_batch_task("batch1", "task3", 0.0)
+        await asyncio.sleep(0.01)
 
         # Check batch progress
         assert "batch1" in tracker.active_tasks
@@ -349,6 +377,8 @@ class TestAsyncProgressTracker:
 
         # Complete batch
         await aggregator.complete_batch("batch1")
+        # Add delay to ensure completion is processed
+        await asyncio.sleep(0.01)
         assert "batch1" not in tracker.active_tasks
 
 
@@ -365,18 +395,27 @@ class TestAsyncResourceManager:
             max_queue_size=10,
         )
 
-    @pytest.fixture
-    def manager(self, resource_limits):
-        """Create resource manager instance."""
-        return AsyncResourceManager(resource_limits)
+    @pytest_asyncio.fixture
+    async def manager(self, resource_limits):
+        """Create resource manager instance with proper cleanup."""
+        manager = AsyncResourceManager(resource_limits)
+        yield manager
+        # Cleanup: stop monitoring and clear task queues
+        with contextlib.suppress(Exception):
+            await manager.stop_monitoring()
+        # Clear any remaining tasks
+        if hasattr(manager, "task_start_times"):
+            manager.task_start_times.clear()
 
     @pytest.mark.asyncio
     async def test_acquire_release_resources(self, manager):
         """Test resource acquisition and release."""
         # Mock system memory and CPU to be within acceptable limits
-        with patch("psutil.virtual_memory") as mock_vm:
+        with patch("psutil.virtual_memory") as mock_vm, patch("psutil.Process.memory_info") as mock_memory_info:
             # Set system memory usage to 50% (below the threshold)
-            mock_vm.return_value = MagicMock(percent=50.0)
+            mock_vm.return_value = MagicMock(percent=50.0, total=8 * 1024 * 1024 * 1024)  # 8GB total
+            # Mock process memory to be low
+            mock_memory_info.return_value = MagicMock(rss=100 * 1024 * 1024)  # 100MB process memory
 
             # Mock the process CPU percent to be within limits
             with patch.object(manager.process, "cpu_percent", return_value=30.0):
@@ -396,8 +435,10 @@ class TestAsyncResourceManager:
     async def test_resource_limits(self, manager):
         """Test concurrent resource limits."""
         # Mock system memory and CPU to be within acceptable limits
-        with patch("psutil.virtual_memory") as mock_vm:
-            mock_vm.return_value = MagicMock(percent=50.0)
+        with patch("psutil.virtual_memory") as mock_vm, patch("psutil.Process.memory_info") as mock_memory_info:
+            mock_vm.return_value = MagicMock(percent=50.0, total=8 * 1024 * 1024 * 1024)  # 8GB total
+            # Mock process memory to be low
+            mock_memory_info.return_value = MagicMock(rss=100 * 1024 * 1024)  # 100MB process memory
 
             # Mock the process CPU percent to be within limits
             with patch.object(manager.process, "cpu_percent", return_value=30.0):
@@ -410,8 +451,10 @@ class TestAsyncResourceManager:
                 acquired3 = await manager.acquire_resources("task3", timeout=0.1)
                 assert not acquired3
 
-                # Release one and try again
+                # Release one and try again with proper synchronization
                 await manager.release_resources("task1")
+                # Add small delay to ensure resource release is processed
+                await asyncio.sleep(0.01)
                 acquired3 = await manager.acquire_resources("task3")
                 assert acquired3
 
@@ -419,14 +462,18 @@ class TestAsyncResourceManager:
     async def test_task_queue(self, manager):
         """Test task queuing."""
         executed = []
+        execution_lock = asyncio.Lock()
 
         async def mock_task(task_id):
-            executed.append(task_id)
+            async with execution_lock:
+                executed.append(task_id)
             return f"result_{task_id}"
 
         # Mock system resources to be within acceptable limits
-        with patch("psutil.virtual_memory") as mock_vm:
-            mock_vm.return_value = MagicMock(percent=50.0)
+        with patch("psutil.virtual_memory") as mock_vm, patch("psutil.Process.memory_info") as mock_memory_info:
+            mock_vm.return_value = MagicMock(percent=50.0, total=8 * 1024 * 1024 * 1024)  # 8GB total
+            # Mock process memory to be low
+            mock_memory_info.return_value = MagicMock(rss=100 * 1024 * 1024)  # 100MB process memory
 
             with patch.object(manager.process, "cpu_percent", return_value=30.0):
                 # Queue tasks
@@ -434,8 +481,8 @@ class TestAsyncResourceManager:
                 await manager.queue_task("task2", mock_task, args=("task2",), priority=TaskPriority.HIGH)
                 await manager.queue_task("task3", mock_task, args=("task3",), priority=TaskPriority.LOW)
 
-                # Wait for completion
-                await asyncio.sleep(0.5)
+                # Wait for completion with longer timeout
+                await asyncio.sleep(1.0)
 
                 # High priority should execute first
                 assert len(executed) > 0
@@ -444,15 +491,31 @@ class TestAsyncResourceManager:
     @pytest.mark.asyncio
     async def test_resource_monitoring(self, manager):
         """Test resource monitoring."""
-        await manager.start_monitoring(interval_seconds=0.1)
-        await asyncio.sleep(0.3)  # Let it monitor
+        # Mock system resource functions to avoid system dependencies
+        with patch("psutil.virtual_memory") as mock_vm, patch.object(manager.process, "cpu_percent", return_value=25.0):
+            mock_vm.return_value = MagicMock(percent=45.0)
 
-        stats = manager.get_stats()
-        assert "active_tasks" in stats
-        assert "current_memory_mb" in stats
-        assert "current_cpu_percent" in stats
+            await manager.start_monitoring(interval_seconds=0.1)
 
-        await manager.stop_monitoring()
+            # Wait for monitoring to collect data with proper synchronization
+            monitoring_complete = asyncio.Event()
+
+            async def check_monitoring():
+                await asyncio.sleep(0.3)
+                monitoring_complete.set()
+
+            check_task = asyncio.create_task(check_monitoring())
+            await monitoring_complete.wait()
+
+            stats = manager.get_stats()
+            assert "active_tasks" in stats
+            assert "current_memory_mb" in stats
+            assert "current_cpu_percent" in stats
+
+            await manager.stop_monitoring()
+            check_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await check_task
 
     @pytest.mark.asyncio
     async def test_queue_overflow(self, manager):

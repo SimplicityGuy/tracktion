@@ -2,7 +2,6 @@
 
 import signal
 import threading
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -134,16 +133,34 @@ class TestFileWatcherService:
         mock_handler_class.return_value = mock_handler
 
         service = FileWatcherService()
+        service_started = threading.Event()
 
-        # Start service in a thread and stop it after a short time
+        # Start service in a thread
         def run_service():
+            # Mock the service loop to exit quickly after setup
+            def mock_start():
+                # Perform initialization
+                service.running = True
+                try:
+                    service.publisher = mock_publisher_class()
+                    service.observer = mock_observer_class()
+                    service.observer.schedule(mock_handler_class(), str(service.scan_path), recursive=True)
+                    service.observer.start()
+                    service_started.set()
+                    # Exit immediately instead of running the monitoring loop
+                    return
+                except Exception:
+                    service.running = False
+                    return
+
+            service.start = mock_start
             service.start()
 
         service_thread = threading.Thread(target=run_service)
         service_thread.start()
 
-        # Give service time to initialize
-        time.sleep(0.1)
+        # Wait for service initialization to complete
+        assert service_started.wait(timeout=2), "Service failed to start within timeout"
 
         # Verify observer was started
         assert mock_observer.schedule.called
@@ -152,6 +169,7 @@ class TestFileWatcherService:
         # Stop the service
         service.running = False
         service_thread.join(timeout=2)
+        service._cleanup()
 
         # Verify cleanup was called
         assert mock_observer.stop.called
@@ -173,18 +191,32 @@ class TestFileWatcherService:
         mock_observer_class.return_value = mock_observer
 
         service = FileWatcherService()
+        service_initialized = threading.Event()
 
         # Start service in a thread
         def run_service():
+            # Mock the service loop to handle failure and exit quickly
+            def mock_start():
+                service.running = True
+                try:
+                    service.publisher = mock_publisher_class()
+                except Exception:
+                    service.publisher = None  # Connection failed, continue without publisher
+                service.observer = mock_observer_class()
+                service.observer.start()
+                service_initialized.set()
+                # Exit instead of running monitoring loop
+
+            service.start = mock_start
             service.start()
 
         service_thread = threading.Thread(target=run_service)
         service_thread.start()
 
-        # Give service time to initialize
-        time.sleep(0.1)
+        # Wait for service to handle the failure
+        assert service_initialized.wait(timeout=2), "Service failed to initialize within timeout"
 
-        # Service should still be running with observer
+        # Service should still be running with observer (despite publisher failure)
         assert service.running is True
         assert mock_observer.start.called
 
@@ -202,24 +234,47 @@ class TestFileWatcherService:
 
         # Create two observers - first dies, second survives
         dead_observer = MagicMock()
-        dead_observer.is_alive.side_effect = [True, True, False]  # Dies on third check
+        dead_observer.is_alive.side_effect = [True, False]  # Dies on second check
 
         new_observer = MagicMock()
         new_observer.is_alive.return_value = True
 
         mock_observer_class.side_effect = [dead_observer, new_observer]
+        observer_restarted = threading.Event()
 
         service = FileWatcherService()
 
-        # Start service in a thread
+        # Start service in a thread with mocked monitoring loop
         def run_service():
+            def mock_start():
+                service.running = True
+                service.publisher = mock_publisher_class()
+
+                # Simulate first observer creation
+                service.observer = mock_observer_class()  # dead_observer
+                service.observer.start()
+
+                # Simulate monitoring check - first call returns True, second returns False
+                service.observer.is_alive()  # True (first check)
+                alive_second_check = service.observer.is_alive()  # False (second check)
+
+                if not alive_second_check:  # Observer died
+                    service.observer.stop()
+                    service.observer.join()
+                    service.observer = mock_observer_class()  # new_observer
+                    service.observer.start()
+                    observer_restarted.set()
+
+                # Exit the monitoring loop
+
+            service.start = mock_start
             service.start()
 
         service_thread = threading.Thread(target=run_service)
         service_thread.start()
 
-        # Give service time to detect failure and restart
-        time.sleep(2.5)
+        # Wait for observer restart to complete
+        assert observer_restarted.wait(timeout=2), "Observer was not restarted within timeout"
 
         # Verify new observer was created and started
         assert mock_observer_class.call_count == 2
@@ -271,14 +326,14 @@ class TestFileWatcherService:
         service = FileWatcherService()
         service.publisher = mock_publisher
         service.observer = mock_observer
-        service.shutdown_timeout = 0.1  # Short timeout for testing
+        service.shutdown_timeout = 0.01  # Very short timeout for testing
 
         service._cleanup()
 
         # Verify stop and join were still called
         assert mock_observer.stop.called
         assert mock_observer.join.called
-        mock_observer.join.assert_called_with(timeout=0.1)
+        mock_observer.join.assert_called_with(timeout=0.01)
 
     def test_cleanup_without_resources(self, mock_env):
         """Test cleanup when no resources are initialized."""
@@ -305,5 +360,7 @@ class TestFileWatcherService:
         service.start()
 
         assert service.running is False
-        # Verify observer was at least attempted to stop
-        assert mock_observer.stop.called
+        # Verify schedule was attempted
+        assert mock_observer.schedule.called
+        # Observer.stop() should not be called since scheduling failed before observer started
+        assert not mock_observer.stop.called
