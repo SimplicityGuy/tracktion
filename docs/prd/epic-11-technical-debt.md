@@ -56,6 +56,12 @@ Addressing technical debt ensures:
    - Remove pragma suppressions where possible
    - Update type hints for full coverage
 
+6. **S3 Support Removal**
+   - Remove all S3/AWS/boto3 references and dependencies
+   - Clean up unused cloud storage integration code
+   - Maintain existing storage abstraction patterns
+   - Update documentation to reflect storage architecture changes
+
 ### Technical Considerations
 
 #### Current State Assessment
@@ -161,6 +167,22 @@ Addressing technical debt ensures:
 - README files updated
 - Code comments where needed
 
+#### Story 11.7: Remove S3 Support
+**As a** development team
+**I want** all S3/AWS storage support removed from the tracklist service
+**So that** the system maintains a clean, focused storage architecture without unnecessary cloud dependencies
+
+**Acceptance Criteria:**
+- Remove all S3/boto3/AWS references from storage_service.py
+- Remove any S3-related configuration options or environment variables
+- Ensure storage service maintains existing non-S3 functionality
+- Existing local/file storage functionality continues to work unchanged
+- New storage implementation follows existing storage abstraction pattern
+- Integration with tracklist generation maintains current behavior
+- Change is covered by appropriate tests
+- Documentation is updated to reflect S3 removal
+- No regression in existing functionality verified
+
 ## Implementation Approach
 
 ### Phase 1: Assessment (Days 1-2)
@@ -202,7 +224,15 @@ Addressing technical debt ensures:
 4. Optimize test runtime
 5. Document test strategy
 
-### Phase 6: Final Validation (Days 12-14)
+### Phase 6: S3 Support Removal (Days 12-13)
+1. Audit all S3/boto3/AWS references in codebase
+2. Remove S3-specific code from storage_service.py
+3. Remove S3-related configuration and environment variables
+4. Update storage service tests to cover removal
+5. Validate existing storage functionality remains intact
+6. Update documentation to reflect storage architecture changes
+
+### Phase 7: Final Validation (Days 13-14)
 1. Full static analysis run
 2. Complete test suite execution
 3. Documentation review
@@ -339,6 +369,9 @@ uv run pytest --cov=services --cov-report=html
 - [ ] Discord-only notification system implemented
 - [ ] Channel-specific Discord webhooks configured and documented
 - [ ] All notification tests updated for Discord-only
+- [ ] All S3/AWS/boto3 code and references removed
+- [ ] Storage service maintains non-S3 functionality
+- [ ] Storage architecture documentation updated
 - [ ] All story tasks completed
 - [ ] Test suite 100% passing
 - [ ] 80%+ code coverage achieved
