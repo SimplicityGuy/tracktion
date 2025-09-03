@@ -16,8 +16,13 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-import boto3
 import pytest
+
+# Skip this test file if boto3/moto dependencies aren't available
+pytest.importorskip("boto3", reason="boto3 required for S3 integration tests")
+pytest.importorskip("moto", reason="moto required for S3 mocking")
+
+import boto3
 from moto import mock_s3
 
 from services.analysis_service.src.async_storage_handler import AsyncStorageHandler

@@ -253,7 +253,7 @@ class TestAudioCache:
         assert self.cache.flush_version_cache() == 0
 
         stats = self.cache.get_cache_stats()
-        assert stats["connected"] is False
+        assert stats["enabled"] is False
 
 
 class TestAudioCacheIntegration:
