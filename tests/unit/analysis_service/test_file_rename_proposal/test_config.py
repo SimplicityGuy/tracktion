@@ -102,4 +102,6 @@ class TestFileRenameProposalConfig:
         config = FileRenameProposalConfig()
 
         total_weight = sum(config.confidence_weights.values())
-        assert total_weight == 1.0  # Weights should sum to 1.0 for proper scoring
+        assert (
+            abs(total_weight - 1.0) < 1e-10
+        )  # Weights should sum to 1.0 for proper scoring (within floating point precision)

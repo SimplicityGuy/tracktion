@@ -69,9 +69,9 @@ class TestAsyncAudioProcessor:
     async def test_process_audio_async(self, processor):
         """Test async audio processing."""
 
-        # Mock processing function
+        # Mock processing function - reduced sleep time to avoid timeout issues
         def mock_process(audio_file):
-            time.sleep(0.1)  # Simulate work
+            time.sleep(0.05)  # Simulate work, well under 0.1s timeout
             return {"result": "processed", "file": audio_file}
 
         # Process audio

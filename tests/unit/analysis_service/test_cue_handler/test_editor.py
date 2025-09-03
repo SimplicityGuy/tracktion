@@ -64,7 +64,7 @@ class TestCueEditor:
         assert editor.backup_manager is backup_manager
         assert editor.backup_manager.retention_limit == 10
 
-    @patch("services.analysis_service.src.cue_handler.editor.open")
+    @patch("pathlib.Path.open")
     def test_load_cue_file(self, mock_open, editor, sample_cue_sheet):
         """Test loading a CUE file."""
         mock_file = MagicMock()
@@ -81,14 +81,14 @@ class TestCueEditor:
             assert editor.original_path == Path("/test/file.cue")
             assert editor.dirty is False
             assert editor.original_format == "standard"
-            mock_open.assert_called_once_with(Path("/test/file.cue"), "r", encoding="utf-8")
+            mock_open.assert_called_once_with(encoding="utf-8")
 
     def test_save_cue_file_no_sheet_loaded(self, editor):
         """Test saving when no CUE sheet is loaded."""
         with pytest.raises(ValueError, match="No CUE sheet loaded"):
             editor.save_cue_file("/test/output.cue")
 
-    @patch("services.analysis_service.src.cue_handler.editor.open")
+    @patch("pathlib.Path.open")
     def test_save_cue_file(self, mock_open, editor, sample_cue_sheet):
         """Test saving a CUE file."""
         editor.cue_sheet = sample_cue_sheet
@@ -340,7 +340,7 @@ class TestCueEditor:
 
         mock_file = mock_open(read_data=content)
 
-        with patch("builtins.open", mock_file), patch.object(editor.parser, "parse") as mock_parse:
+        with patch("pathlib.Path.open", mock_file), patch.object(editor.parser, "parse") as mock_parse:
             mock_parse.return_value = MagicMock()
             editor.load_cue_file("/test/file.cue")
 
@@ -727,7 +727,7 @@ FILE "audio.wav" WAVE
 
         mock_file = mock_open(read_data=content)
 
-        with patch("builtins.open", mock_file), patch.object(editor.parser, "parse") as mock_parse:
+        with patch("pathlib.Path.open", mock_file), patch.object(editor.parser, "parse") as mock_parse:
             mock_parse.return_value = MagicMock()
             editor.load_cue_file("/test/file.cue")
 

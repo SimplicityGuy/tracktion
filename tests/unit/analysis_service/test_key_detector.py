@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from services.analysis_service.src.exceptions import AnalysisServiceError, InvalidAudioFileError
 from services.analysis_service.src.key_detector import KeyDetectionResult, KeyDetector
 
 
@@ -63,10 +64,17 @@ class TestKeyDetector:
         assert detector.needs_review_threshold == 0.6
 
     @patch("services.analysis_service.src.key_detector.logger")
-    def test_detect_key_success_with_agreement(self, mock_logger, key_detector, mock_essentia):
+    @patch("services.analysis_service.src.key_detector.es")
+    def test_detect_key_success_with_agreement(self, mock_es, mock_logger, key_detector, mock_essentia):
         """Test successful key detection when algorithms agree."""
-        with patch.dict("sys.modules", {"essentia.standard": mock_essentia}):
-            result = key_detector.detect_key("test.mp3")
+        # Configure the mock to behave like essentia
+        mock_es.MonoLoader.return_value.return_value = np.zeros(44100)  # 1 second of audio
+        mock_es.KeyExtractor.return_value.return_value = ("C", "major", 0.85)
+        mock_es.Spectrum.return_value.return_value = np.zeros(2048)
+        mock_es.HPCP.return_value.return_value = np.zeros(12)
+        mock_es.Key.return_value.return_value = ("C", "major", 0.85, 0.5)
+
+        result = key_detector.detect_key("test.mp3")
 
         assert result is not None
         assert result.key == "C"
@@ -81,14 +89,17 @@ class TestKeyDetector:
         mock_logger.info.assert_called()
 
     @patch("services.analysis_service.src.key_detector.logger")
-    def test_detect_key_with_disagreement(self, mock_logger, key_detector, mock_essentia):
+    @patch("services.analysis_service.src.key_detector.es")
+    def test_detect_key_with_disagreement(self, mock_es, mock_logger, key_detector, mock_essentia):
         """Test key detection when algorithms disagree."""
-        # Set up different results for the two algorithms
-        mock_essentia.KeyExtractor.return_value.return_value = ("C", "major", 0.8)
-        mock_essentia.Key.return_value.return_value = ("G", "minor", 0.75, 0.5)
+        # Set up different results for the two algorithms and basic mocking
+        mock_es.MonoLoader.return_value.return_value = np.zeros(44100)  # 1 second of audio
+        mock_es.KeyExtractor.return_value.return_value = ("C", "major", 0.8)
+        mock_es.Key.return_value.return_value = ("G", "minor", 0.75, 0.5)
+        mock_es.Spectrum.return_value.return_value = np.zeros(2048)
+        mock_es.HPCP.return_value.return_value = np.zeros(12)
 
-        with patch.dict("sys.modules", {"essentia.standard": mock_essentia}):
-            result = key_detector.detect_key("test.mp3")
+        result = key_detector.detect_key("test.mp3")
 
         assert result is not None
         assert result.key == "C"  # Primary has higher confidence
@@ -99,14 +110,17 @@ class TestKeyDetector:
         assert result.alternative_key == "G"
         assert result.alternative_scale == "minor"
 
-    def test_detect_key_alternative_stronger(self, key_detector, mock_essentia):
+    @patch("services.analysis_service.src.key_detector.es")
+    def test_detect_key_alternative_stronger(self, mock_es, key_detector, mock_essentia):
         """Test when alternative algorithm has stronger confidence."""
-        # Alternative has higher confidence
-        mock_essentia.KeyExtractor.return_value.return_value = ("C", "major", 0.6)
-        mock_essentia.Key.return_value.return_value = ("G", "minor", 0.9, 0.5)
+        # Alternative has higher confidence and basic mocking
+        mock_es.MonoLoader.return_value.return_value = np.zeros(44100)  # 1 second of audio
+        mock_es.KeyExtractor.return_value.return_value = ("C", "major", 0.6)
+        mock_es.Key.return_value.return_value = ("G", "minor", 0.9, 0.5)
+        mock_es.Spectrum.return_value.return_value = np.zeros(2048)
+        mock_es.HPCP.return_value.return_value = np.zeros(12)
 
-        with patch.dict("sys.modules", {"essentia.standard": mock_essentia}):
-            result = key_detector.detect_key("test.mp3")
+        result = key_detector.detect_key("test.mp3")
 
         assert result is not None
         assert result.key == "G"  # Alternative has higher confidence
@@ -114,28 +128,24 @@ class TestKeyDetector:
         assert result.confidence == pytest.approx(0.72)  # 0.9 * 0.8
         assert result.agreement is False
 
-    def test_detect_key_essentia_not_installed(self, key_detector):
+    @patch("services.analysis_service.src.key_detector.es")
+    def test_detect_key_essentia_not_installed(self, mock_es, key_detector):
         """Test handling when Essentia is not installed."""
-        with (
-            patch.dict("sys.modules", {"essentia.standard": None}),
-            patch(
-                "builtins.__import__",
-                side_effect=ImportError("No module named essentia"),
-            ),
-        ):
-            result = key_detector.detect_key("test.mp3")
+        # Mock essentia to raise ImportError
+        mock_es.MonoLoader.side_effect = ImportError("No module named essentia")
 
-        assert result is None
+        with pytest.raises(AnalysisServiceError, match="Key detection failed"):
+            key_detector.detect_key("test.mp3")
 
     @patch("services.analysis_service.src.key_detector.logger")
-    def test_detect_key_file_error(self, mock_logger, key_detector, mock_essentia):
+    @patch("services.analysis_service.src.key_detector.es")
+    def test_detect_key_file_error(self, mock_es, mock_logger, key_detector, mock_essentia):
         """Test handling when audio file cannot be loaded."""
-        mock_essentia.MonoLoader.return_value.side_effect = Exception("File not found")
+        mock_es.MonoLoader.side_effect = RuntimeError("AudioLoader: Could not open file")
 
-        with patch.dict("sys.modules", {"essentia.standard": mock_essentia}):
-            result = key_detector.detect_key("nonexistent.mp3")
+        with pytest.raises(InvalidAudioFileError, match="Audio processing failed"):
+            key_detector.detect_key("nonexistent.mp3")
 
-        assert result is None
         mock_logger.error.assert_called()
 
     def test_detect_with_key_extractor(self, key_detector, mock_essentia):
@@ -223,8 +233,14 @@ class TestKeyDetector:
         assert result.confidence == pytest.approx(0.6)  # 0.5 * 1.2
         assert result.needs_review is True  # Below 0.7 threshold
 
-    def test_detect_key_with_segments(self, key_detector, mock_essentia):
+    @patch("services.analysis_service.src.key_detector.es")
+    def test_detect_key_with_segments(self, mock_es, key_detector, mock_essentia):
         """Test segment-based key detection."""
+        # Mock basic essentia setup
+        mock_es.MonoLoader.return_value.return_value = np.zeros(44100 * 5)  # 5 seconds of audio
+        mock_es.Spectrum.return_value.return_value = np.zeros(2048)
+        mock_es.HPCP.return_value.return_value = np.zeros(12)
+
         # Mock different results for different segments
         call_count = 0
 
@@ -239,11 +255,10 @@ class TestKeyDetector:
             call_count += 1
             return result
 
-        mock_essentia.KeyExtractor.return_value.side_effect = key_extractor_side_effect
-        mock_essentia.Key.return_value.return_value = ("C", "major", 0.83, 0.5)
+        mock_es.KeyExtractor.return_value.side_effect = key_extractor_side_effect
+        mock_es.Key.return_value.return_value = ("C", "major", 0.83, 0.5)
 
-        with patch.dict("sys.modules", {"essentia.standard": mock_essentia}):
-            result = key_detector.detect_key_with_segments("test.mp3", num_segments=3)
+        result = key_detector.detect_key_with_segments("test.mp3", num_segments=3)
 
         assert result is not None
         assert result.key == "C"  # Most common key
