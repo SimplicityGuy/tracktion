@@ -54,7 +54,7 @@ class TestTokenBucket:
         assert bucket.tokens == 0
 
         # Wait for refill
-        await asyncio.sleep(0.2)  # Should add ~2 tokens
+        await asyncio.sleep(0.1)  # Should add ~2 tokens - optimized
 
         # Check tokens were added
         assert await bucket.consume(1) is True  # At least 1 token available
@@ -111,7 +111,7 @@ class TestSlidingWindowCounter:
         assert await counter.is_allowed() is False
 
         # Wait for window to slide
-        await asyncio.sleep(0.6)
+        await asyncio.sleep(0.6)  # Need to wait longer than window_size (0.5s)
 
         # Should allow new requests
         assert await counter.is_allowed() is True

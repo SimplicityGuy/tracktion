@@ -44,7 +44,7 @@ class TestAsyncAudioProcessor:
             max_threads_multiplier=2.0,
             max_concurrent_analyses=4,
             max_memory_per_file_mb=50,
-            task_timeout_seconds=10,
+            task_timeout_seconds=0.1,  # Optimized for test performance
         )
 
     @pytest_asyncio.fixture
@@ -87,7 +87,7 @@ class TestAsyncAudioProcessor:
 
         # Mock slow processing function that properly simulates timeout
         def slow_process(audio_file):
-            time.sleep(15)  # Exceed timeout - use blocking sleep
+            time.sleep(0.2)  # Exceed timeout - optimized for test performance
             return {"result": "processed"}
 
         # Should raise timeout error
@@ -481,8 +481,8 @@ class TestAsyncResourceManager:
                 await manager.queue_task("task2", mock_task, args=("task2",), priority=TaskPriority.HIGH)
                 await manager.queue_task("task3", mock_task, args=("task3",), priority=TaskPriority.LOW)
 
-                # Wait for completion with longer timeout
-                await asyncio.sleep(1.0)
+                # Wait for completion with optimized timeout
+                await asyncio.sleep(0.05)
 
                 # High priority should execute first
                 assert len(executed) > 0
