@@ -37,6 +37,16 @@ from .database_helpers import (
     mock_redis_client,
     mock_redis_strict,
 )
+from .debug_helpers import (
+    AsyncTestDebugger,
+    DebugContext,
+    TestDebugger,
+    TestExecutionMetrics,
+    assert_with_debug,
+    debug_context,
+    debug_test,
+    test_debugger,
+)
 from .fixtures import (
     CommonTestFixtures,
     mock_audio_analyzer,
@@ -59,31 +69,46 @@ from .mock_helpers import (
     create_service_mock,
     mock_with_spec,
 )
+from .quality_metrics import (
+    TestMetrics,
+    TestQualityCollector,
+    TestSuiteMetrics,
+    TestTrendData,
+    quality_collector,
+)
 
 __all__ = [
+    "AsyncTestDebugger",
     "AsyncTestHelper",
     "CommonTestFixtures",
     "DatabaseMockHelper",
     "DatabaseTestHelper",
+    "DebugContext",
     "MockBuilder",
     "ServiceMockFactory",
     "TestDataGenerator",
+    "TestDebugger",
+    "TestExecutionMetrics",
+    "TestMetrics",
+    "TestQualityCollector",
+    "TestSuiteMetrics",
+    "TestTrendData",
+    "assert_with_debug",
     "async_event_loop",
-    # async_helpers
     "async_event_loop_policy",
     "async_semaphore",
     "async_task_pool",
     "async_test_decorator",
     "async_test_timeout",
     "auto_mock_dependencies",
-    # mock_helpers
     "create_async_mock",
     "create_service_mock",
     "database_test_data",
+    "debug_context",
+    "debug_test",
     "generate_file_event",
     "generate_hash",
     "generate_recording_data",
-    # data_generators
     "generate_sample_metadata",
     "generate_timestamp",
     "generate_track_data",
@@ -99,12 +124,12 @@ __all__ = [
     "mock_metadata_extractor",
     "mock_neo4j_driver",
     "mock_notification_service",
-    # database_helpers
     "mock_redis_client",
     "mock_redis_strict",
     "mock_service_config",
     "mock_storage_service",
     "mock_with_spec",
-    # fixtures
     "performance_metrics",
+    "quality_collector",
+    "test_debugger",
 ]
