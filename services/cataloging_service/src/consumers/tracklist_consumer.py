@@ -10,9 +10,9 @@ from aio_pika import ExchangeType
 if TYPE_CHECKING:
     from aio_pika.abc import AbstractChannel, AbstractIncomingMessage, AbstractQueue, AbstractRobustConnection
 
-from src.config import get_config
-from src.database import get_db_manager
-from src.repositories import MetadataRepository, RecordingRepository, TracklistRepository
+from services.cataloging_service.src.config import get_config
+from services.cataloging_service.src.database import get_db_manager
+from services.cataloging_service.src.repositories import MetadataRepository, RecordingRepository, TracklistRepository
 
 logger = logging.getLogger(__name__)
 

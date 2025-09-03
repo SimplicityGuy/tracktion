@@ -12,21 +12,22 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 # Third-party imports (after path setup)
-from cue_handler import (
+from services.analysis_service.src.cue_handler import (
     CueConverter,
+    CueDisc,
+    CueFile,
     CueGenerator,
-    CueHandler,
     CueTrack,
     CueValidator,
 )
-from cue_handler import CueFormat as CueHandlerFormat
-from cue_handler.format_mappings import (
+from services.analysis_service.src.cue_handler import CueFormat as CueHandlerFormat
+from services.analysis_service.src.cue_handler.format_mappings import (
     get_format_capabilities as handler_get_format_capabilities,
 )
-from cue_handler.format_mappings import (
+from services.analysis_service.src.cue_handler.format_mappings import (
     get_lossy_warnings as handler_get_lossy_warnings,
 )
-from cue_handler.models import CueTime
+from services.analysis_service.src.cue_handler.models import CueTime
 
 # Local imports
 from services.tracklist_service.src.models.cue_file import CueFormat
@@ -203,7 +204,9 @@ class CueFormatMapper:
         """Convert tracklist service format to CUE handler format."""
         if format_val not in cls.FORMAT_MAPPING:
             raise ValueError(f"Unsupported format: {format_val}")
-        return cls.FORMAT_MAPPING[format_val]
+        handler_format = cls.FORMAT_MAPPING[format_val]
+        assert isinstance(handler_format, CueHandlerFormat)  # Type narrowing for mypy
+        return handler_format
 
     @classmethod
     def from_cue_handler_format(cls, format_val: CueHandlerFormat) -> CueFormat:
@@ -419,20 +422,26 @@ class CueIntegrationService:
             mapper = TracklistToCueMapper()
             cue_tracks = mapper.tracklist_to_cue_tracks(tracklist.tracks)
 
-            # Create CUE data structure
-            cue_data = {
-                "title": getattr(tracklist, "title", "Unknown Mix"),
-                "performer": getattr(tracklist, "performer", "Unknown Artist"),
-                "file": audio_filename or "audio.mp3",
-                "tracks": cue_tracks,
-            }
+            # Get tracklist metadata
+            title = getattr(tracklist, "title", "Unknown Mix")
+            performer = getattr(tracklist, "performer", "Unknown Artist")
+            filename = audio_filename or "audio.mp3"
 
             # Generate CUE content using the handler
             handler_format = self.format_mapper.to_cue_handler_format(cue_format)
-            handler = CueHandler(format=handler_format)
+            handler = CueGenerator(format_type=handler_format)
+
+            # Create disc metadata
+            disc = CueDisc(
+                title=title,
+                performer=performer,
+            )
+
+            # Create file with tracks
+            cue_file = CueFile(filename=filename, tracks=cue_tracks)
 
             # Generate the content
-            content = handler.generate(cue_data)
+            content = handler.generate(disc, [cue_file])
 
             if not content:
                 return False, None, "Failed to generate CUE content"

@@ -5,6 +5,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiofiles
+import pytest
 import pytest_asyncio
 
 from services.file_watcher.src.async_file_watcher import AsyncFileEventHandler, AsyncFileWatcherService
@@ -37,6 +38,7 @@ async def async_event_handler(mock_publisher):
 class TestConcurrentProcessing:
     """Test concurrent file processing capabilities."""
 
+    @pytest.mark.asyncio
     async def test_semaphore_limits_concurrent_operations(self, async_event_handler, mock_publisher):
         """Test that semaphore properly limits concurrent operations."""
         # Track concurrent operations
@@ -65,6 +67,7 @@ class TestConcurrentProcessing:
         # Verify semaphore limited concurrent operations to 10
         assert max_concurrent <= 10, f"Max concurrent operations {max_concurrent} exceeded limit of 10"
 
+    @pytest.mark.asyncio
     async def test_concurrent_file_processing_performance(self, async_event_handler, mock_publisher):
         """Test that concurrent processing improves performance."""
         # Track processing times
@@ -95,6 +98,7 @@ class TestConcurrentProcessing:
         assert total_time < 0.5, f"Concurrent processing took too long: {total_time}s"
         assert len(end_times) == 20, "Not all files were processed"
 
+    @pytest.mark.asyncio
     async def test_concurrent_hash_calculation(self, tmp_path):
         """Test concurrent hash calculation for multiple files."""
         # Create test files
@@ -137,6 +141,7 @@ class TestConcurrentProcessing:
         # Should be faster than sequential processing
         print(f"Concurrent hash calculation took {total_time:.2f}s for 10 files")
 
+    @pytest.mark.asyncio
     async def test_batch_processing_in_scan(self, tmp_path, mock_publisher):
         """Test batch processing during initial scan."""
         # Create many test files
@@ -184,6 +189,7 @@ class TestConcurrentProcessing:
         # Should have at least one batch boundary (processing in batches of 100)
         assert len(gaps) >= 1, "No batch processing detected"
 
+    @pytest.mark.asyncio
     async def test_concurrent_move_operations(self, async_event_handler, mock_publisher):
         """Test concurrent processing of move/rename operations."""
         # Track concurrent move operations
@@ -210,6 +216,7 @@ class TestConcurrentProcessing:
         # Verify all moves were processed
         assert move_count == 15, f"Expected 15 moves, processed {move_count}"
 
+    @pytest.mark.asyncio
     async def test_error_handling_in_concurrent_processing(self, async_event_handler, mock_publisher):
         """Test error handling during concurrent processing."""
         # Make some operations fail
@@ -236,6 +243,7 @@ class TestConcurrentProcessing:
         # Verify attempts were made
         assert call_count == 12, f"Expected 12 calls, got {call_count}"
 
+    @pytest.mark.asyncio
     async def test_future_handling_in_sync_context(self):
         """Test handling of Future objects from sync context."""
         # Create async components

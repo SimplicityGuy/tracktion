@@ -3,10 +3,9 @@
 from typing import Any, Generic, TypeVar, cast
 from uuid import UUID
 
+from services.cataloging_service.src.models.base import Base
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.models.base import Base
 
 ModelType = TypeVar("ModelType", bound=Base)
 
@@ -36,7 +35,7 @@ class BaseRepository(Generic[ModelType]):  # noqa: UP046 - Python 3.11 compatibi
         instance = self.model(**kwargs)
         self.session.add(instance)
         await self.session.flush()
-        return cast("ModelType", instance)
+        return instance
 
     async def get_by_id(self, id: UUID) -> ModelType | None:
         """Get a record by ID.

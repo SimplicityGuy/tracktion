@@ -4,10 +4,9 @@ from collections.abc import Sequence
 from typing import Any, cast
 from uuid import UUID
 
+from services.cataloging_service.src.models.tracklist import Tracklist
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.models.tracklist import Tracklist
 
 from .base import BaseRepository
 

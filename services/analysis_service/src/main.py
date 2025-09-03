@@ -1,5 +1,6 @@
 """Main entry point for the analysis service."""
 
+import asyncio
 import os
 import signal
 import sys
@@ -15,18 +16,23 @@ from dotenv import load_dotenv
 # Add shared modules to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
 
-from bpm_detector import BPMDetector
-from config import BPMConfig
-from exceptions import InvalidAudioFileError, MetadataExtractionError, RetryableError, StorageError
-from file_rename_proposal.config import FileRenameProposalConfig
-from file_rename_proposal.integration import FileRenameProposalIntegration
-from key_detector import KeyDetector
-from message_consumer import MessageConsumer
-from metadata_extractor import MetadataExtractor
+from services.analysis_service.src.bpm_detector import BPMDetector
+from services.analysis_service.src.config import BPMConfig
+from services.analysis_service.src.exceptions import (
+    InvalidAudioFileError,
+    MetadataExtractionError,
+    RetryableError,
+    StorageError,
+)
+from services.analysis_service.src.file_rename_proposal.config import FileRenameProposalConfig
+from services.analysis_service.src.file_rename_proposal.integration import FileRenameProposalIntegration
+from services.analysis_service.src.key_detector import KeyDetector
+from services.analysis_service.src.message_consumer import MessageConsumer, MessageConsumerConfig
+from services.analysis_service.src.metadata_extractor import MetadataExtractor
+from services.analysis_service.src.storage_handler import StorageHandler
 from shared.core_types.src.database import DatabaseManager
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
-from shared.core_types.src.repositories import RecordingRepository
-from storage_handler import StorageHandler
+from shared.core_types.src.repositories import MetadataRepository, RecordingRepository
 
 # Load environment variables
 load_dotenv()
@@ -109,12 +115,13 @@ class AnalysisService:
                     self.enable_audio_analysis = False
 
             # Initialize message consumer
-            self.consumer = MessageConsumer(
+            consumer_config = MessageConsumerConfig(
                 rabbitmq_url=self.rabbitmq_url,
                 queue_name=self.queue_name,
                 exchange_name=self.exchange_name,
                 routing_key=self.routing_key,
             )
+            self.consumer = MessageConsumer(config=consumer_config)
             logger.info("Message consumer initialized")
 
             # Initialize file rename proposal integration (optional)
@@ -122,11 +129,13 @@ class AnalysisService:
                 db_manager = DatabaseManager()
                 proposal_repo = RenameProposalRepository(db_manager)
                 recording_repo = RecordingRepository(db_manager)
+                metadata_repo = MetadataRepository(db_manager)
                 rename_config = FileRenameProposalConfig.from_env()
 
                 self.rename_integration = FileRenameProposalIntegration(
                     proposal_repo=proposal_repo,
                     recording_repo=recording_repo,
+                    metadata_repo=metadata_repo,
                     config=rename_config,
                 )
                 logger.info("File rename proposal integration initialized")
@@ -263,8 +272,10 @@ class AnalysisService:
                 # Generate rename proposal if integration is available
                 if self.rename_integration:
                     try:
+                        # Filter out None values for type compatibility
+                        filtered_metadata = {k: v for k, v in metadata.items() if v is not None}
                         proposal_id = self.rename_integration.process_recording_metadata(
-                            recording_id, metadata, correlation_id
+                            recording_id, filtered_metadata, correlation_id
                         )
                         if proposal_id:
                             logger.info(
@@ -487,17 +498,12 @@ class AnalysisService:
                     notification_type = "analysis_status_update"
                     notification_data["message"] = f"Analysis status update for recording {recording_id}: {status}"
 
-                # Send the notification message
-                await self.messaging_service.publish_message(
-                    exchange_name="notifications",
-                    routing_key=notification_type,
-                    message=notification_data,
-                    correlation_id=correlation_id,
-                )
-
+                # TODO: Implement publish_message in MessageConsumer or use a separate publisher
+                # For now, just log that we would send a notification
                 logger.info(
-                    f"Notification sent: recording {recording_id} status={status}",
+                    f"Would send notification: recording {recording_id} status={status}",
                     correlation_id=correlation_id,
+                    notification_type=notification_type,
                 )
             except Exception as e:
                 logger.error(
@@ -525,7 +531,12 @@ class AnalysisService:
             # Start consuming messages
             logger.info("Starting message consumption")
             if self.consumer:
-                self.consumer.consume(self.process_message)
+                # Create a sync wrapper for the async process_message
+                def sync_process_message(message: dict[str, Any], correlation_id: str) -> None:
+                    """Sync wrapper for async process_message."""
+                    asyncio.run(self.process_message(message, correlation_id))
+
+                self.consumer.consume(sync_process_message)
 
         except KeyboardInterrupt:
             logger.info("Received keyboard interrupt")

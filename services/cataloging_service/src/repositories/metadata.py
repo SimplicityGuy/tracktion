@@ -4,10 +4,9 @@ from collections.abc import Sequence
 from typing import cast
 from uuid import UUID
 
+from services.cataloging_service.src.models.metadata import Metadata
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.models.metadata import Metadata
 
 from .base import BaseRepository
 

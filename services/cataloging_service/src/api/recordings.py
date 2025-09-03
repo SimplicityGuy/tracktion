@@ -5,10 +5,9 @@ from typing import cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from services.cataloging_service.src.database import get_db_session
+from services.cataloging_service.src.repositories import MetadataRepository, RecordingRepository, TracklistRepository
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.database import get_db_session
-from src.repositories import MetadataRepository, RecordingRepository, TracklistRepository
 
 from .schemas import MetadataResponse, RecordingDetailResponse, RecordingResponse, SearchRequest, TracklistResponse
 

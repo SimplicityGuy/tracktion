@@ -4,11 +4,10 @@ from collections.abc import Sequence
 from typing import cast
 from uuid import UUID
 
+from services.cataloging_service.src.models.recording import Recording
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from src.models.recording import Recording
 
 from .base import BaseRepository
 

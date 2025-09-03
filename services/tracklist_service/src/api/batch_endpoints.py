@@ -43,7 +43,8 @@ class BatchRequest(BaseModel):
     options: dict[str, Any] | None = None
 
     @field_validator("urls")
-    def validate_urls(self, v: list[HttpUrl]) -> list[HttpUrl]:
+    @classmethod
+    def validate_urls(cls, v: list[HttpUrl]) -> list[HttpUrl]:
         """Validate URLs are from supported domains."""
         supported_domains = ["1001tracklists.com", "www.1001tracklists.com"]
         for url in v:

@@ -10,7 +10,7 @@ from pydub.exceptions import CouldntDecodeError
 
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
 from services.tracklist_service.src.services.audio_validation_service import AudioValidationService
-from services.tracklist_service.src.services.cue_integration import CueIntegration
+from services.tracklist_service.src.services.cue_integration import CueIntegrationService
 
 
 class TestAudioDurationDetection:
@@ -230,7 +230,7 @@ class TestAudioDurationDetection:
         assert estimates[1]["method"] == "audio_end"
 
 
-class TestCueIntegrationDurationExtraction:
+class TestCueIntegrationServiceDurationExtraction:
     """Test CUE content duration extraction functionality."""
 
     @pytest.mark.asyncio
@@ -268,7 +268,7 @@ FILE "audio.wav" WAVE
             mock_parser.parse.return_value = mock_cue_data
 
             # Test with audio duration provided
-            cue_integration = CueIntegration()
+            cue_integration = CueIntegrationService()
             result = cue_integration.validate_cue_content(cue_content, audio_duration_seconds=420.0)
 
             # Should extract tracklist duration
@@ -286,7 +286,7 @@ FILE "audio.wav" WAVE
             mock_parser_class.return_value = mock_parser
             mock_parser.parse.side_effect = Exception("Parse error")
 
-            cue_integration = CueIntegration()
+            cue_integration = CueIntegrationService()
             result = cue_integration.validate_cue_content(cue_content, audio_duration_seconds=420.0)
 
             # Should handle error gracefully

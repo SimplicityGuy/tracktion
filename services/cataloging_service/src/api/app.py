@@ -4,8 +4,7 @@ from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from src.config import get_config
+from services.cataloging_service.src.config import get_config
 
 from .middleware import ErrorHandlingMiddleware, HealthCheckMiddleware, LoggingMiddleware
 from .recordings import router as recordings_router

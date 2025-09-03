@@ -1,7 +1,8 @@
 """Tests for streaming endpoints."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import uuid4
 
 from fastapi import status
@@ -95,10 +96,29 @@ class TestStreamingEndpoints:
                 assert "recording_id" in data
                 assert "status" in data
 
-    def test_log_streaming(self):
+    @patch("services.analysis_service.src.api.endpoints.streaming.analysis_result_repo")
+    @patch("services.analysis_service.src.api.endpoints.streaming.recording_repo")
+    def test_log_streaming(self, mock_recording_repo, mock_analysis_repo):
         """Test log streaming."""
+        # Mock recording
+        mock_recording = Mock()
+        mock_recording.file_path = "/path/to/audio.wav"
+        mock_recording.processing_status = "completed"
+        mock_recording_repo.get_by_id = AsyncMock(return_value=mock_recording)
+
+        # Mock analysis results
+        mock_result = Mock()
+        mock_result.created_at = datetime.now(UTC)
+        mock_result.status = "completed"
+        mock_result.analysis_type = "bpm"
+        mock_result.result_data = 128.5
+        mock_result.confidence_score = 0.95
+        mock_result.processing_time_ms = 1500
+        mock_result.error_message = None
+        mock_analysis_repo.get_by_recording_id = AsyncMock(return_value=[mock_result])
+
         client = TestClient(app)
-        recording_id = "test-recording-logs"
+        recording_id = "550e8400-e29b-41d4-a716-446655440000"
 
         response = client.get(f"/v1/streaming/logs/{recording_id}")
 
@@ -109,12 +129,23 @@ class TestStreamingEndpoints:
         # Check log content
         logs = response.text
         assert "[INFO]" in logs
-        assert "[DEBUG]" in logs
+        assert "Starting log streaming" in logs
 
-    def test_log_follow_mode(self):
+    @patch("services.analysis_service.src.api.endpoints.streaming.analysis_result_repo")
+    @patch("services.analysis_service.src.api.endpoints.streaming.recording_repo")
+    def test_log_follow_mode(self, mock_recording_repo, mock_analysis_repo):
         """Test log streaming with follow mode."""
+        # Mock recording
+        mock_recording = Mock()
+        mock_recording.file_path = "/path/to/audio.wav"
+        mock_recording.processing_status = "processing"
+        mock_recording_repo.get_by_id = AsyncMock(return_value=mock_recording)
+
+        # Mock analysis results
+        mock_analysis_repo.get_by_recording_id = AsyncMock(return_value=[])
+
         client = TestClient(app)
-        recording_id = "test-recording-follow"
+        recording_id = "550e8400-e29b-41d4-a716-446655440001"
 
         response = client.get(f"/v1/streaming/logs/{recording_id}", params={"follow": True})
 

@@ -15,10 +15,10 @@ sys.path.insert(
 )
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
 
-from exceptions import InvalidAudioFileError, MetadataExtractionError, StorageError
-from main import AnalysisService
-from message_consumer import MessageConsumer
-from storage_handler import StorageHandler
+from services.analysis_service.src.exceptions import InvalidAudioFileError, MetadataExtractionError, StorageError
+from services.analysis_service.src.main import AnalysisService
+from services.analysis_service.src.message_consumer import MessageConsumer
+from services.analysis_service.src.storage_handler import StorageHandler
 
 
 @pytest.fixture
