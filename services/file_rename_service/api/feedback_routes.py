@@ -7,7 +7,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from services.file_rename_service.api.auth import (
     admin_rate_limit,
@@ -50,19 +50,19 @@ class FeedbackSubmitRequest(BaseModel):
     model_version: str = Field(..., description="Model version", max_length=50)
     context_metadata: dict[str, Any] | None = Field(default_factory=dict)
 
-    @validator("proposal_id")
+    @field_validator("proposal_id")
     @classmethod
     def validate_proposal_id_field(cls, v):
         """Validate proposal ID."""
         return validate_proposal_id(v)
 
-    @validator("original_filename", "proposed_filename")
+    @field_validator("original_filename", "proposed_filename")
     @classmethod
     def validate_filename_fields(cls, v):
         """Validate filename fields."""
         return sanitize_filename(v)
 
-    @validator("user_filename")
+    @field_validator("user_filename")
     @classmethod
     def validate_user_filename_field(cls, v):
         """Validate user filename field."""
@@ -70,19 +70,19 @@ class FeedbackSubmitRequest(BaseModel):
             return v
         return sanitize_filename(v)
 
-    @validator("confidence_score")
+    @field_validator("confidence_score")
     @classmethod
     def validate_confidence_score_field(cls, v):
         """Validate confidence score."""
         return validate_confidence_score(v)
 
-    @validator("model_version")
+    @field_validator("model_version")
     @classmethod
     def validate_model_version_field(cls, v):
         """Validate model version."""
         return validate_model_version(v)
 
-    @validator("context_metadata")
+    @field_validator("context_metadata")
     @classmethod
     def validate_context_metadata_field(cls, v):
         """Validate context metadata."""
@@ -116,19 +116,19 @@ class ExperimentCreateRequest(BaseModel):
     description: str | None = Field(None, description="Experiment description", max_length=500)
     duration_hours: int = Field(24, gt=0, le=8760, description="Experiment duration (max 1 year)")
 
-    @validator("name")
+    @field_validator("name")
     @classmethod
     def validate_name_field(cls, v):
         """Validate experiment name."""
         return sanitize_string(v, max_length=100)
 
-    @validator("variant_a", "variant_b")
+    @field_validator("variant_a", "variant_b")
     @classmethod
     def validate_variant_fields(cls, v):
         """Validate variant fields."""
         return validate_model_version(v)
 
-    @validator("description")
+    @field_validator("description")
     @classmethod
     def validate_description_field(cls, v):
         """Validate description field."""

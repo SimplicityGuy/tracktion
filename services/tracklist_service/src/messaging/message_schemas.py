@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class MessageType(str, Enum):
@@ -58,8 +58,9 @@ class CueGenerationMessage(BaseMessage):
     job_id: UUID = Field(description="Generation job ID")
     requested_by: str | None = Field(None, description="User or service that requested generation")
 
-    @validator("format")
-    def validate_format(self, v: str) -> str:
+    @field_validator("format")
+    @classmethod
+    def validate_format(cls, v: str) -> str:
         """Validate CUE format."""
         valid_formats = ["standard", "cdj", "traktor", "serato", "rekordbox", "kodi"]
         if v not in valid_formats:
@@ -112,8 +113,9 @@ class BatchCueGenerationMessage(BaseMessage):
     batch_job_id: UUID = Field(description="Batch generation job ID")
     requested_by: str | None = Field(None, description="User or service that requested generation")
 
-    @validator("formats")
-    def validate_formats(self, v: list[str]) -> list[str]:
+    @field_validator("formats")
+    @classmethod
+    def validate_formats(cls, v: list[str]) -> list[str]:
         """Validate CUE formats."""
         if not v:
             raise ValueError("At least one format must be specified")
@@ -185,8 +187,9 @@ class CueConversionMessage(BaseMessage):
     conversion_job_id: UUID = Field(description="Conversion job ID")
     requested_by: str | None = Field(None, description="User or service that requested conversion")
 
-    @validator("target_format")
-    def validate_target_format(self, v: str) -> str:
+    @field_validator("target_format")
+    @classmethod
+    def validate_target_format(cls, v: str) -> str:
         """Validate target CUE format."""
         valid_formats = ["standard", "cdj", "traktor", "serato", "rekordbox", "kodi"]
         if v not in valid_formats:
@@ -202,13 +205,12 @@ class MessageBatch(BaseModel):
     batch_size: int = Field(description="Number of messages in the batch")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    @validator("batch_size")
-    def validate_batch_size(self, v: int, values: dict[str, Any]) -> int:
+    @model_validator(mode="after")
+    def validate_batch_size_matches(self) -> "MessageBatch":
         """Validate batch size matches message count."""
-        messages = values.get("messages", [])
-        if v != len(messages):
+        if self.batch_size != len(self.messages):
             raise ValueError("Batch size must match number of messages")
-        return v
+        return self
 
     def to_json(self) -> str:
         """Convert batch to JSON string."""
