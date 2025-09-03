@@ -1,0 +1,111 @@
+name: Test Quality Gates
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  test-quality-check:
+    name: Test Quality Gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for trend analysis
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run test quality analysis
+        run: |
+          uv run python -m pytest tests/ \
+            --collect-only \
+            --quiet \
+            | grep -E "^<Module|^<Function" \
+            | wc -l > test_count.txt
+
+          echo "Total test count: $(cat test_count.txt)"
+
+      - name: Coverage quality gate
+        run: |
+          uv run pytest tests/unit/ \
+            --cov=services \
+            --cov-report=term \
+            --cov-fail-under=75 \
+            --quiet
+
+      - name: Test execution time gate
+        run: |
+          START_TIME=$(date +%s)
+          uv run pytest tests/unit/ --maxfail=5 -q
+          END_TIME=$(date +%s)
+          DURATION=$((END_TIME - START_TIME))
+
+          echo "Test execution time: ${DURATION}s"
+
+          # Fail if tests take more than 5 minutes (300 seconds)
+          if [ $DURATION -gt 300 ]; then
+            echo "ERROR: Test execution time (${DURATION}s) exceeds 5 minute limit"
+            exit 1
+          fi
+
+      - name: Test flakiness detection
+        run: |
+          # Run critical tests multiple times to detect flakiness
+          for i in {1..3}; do
+            echo "Flakiness detection run $i/3"
+            uv run pytest tests/unit/analysis_service/api/ -q --tb=no
+            if [ $? -ne 0 ]; then
+              echo "ERROR: Tests failed on run $i - possible flaky test detected"
+              exit 1
+            fi
+          done
+
+      - name: Test structure validation
+        run: |
+          # Validate test file naming conventions
+          find tests/ -name "test_*.py" | while read -r test_file; do
+            if ! grep -q "def test_" "$test_file"; then
+              echo "WARNING: $test_file may not contain proper test functions"
+            fi
+          done
+
+      - name: Generate quality report
+        run: |
+          echo "# Test Quality Report" > test_quality_report.md
+          echo "" >> test_quality_report.md
+          echo "**Test Count:** $(cat test_count.txt)" >> test_quality_report.md
+          echo "**Execution Time:** $(date '+%Y-%m-%d %H:%M:%S')" >> test_quality_report.md
+          echo "" >> test_quality_report.md
+
+          # Add coverage summary
+          uv run pytest tests/unit/ --cov=services --cov-report=term | tail -1 >> test_quality_report.md
+
+      - name: Comment PR with quality report
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('test_quality_report.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
