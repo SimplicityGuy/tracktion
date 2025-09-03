@@ -15,8 +15,18 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+try:
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+
+    BOTO3_AVAILABLE = True
+except ImportError:
+    # boto3 not available - S3 backend will not be functional
+    BOTO3_AVAILABLE = False
+    boto3 = None
+    BotoCoreError = Exception
+    ClientError = Exception
+    NoCredentialsError = Exception
 from pydantic import BaseModel, Field
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -284,6 +294,9 @@ class S3Backend(StorageBackend):
 
     def __init__(self, config: dict[str, Any]):
         """Initialize S3 backend with configuration."""
+        if not BOTO3_AVAILABLE:
+            raise RuntimeError("boto3 is not available. Install boto3 to use S3 backend.")
+
         self.bucket = config.get("bucket", "tracktion-cue-files")
         self.prefix = config.get("prefix", "cue_files/")
         self.acl = config.get("acl", "private")
@@ -618,7 +631,11 @@ class StorageService:
 
         # Initialize S3 backend if configured
         if self.config.primary == "s3":
-            self.backends["s3"] = S3Backend(self.config.s3)
+            if BOTO3_AVAILABLE:
+                self.backends["s3"] = S3Backend(self.config.s3)
+            else:
+                logger.warning("S3 backend requested but boto3 not available. Falling back to filesystem.")
+                self.config.primary = "filesystem"
 
         # Set primary backend
         self.primary_backend = self.backends.get(self.config.primary, self.backends["filesystem"])
