@@ -16,53 +16,66 @@ import pytest
 
 from services.analysis_service.src.message_consumer import MessageConsumer
 
+# Shared utilities imports
+from tests.shared_utilities.mock_helpers import MockBuilder, ServiceMockFactory
+
 
 class TestMessageConsumer:
     """Test suite for MessageConsumer class."""
 
     @pytest.fixture
     def mock_cache(self):
-        """Create mock cache instance."""
-        cache = Mock()
-        cache.get_bpm_results.return_value = None
-        cache.get_temporal_results.return_value = None
-        cache.set_bpm_results.return_value = True
-        cache.set_temporal_results.return_value = True
-        return cache
+        """Create mock cache instance using shared utilities."""
+        return (
+            MockBuilder()
+            .with_method("get_bpm_results", return_value=None)
+            .with_method("get_temporal_results", return_value=None)
+            .with_method("set_bpm_results", return_value=True)
+            .with_method("set_temporal_results", return_value=True)
+            .build()
+        )
 
     @pytest.fixture
     def mock_bpm_detector(self):
-        """Create mock BPM detector."""
-        detector = Mock()
-        detector.detect_bpm.return_value = {
-            "bpm": 120.0,
-            "confidence": 0.95,
-            "algorithm": "primary",
-            "needs_review": False,
-            "beats": [0.5, 1.0, 1.5],
-        }
-        return detector
+        """Create mock BPM detector using shared utilities."""
+        return (
+            MockBuilder()
+            .with_method(
+                "detect_bpm",
+                return_value={
+                    "bpm": 120.0,
+                    "confidence": 0.95,
+                    "algorithm": "primary",
+                    "needs_review": False,
+                    "beats": [0.5, 1.0, 1.5],
+                },
+            )
+            .build()
+        )
 
     @pytest.fixture
     def mock_temporal_analyzer(self):
-        """Create mock temporal analyzer."""
-        analyzer = Mock()
-        analyzer.analyze_temporal_bpm.return_value = {
-            "average_bpm": 120.0,
-            "start_bpm": 118.0,
-            "end_bpm": 122.0,
-            "stability_score": 0.92,
-            "is_variable_tempo": False,
-            "tempo_changes": [],
-        }
-        return analyzer
+        """Create mock temporal analyzer using shared utilities."""
+        return (
+            MockBuilder()
+            .with_method(
+                "analyze_temporal_bpm",
+                return_value={
+                    "average_bpm": 120.0,
+                    "start_bpm": 118.0,
+                    "end_bpm": 122.0,
+                    "stability_score": 0.92,
+                    "is_variable_tempo": False,
+                    "tempo_changes": [],
+                },
+            )
+            .build()
+        )
 
     @pytest.fixture
     def mock_storage(self):
-        """Create mock storage handler."""
-        storage = Mock()
-        storage.store_bpm_data.return_value = True
-        return storage
+        """Create mock storage handler using shared utilities."""
+        return ServiceMockFactory.create_storage_service_mock()
 
     @pytest.fixture
     def consumer(self, mock_cache, mock_bpm_detector, mock_temporal_analyzer):

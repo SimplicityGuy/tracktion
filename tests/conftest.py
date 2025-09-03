@@ -12,6 +12,8 @@ from sqlalchemy.orm import sessionmaker
 from shared.core_types.src.database import DatabaseManager
 from shared.core_types.src.models import Base
 
+# Import shared utilities to make fixtures globally available
+
 # Load environment variables
 load_dotenv()
 
@@ -132,3 +134,29 @@ def sample_tracks():
         {"title": "Build Up", "artist": "DJ Four", "start_time": "00:18:20"},
         {"title": "Closing", "artist": "DJ Five", "start_time": "00:25:00"},
     ]
+
+
+# Pytest configuration
+def pytest_configure(config):
+    """Configure pytest with custom markers and settings."""
+    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
+    config.addinivalue_line("markers", "integration: marks tests as integration tests")
+    config.addinivalue_line("markers", "unit: marks tests as unit tests (default)")
+    config.addinivalue_line("markers", "performance: marks tests as performance tests")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Modify test collection to add markers automatically."""
+    for item in items:
+        # Add unit marker by default
+        if not any(marker.name in ["integration", "performance"] for marker in item.iter_markers()):
+            item.add_marker(pytest.mark.unit)
+
+        # Add markers based on test patterns
+        test_name = item.name.lower()
+        if any(pattern in test_name for pattern in ["integration", "e2e", "end_to_end"]):
+            item.add_marker(pytest.mark.integration)
+
+        if any(pattern in test_name for pattern in ["performance", "benchmark", "timing"]):
+            item.add_marker(pytest.mark.performance)
+            item.add_marker(pytest.mark.slow)
