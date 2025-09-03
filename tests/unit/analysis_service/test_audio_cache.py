@@ -50,7 +50,7 @@ class TestAudioCache:
 
             assert cache.redis_client is None
 
-    @patch("builtins.open", create=True)
+    @patch("services.analysis_service.src.audio_cache.Path.open")
     @patch("services.analysis_service.src.audio_cache.hashlib.sha256")
     def test_generate_file_hash_sha256(self, mock_sha256, mock_open):
         """Test file hashing with SHA256."""
@@ -188,8 +188,8 @@ class TestAudioCache:
         success = self.cache.invalidate_cache("/path/to/audio.mp3")
 
         assert success is True
-        # Should delete both BPM and temporal cache entries
-        assert self.cache.redis_client.delete.call_count == 2
+        # Should delete BPM, temporal, key, and mood cache entries
+        assert self.cache.redis_client.delete.call_count == 4
 
     def test_flush_version_cache(self):
         """Test flushing cache for specific version."""
@@ -200,7 +200,7 @@ class TestAudioCache:
         ]
         self.cache.redis_client.delete.return_value = 3
 
-        deleted = self.cache.flush_version_cache("1.0")
+        deleted = self.cache.flush_version_cache()
 
         assert deleted == 3
         self.cache.redis_client.keys.assert_called_once_with("*:1.0")
@@ -225,22 +225,22 @@ class TestAudioCache:
 
     def test_get_cache_stats(self):
         """Test getting cache statistics."""
-        self.cache.redis_client.info.side_effect = [
-            {"used_memory_human": "10M"},  # memory info
-            {"db0": {"keys": 100}},  # keyspace info
-        ]
         self.cache.redis_client.keys.side_effect = [
             ["bpm:1", "bpm:2"],  # BPM keys
             ["temporal:1"],  # Temporal keys
+            ["key:1", "key:2", "key:3"],  # Key keys
+            ["mood:1", "mood:2"],  # Mood keys
         ]
 
         stats = self.cache.get_cache_stats()
 
         assert stats["connected"] is True
-        assert stats["memory_used"] == "10M"
-        assert stats["total_keys"] == 100
-        assert stats["bpm_cached"] == 2
-        assert stats["temporal_cached"] == 1
+        assert stats["enabled"] is True
+        assert stats["bpm_keys"] == 2
+        assert stats["temporal_keys"] == 1
+        assert stats["key_keys"] == 3
+        assert stats["mood_keys"] == 2
+        assert stats["total_keys"] == 8
         assert stats["algorithm_version"] == "1.0"
 
     def test_no_redis_connection(self):
