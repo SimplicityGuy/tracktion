@@ -182,27 +182,20 @@ class TestMessageQueueEdgeCases:
         self, integration: AsyncMessageQueueIntegration, mock_message: AbstractIncomingMessage
     ) -> None:
         """Test channel closure during message handling."""
-        with patch("aio_pika.connect_robust") as mock_connect:
-            # Setup mocks
-            mock_connection = AsyncMock(spec=AbstractConnection)
-            mock_channel = AsyncMock()
-            mock_queue = AsyncMock(spec=AbstractQueue)
-            mock_exchange = AsyncMock(spec=AbstractExchange)
+        # Setup integration with mocked connection and channel
+        integration.connection = AsyncMock(spec=AbstractConnection)
+        integration.channel = AsyncMock()
+        integration.queue = AsyncMock(spec=AbstractQueue)
+        integration.exchange = AsyncMock(spec=AbstractExchange)
+        integration._connected = True
 
-            mock_connect.return_value = mock_connection
-            mock_connection.channel.return_value = mock_channel
-            mock_channel.declare_exchange.return_value = mock_exchange
-            mock_channel.declare_queue.return_value = mock_queue
+        # Simulate channel close during message parsing
+        mock_message.body = b"invalid json"
 
-            await integration.connect()
+        await integration._handle_message(mock_message)
 
-            # Simulate channel close during message parsing
-            mock_message.body = b"invalid json"
-
-            await integration._handle_message(mock_message)
-
-            # Verify message was nacked due to parsing error
-            mock_message.nack.assert_called_once_with(requeue=True)
+        # Verify message was nacked due to parsing error
+        mock_message.nack.assert_called_once_with(requeue=True)
 
     @pytest.mark.asyncio
     async def test_exchange_unavailable_during_result_publishing(
