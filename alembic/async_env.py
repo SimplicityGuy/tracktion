@@ -8,7 +8,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from alembic import context
+from alembic import context  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
 
 # Import model's MetaData for 'autogenerate' support
 from shared.core_types.src.models import Base

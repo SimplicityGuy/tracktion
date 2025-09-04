@@ -87,7 +87,7 @@ class DocGenerator:
                 api_endpoints.extend(endpoints)
 
         # Group endpoints by service
-        endpoints_by_service = {}
+        endpoints_by_service: dict[str, list[APIEndpoint]] = {}
         for endpoint in api_endpoints:
             service_name = endpoint.tags[0] if endpoint.tags else "general"
             if service_name not in endpoints_by_service:
@@ -114,7 +114,7 @@ class DocGenerator:
 
         for file_path in api_files:
             try:
-                with open(file_path, encoding="utf-8") as f:
+                with file_path.open(encoding="utf-8") as f:
                     content = f.read()
 
                 # Parse AST to find route decorators
@@ -138,13 +138,12 @@ class DocGenerator:
             def visit_FunctionDef(self, node):
                 # Look for FastAPI route decorators
                 for decorator in node.decorator_list:
-                    if isinstance(decorator, ast.Call):
-                        if isinstance(decorator.func, ast.Attribute):
-                            method = decorator.func.attr.lower()
-                            if method in ["get", "post", "put", "patch", "delete"]:
-                                endpoint = self._create_endpoint_from_node(node, method, decorator)
-                                if endpoint:
-                                    endpoints.append(endpoint)
+                    if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute):
+                        method = decorator.func.attr.lower()
+                        if method in ["get", "post", "put", "patch", "delete"]:
+                            endpoint = self._create_endpoint_from_node(node, method, decorator)
+                            if endpoint:
+                                endpoints.append(endpoint)
                 self.generic_visit(node)
 
             def _create_endpoint_from_node(self, node, method, decorator) -> APIEndpoint | None:
@@ -219,7 +218,7 @@ Authorization: Bearer <your-jwt-token>
 """
 
         # Group endpoints by path prefix
-        endpoints_by_prefix = {}
+        endpoints_by_prefix: dict[str, list[APIEndpoint]] = {}
         for endpoint in endpoints:
             prefix = endpoint.path.split("/")[1] if "/" in endpoint.path[1:] else "general"
             if prefix not in endpoints_by_prefix:
@@ -233,7 +232,7 @@ Authorization: Bearer <your-jwt-token>
                 doc_content += self._format_endpoint_docs(endpoint)
 
         # Write to file
-        with open(service_docs_dir / "index.md", "w", encoding="utf-8") as f:
+        with (service_docs_dir / "index.md").open("w", encoding="utf-8") as f:
             f.write(doc_content)
 
     def _format_endpoint_docs(self, endpoint: APIEndpoint) -> str:
@@ -295,7 +294,7 @@ curl -X {endpoint.method} \\
             return None
 
         try:
-            with open(config_file, encoding="utf-8") as f:
+            with config_file.open(encoding="utf-8") as f:
                 content = f.read()
 
             tree = ast.parse(content)
@@ -344,23 +343,23 @@ curl -X {endpoint.method} \\
                     try:
                         if isinstance(node.value, ast.Constant):
                             field_info["default"] = node.value.value
-                        elif isinstance(node.value, ast.Call):
-                            # Handle function calls like os.getenv()
-                            if isinstance(node.value.func, ast.Attribute) and node.value.func.attr == "getenv":
-                                if node.value.args:
-                                    env_var = (
-                                        node.value.args[0].value
-                                        if isinstance(node.value.args[0], ast.Constant)
-                                        else "UNKNOWN"
-                                    )
-                                    default_val = (
-                                        node.value.args[1].value
-                                        if len(node.value.args) > 1 and isinstance(node.value.args[1], ast.Constant)
-                                        else None
-                                    )
-                                    field_info["env_var"] = env_var
-                                    field_info["default"] = default_val
-                    except:
+                        elif (
+                            isinstance(node.value, ast.Call)
+                            and isinstance(node.value.func, ast.Attribute)
+                            and node.value.func.attr == "getenv"
+                            and node.value.args
+                        ):
+                            env_var = (
+                                node.value.args[0].value if isinstance(node.value.args[0], ast.Constant) else "UNKNOWN"
+                            )
+                            default_val = (
+                                node.value.args[1].value
+                                if len(node.value.args) > 1 and isinstance(node.value.args[1], ast.Constant)
+                                else None
+                            )
+                            field_info["env_var"] = env_var
+                            field_info["default"] = default_val
+                    except Exception:
                         pass
 
                 fields.append(field_info)
@@ -416,16 +415,14 @@ The following environment variables can be used to configure Tracktion services:
 |----------|---------|------|---------|-------------|
 """
 
-        all_env_vars = []
+        all_env_vars: list[dict[str, Any]] = []
         for config in config_docs:
-            for env_var in config.environment_variables:
-                all_env_vars.append({**env_var, "service": config.service_name})
+            all_env_vars.extend({**env_var, "service": config.service_name} for env_var in config.environment_variables)
 
         # Sort by variable name
         all_env_vars.sort(key=lambda x: x["name"])
 
         for var in all_env_vars:
-            required = "✅" if var["required"] else "❌"
             default = f"`{var['default']}`" if var["default"] else "-"
             doc_content += (
                 f"| `{var['name']}` | {var['service']} | {var['type']} | {default} | {var['description']} |\n"
@@ -448,7 +445,7 @@ The following environment variables can be used to configure Tracktion services:
 
             doc_content += "\n"
 
-        with open(config_dir / "configuration.md", "w", encoding="utf-8") as f:
+        with (config_dir / "configuration.md").open("w", encoding="utf-8") as f:
             f.write(doc_content)
 
     def generate_service_docs(self):
@@ -470,10 +467,10 @@ The following environment variables can be used to configure Tracktion services:
         readme_file = service_dir / "README.md"
         if readme_file.exists():
             # Copy README as main service documentation
-            with open(readme_file, encoding="utf-8") as f:
+            with readme_file.open(encoding="utf-8") as f:
                 readme_content = f.read()
 
-            with open(service_docs_dir / "index.md", "w", encoding="utf-8") as f:
+            with (service_docs_dir / "index.md").open("w", encoding="utf-8") as f:
                 f.write(readme_content)
         else:
             # Generate basic service documentation
@@ -495,7 +492,9 @@ The following environment variables can be used to configure Tracktion services:
 
 ## Configuration
 
-See [Configuration Reference](../../reference/configuration.md#{service_name.lower().replace(" ", "-")}) for detailed configuration options.
+See [Configuration Reference](
+    ../../reference/configuration.md#{service_name.lower().replace(" ", "-")}
+) for detailed configuration options.
 
 ## API
 
@@ -521,7 +520,7 @@ uv run pytest tests/unit/{service_dir.name}/
 (Monitoring documentation will be auto-generated)
 """
 
-        with open(docs_dir / "index.md", "w", encoding="utf-8") as f:
+        with (docs_dir / "index.md").open("w", encoding="utf-8") as f:
             f.write(doc_content)
 
     def generate_openapi_specs(self):
@@ -540,7 +539,7 @@ uv run pytest tests/unit/{service_dir.name}/
                         service_name = service_dir.name
                         spec_file = api_dir / f"{service_name}-openapi.json"
 
-                        with open(spec_file, "w", encoding="utf-8") as f:
+                        with spec_file.open("w", encoding="utf-8") as f:
                             json.dump(spec, f, indent=2)
 
                         services_with_apis.append(service_name)
@@ -555,11 +554,8 @@ uv run pytest tests/unit/{service_dir.name}/
     def _extract_openapi_spec(self, service_dir: Path) -> dict | None:
         """Extract OpenAPI specification from a FastAPI service."""
         try:
-            # Try to run the service and extract OpenAPI spec
-            main_file = service_dir / "src" / "main.py"
-
             # Basic OpenAPI spec template
-            spec = {
+            return {
                 "openapi": "3.0.0",
                 "info": {
                     "title": f"{service_dir.name.replace('_', ' ').title()} API",
@@ -572,8 +568,6 @@ uv run pytest tests/unit/{service_dir.name}/
                 },
                 "security": [{"bearerAuth": []}],
             }
-
-            return spec
 
         except Exception as e:
             print(f"Error extracting OpenAPI spec from {service_dir}: {e}")
@@ -613,7 +607,7 @@ Authorization: Bearer YOUR_JWT_TOKEN
 ```
 """
 
-        with open(api_dir / "openapi-specs.md", "w", encoding="utf-8") as f:
+        with (api_dir / "openapi-specs.md").open("w", encoding="utf-8") as f:
             f.write(content)
 
     def update_navigation(self):
@@ -625,8 +619,8 @@ Authorization: Bearer YOUR_JWT_TOKEN
             return
 
         # Load current config
-        with open(mkdocs_config_file, encoding="utf-8") as f:
-            config = yaml.safe_load(f)
+        with mkdocs_config_file.open(encoding="utf-8") as f:
+            yaml.safe_load(f)
 
         # Update navigation with auto-generated content
         # This is a simplified version - in practice, you'd want more sophisticated logic

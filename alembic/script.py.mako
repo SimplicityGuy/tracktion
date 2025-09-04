@@ -7,7 +7,7 @@ Create Date: ${create_date}
 """
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import op  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
 import sqlalchemy as sa
 ${imports if imports else ""}
 

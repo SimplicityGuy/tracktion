@@ -11,7 +11,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from alembic import op
+from alembic import op  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
 
 # revision identifiers, used by Alembic.
 revision: str = "001"

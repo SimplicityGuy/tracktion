@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
-from alembic import context
+from alembic import context  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
 
 # Import models to ensure they're registered with Base
 from shared.core_types.src.models import Base
