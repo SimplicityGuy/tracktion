@@ -2,7 +2,7 @@
 Tests for CUE Generation API endpoints.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -39,10 +39,15 @@ def sample_tracklist():
     """Create sample tracklist for testing."""
     tracks = [
         TrackEntry(
+            position=i,
             title=f"Track {i}",
             artist=f"Artist {i}",
-            start_time=f"{(i - 1) * 5:02d}:00:00",
-            end_time=f"{i * 5:02d}:00:00" if i < 5 else None,
+            start_time=timedelta(minutes=(i - 1) * 5),
+            end_time=timedelta(minutes=i * 5) if i < 5 else None,
+            remix=None,
+            label=None,
+            catalog_track_id=None,
+            transition_type=None,
             bpm=120 + i,
             key="Am" if i % 2 else "C",
         )
@@ -54,6 +59,10 @@ def sample_tracklist():
         audio_file_id=uuid4(),
         tracks=tracks,
         source="manual",
+        cue_file_id=None,
+        draft_version=None,
+        parent_tracklist_id=None,
+        default_cue_format=None,
     )
 
 
@@ -82,7 +91,9 @@ class TestCueGenerationEndpoints:
     def test_generate_cue_file_sync(self, mock_service, client, sample_tracklist):
         """Test synchronous CUE file generation."""
         # Setup
-        mock_validation = ValidationResult(valid=True, warnings=[], error=None)
+        mock_validation = ValidationResult(
+            valid=True, warnings=[], error=None, audio_duration=None, tracklist_duration=None
+        )
         mock_service.validate_tracklist_for_cue.return_value = AsyncMock(return_value=mock_validation)()
 
         mock_response = CueGenerationResponse(
@@ -128,6 +139,8 @@ class TestCueGenerationEndpoints:
             valid=False,
             warnings=["Missing track titles"],
             error="Invalid tracklist format",
+            audio_duration=None,
+            tracklist_duration=None,
         )
         mock_service.validate_tracklist_for_cue.return_value = AsyncMock(return_value=mock_validation)()
 
@@ -415,6 +428,8 @@ class TestValidationEndpoints:
             valid=True,
             warnings=["Minor timing issue"],
             error=None,
+            audio_duration=None,
+            tracklist_duration=None,
             metadata={"track_count": 1},
         )
         mock_service.cue_integration.validate_cue_content.return_value = mock_validation
@@ -440,6 +455,8 @@ class TestValidationEndpoints:
             valid=True,
             warnings=[],
             error=None,
+            audio_duration=None,
+            tracklist_duration=None,
             metadata={"track_count": len(sample_tracklist.tracks)},
         )
         mock_service.validate_tracklist_for_cue.return_value = AsyncMock(return_value=mock_validation)()

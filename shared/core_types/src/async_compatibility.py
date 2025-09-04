@@ -6,10 +6,14 @@ import logging
 import os
 from collections.abc import Callable
 from functools import wraps
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (  # type: ignore[attr-defined]  # SQLAlchemy 2.0 async features not recognized by mypy type stubs
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import Session, sessionmaker
 
 logger = logging.getLogger(__name__)
@@ -70,7 +74,7 @@ class DatabaseCompatibilityLayer:
         Returns:
             AsyncSession instance
         """
-        return self.async_session_factory()
+        return cast("AsyncSession", self.async_session_factory())
 
     def get_sync_session(self) -> Session:
         """Get a sync database session.

@@ -3,7 +3,7 @@
 import logging
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 import structlog
 from fastapi import Request, Response
@@ -16,7 +16,7 @@ logger = structlog.get_logger(__name__)
 class ErrorHandlingMiddleware(BaseHTTPMiddleware):
     """Middleware for handling errors and exceptions."""
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         """Process the request and handle any errors.
 
         Args:
@@ -49,7 +49,7 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Middleware for request/response logging."""
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         """Log request details and response status.
 
         Args:
@@ -99,7 +99,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 class HealthCheckMiddleware(BaseHTTPMiddleware):
     """Middleware to handle health check endpoints efficiently."""
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         """Skip logging for health check endpoints.
 
         Args:

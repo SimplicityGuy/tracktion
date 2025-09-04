@@ -74,7 +74,7 @@ class RenameProposalRepository:
             if status:
                 stmt = stmt.where(RenameProposal.status == status)
 
-            stmt = stmt.order_by(RenameProposal.created_at.desc())
+            stmt = stmt.order_by(RenameProposal.created_at.desc())  # type: ignore[attr-defined]  # SQLAlchemy Column methods not recognized by mypy
             result = session.execute(stmt)
             return cast("list[RenameProposal]", result.scalars().all())
 
@@ -109,7 +109,7 @@ class RenameProposalRepository:
         """
         with self.db.get_db_session() as session:
             stmt = select(RenameProposal).where(RenameProposal.status == status)
-            stmt = stmt.order_by(RenameProposal.created_at.desc())
+            stmt = stmt.order_by(RenameProposal.created_at.desc())  # type: ignore[attr-defined]  # SQLAlchemy Column methods not recognized by mypy
 
             if limit:
                 stmt = stmt.limit(limit)
@@ -232,7 +232,7 @@ class RenameProposalRepository:
                 and_(
                     RenameProposal.full_proposed_path == proposed_path,
                     RenameProposal.recording_id != recording_id,
-                    RenameProposal.status.in_(["pending", "approved"]),
+                    RenameProposal.status.in_(["pending", "approved"]),  # type: ignore[attr-defined]  # SQLAlchemy Column methods not recognized by mypy
                 )
             )
 
@@ -249,20 +249,21 @@ class RenameProposalRepository:
             # Count by status
             stmt = select(RenameProposal.status, func.count(RenameProposal.id)).group_by(RenameProposal.status)
             result = session.execute(stmt)
-            status_counts: dict[str, int] = dict(result.all())
+            rows = result.all()
+            status_counts: dict[str, int] = {str(row[0]): int(row[1]) for row in rows}  # type: ignore[call-overload]  # SQLAlchemy result row indexing returns tuples
 
             # Average confidence scores
-            stmt = select(func.avg(RenameProposal.confidence_score)).where(RenameProposal.confidence_score.isnot(None))
+            stmt = select(func.avg(RenameProposal.confidence_score)).where(RenameProposal.confidence_score.isnot(None))  # type: ignore[attr-defined]  # SQLAlchemy Column methods not recognized by mypy
             result = session.execute(stmt)
             avg_confidence = result.scalar() or 0.0
 
             # Count proposals with conflicts
-            stmt = select(func.count(RenameProposal.id)).where(RenameProposal.conflicts.isnot(None))
+            stmt = select(func.count(RenameProposal.id)).where(RenameProposal.conflicts.isnot(None))  # type: ignore[attr-defined]  # SQLAlchemy Column methods not recognized by mypy
             result = session.execute(stmt)
             with_conflicts = result.scalar() or 0
 
             # Count proposals with warnings
-            stmt = select(func.count(RenameProposal.id)).where(RenameProposal.warnings.isnot(None))
+            stmt = select(func.count(RenameProposal.id)).where(RenameProposal.warnings.isnot(None))  # type: ignore[attr-defined]  # SQLAlchemy Column methods not recognized by mypy
             result = session.execute(stmt)
             with_warnings = result.scalar() or 0
 
@@ -288,8 +289,8 @@ class RenameProposalRepository:
 
             stmt = select(RenameProposal).where(
                 and_(
-                    RenameProposal.status.in_(["rejected", "applied"]),
-                    RenameProposal.updated_at < cutoff_date,
+                    RenameProposal.status.in_(["rejected", "applied"]),  # type: ignore[attr-defined]  # SQLAlchemy Column methods not recognized by mypy
+                    RenameProposal.updated_at < cutoff_date,  # type: ignore[operator]  # SQLAlchemy Column comparison not recognized by mypy
                 )
             )
             result = session.execute(stmt)

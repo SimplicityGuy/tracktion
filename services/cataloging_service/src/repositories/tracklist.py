@@ -1,7 +1,7 @@
 """Tracklist repository implementation."""
 
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 from services.cataloging_service.src.models.tracklist import Tracklist
@@ -32,7 +32,7 @@ class TracklistRepository(BaseRepository[Tracklist]):
             List of tracklists for the recording
         """
         result = await self.session.execute(select(Tracklist).where(Tracklist.recording_id == recording_id))
-        return cast("Sequence[Tracklist]", result.scalars().all())
+        return result.scalars().all()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_by_source(self, recording_id: UUID, source: str) -> Tracklist | None:
         """Get tracklist by recording ID and source.
@@ -47,7 +47,7 @@ class TracklistRepository(BaseRepository[Tracklist]):
         result = await self.session.execute(
             select(Tracklist).where((Tracklist.recording_id == recording_id) & (Tracklist.source == source))
         )
-        return cast("Tracklist | None", result.scalar_one_or_none())
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def upsert(
         self, recording_id: UUID, source: str, tracks: list[dict[str, Any]], cue_file_path: str | None = None
@@ -82,7 +82,7 @@ class TracklistRepository(BaseRepository[Tracklist]):
             Number of deleted tracklists
         """
         result = await self.session.execute(delete(Tracklist).where(Tracklist.recording_id == recording_id))
-        return cast("int", result.rowcount)
+        return result.rowcount or 0
 
     async def search_by_track_title(self, title: str, limit: int = 100) -> Sequence[Tracklist]:
         """Search tracklists containing tracks with matching titles.
@@ -101,7 +101,7 @@ class TracklistRepository(BaseRepository[Tracklist]):
             .where(func.jsonb_path_exists(Tracklist.tracks, f'$[*] ? (@.title like_regex "{title}" flag "i")'))
             .limit(limit)
         )
-        return cast("Sequence[Tracklist]", result.scalars().all())
+        return result.scalars().all()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_tracks_by_recording_id(self, recording_id: UUID) -> list[dict[str, Any]]:
         """Get all tracks from all tracklists for a recording.
@@ -113,7 +113,8 @@ class TracklistRepository(BaseRepository[Tracklist]):
             Combined list of all tracks from all tracklists
         """
         tracklists = await self.get_by_recording_id(recording_id)
-        all_tracks = []
+        all_tracks: list[dict[str, Any]] = []
         for tracklist in tracklists:
-            all_tracks.extend(tracklist.tracks)
+            if tracklist.tracks is not None:
+                all_tracks.extend(tracklist.tracks)
         return all_tracks

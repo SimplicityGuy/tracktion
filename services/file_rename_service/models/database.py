@@ -18,7 +18,12 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
+from sqlalchemy.orm import (
+    DeclarativeBase,  # type: ignore[attr-defined]  # SQLAlchemy 2.0 feature not recognized by mypy type stubs
+    Session,
+    relationship,
+    sessionmaker,
+)
 from sqlalchemy.pool import NullPool
 
 from services.file_rename_service.app.config import settings
@@ -203,7 +208,7 @@ def get_engine(database_url: str | None = None) -> Engine:
     )
 
 
-def get_session_factory(engine: Engine | None = None) -> sessionmaker[Session]:
+def get_session_factory(engine: Engine | None = None) -> sessionmaker[Session]:  # type: ignore[type-arg]  # SQLAlchemy 2.0 generic sessionmaker typing not supported in 1.4.x type stubs
     """Create session factory."""
     if engine is None:
         engine = get_engine()

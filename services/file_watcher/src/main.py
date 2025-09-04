@@ -5,12 +5,16 @@ import signal
 import sys
 import time
 import uuid
+from collections.abc import Mapping, MutableMapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from dotenv import load_dotenv
 from watchdog.observers import Observer
+
+if TYPE_CHECKING:
+    from watchdog.observers.api import BaseObserver
 
 from .message_publisher import MessagePublisher, RabbitMQConfig
 from .watchdog_handler import TracktionEventHandler
@@ -22,7 +26,9 @@ INSTANCE_ID = os.environ.get("INSTANCE_ID") or str(uuid.uuid4())[:8]
 
 
 # Configure structured logging with instance ID
-def add_instance_id(logger: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+def add_instance_id(
+    logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+) -> Mapping[str, Any] | str | bytes | bytearray | tuple[Any, ...]:
     """Add instance ID to all log messages."""
     event_dict["instance_id"] = INSTANCE_ID
     return event_dict
@@ -59,7 +65,7 @@ class FileWatcherService:
         self.scan_path = Path(data_dir)
         self.instance_id = INSTANCE_ID
         self.running = False
-        self.observer: Observer | None = None
+        self.observer: BaseObserver | None = None
         self.publisher: MessagePublisher | None = None
         self.shutdown_timeout = 10  # seconds to wait for graceful shutdown
 

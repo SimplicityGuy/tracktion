@@ -102,8 +102,8 @@ class CueRegenerationService:
             for cue_file in cue_files:
                 job = await self._queue_regeneration(
                     tracklist_id=tracklist_id,
-                    cue_file_id=cue_file.id,
-                    format=cue_file.format,
+                    cue_file_id=cue_file.id,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
+                    format=cue_file.format,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
                     trigger=trigger,
                     priority=priority,
                     actor=actor,

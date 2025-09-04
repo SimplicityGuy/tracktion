@@ -1,11 +1,13 @@
 """Integration module for file rename proposal service with analysis pipeline."""
 
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 from uuid import UUID
 
 import structlog
 
+from shared.core_types.src.models import RenameProposal
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
 from shared.core_types.src.repositories import MetadataRepository, RecordingRepository
 
@@ -97,6 +99,14 @@ class FileRenameProposalIntegration:
                 )
                 return None
 
+            # Validate recording has required fields
+            if not recording.file_name or not recording.file_path:
+                logger.warning(
+                    f"Recording {recording_id} missing file_name or file_path",
+                    correlation_id=correlation_id,
+                )
+                return None
+
             # Extract file extension
             path_obj = Path(recording.file_name)
             file_extension = path_obj.suffix[1:].lower() if path_obj.suffix else "mp3"
@@ -110,7 +120,7 @@ class FileRenameProposalIntegration:
             )
 
             # Get directory contents for conflict detection
-            directory_path = Path(recording.file_path).parent
+            directory_path = Path(recording.file_path).parent  # Already validated above
             existing_files = set()
             if directory_path.exists():
                 try:
@@ -157,7 +167,7 @@ class FileRenameProposalIntegration:
             # Calculate confidence score
             confidence, components = self.confidence_scorer.calculate_confidence(
                 metadata=cast("dict[str, str | None]", metadata),
-                original_filename=recording.file_name,
+                original_filename=recording.file_name,  # Already validated above
                 proposed_filename=resolved_filename,
                 conflicts=conflicts,
                 warnings=warnings,
@@ -176,7 +186,7 @@ class FileRenameProposalIntegration:
             # Create proposal in database
             created_proposal = self.proposal_repo.create(
                 recording_id=recording_id,
-                original_path=str(Path(recording.file_path).parent),
+                original_path=str(Path(recording.file_path).parent),  # Already validated above
                 original_filename=recording.file_name,
                 proposed_filename=resolved_filename,
                 full_proposed_path=resolved_path,
@@ -269,17 +279,20 @@ class FileRenameProposalIntegration:
             if not proposals:
                 return None
 
-            # Get the most recent proposal
-            latest_proposal = max(proposals, key=lambda p: p.created_at or p.updated_at)
+            # Get the most recent proposal - created_at is non-nullable in the model
+            def get_created_at(proposal: RenameProposal) -> datetime:
+                return cast("datetime", proposal.created_at)
+
+            latest_proposal = max(proposals, key=get_created_at)
 
             return {
                 "proposal_id": str(latest_proposal.id),
-                "status": latest_proposal.status,
-                "proposed_filename": latest_proposal.proposed_filename,
+                "status": str(latest_proposal.status),  # Ensure string type
+                "proposed_filename": str(latest_proposal.proposed_filename),  # Ensure string type
                 "confidence_score": (
                     str(latest_proposal.confidence_score) if latest_proposal.confidence_score else "0"
                 ),
-                "created_at": (latest_proposal.created_at.isoformat() if latest_proposal.created_at else ""),
+                "created_at": latest_proposal.created_at.isoformat() if latest_proposal.created_at else "",
             }
 
         except Exception as e:

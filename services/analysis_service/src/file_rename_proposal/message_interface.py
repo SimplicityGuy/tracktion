@@ -182,6 +182,14 @@ class RenameProposalMessageInterface:
                     "RECORDING_NOT_FOUND",
                 )
 
+            # Validate recording has required fields
+            if not recording.file_name or not recording.file_path:
+                return self._error_response(
+                    request_id,
+                    f"Recording {recording_id} missing file_name or file_path",
+                    "INVALID_RECORDING",
+                )
+
             # Get metadata from MetadataRepository
             metadata_list = self.metadata_repo.get_by_recording(recording_id)
             metadata_dict = {m.key: m.value for m in metadata_list} if metadata_list else {}
@@ -207,8 +215,8 @@ class RenameProposalMessageInterface:
 
             # Calculate confidence
             confidence, components = self.confidence_scorer.calculate_confidence(
-                metadata=metadata_dict,
-                original_filename=recording.file_name,
+                metadata=cast("dict[str, str | None]", metadata_dict),  # Metadata values are non-null in our model
+                original_filename=recording.file_name,  # Already validated above
                 proposed_filename=proposal.proposed_filename,
                 conflicts=conflicts_result["conflicts"],
                 warnings=conflicts_result["warnings"],
@@ -219,7 +227,7 @@ class RenameProposalMessageInterface:
             # Create proposal in database
             created_proposal = self.proposal_repo.create(
                 recording_id=recording_id,
-                original_path=str(Path(recording.file_path).parent),
+                original_path=str(Path(recording.file_path).parent),  # Already validated above
                 original_filename=recording.file_name,
                 proposed_filename=proposal.proposed_filename,
                 full_proposed_path=proposal.full_proposed_path,

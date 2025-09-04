@@ -22,7 +22,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # SQLAlchemy Base for model definitions
-Base = declarative_base()
+Base: Any = declarative_base()
 
 
 def retry_on_failure(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0) -> Callable[..., Any]:
@@ -70,7 +70,7 @@ class DatabaseManager:
         """Initialize database connections with retry logic."""
         self.pg_engine: Engine | None = None
         self.neo4j_driver: Driver | None = None
-        self.SessionLocal: sessionmaker[Session] | None = None
+        self.SessionLocal: sessionmaker | None = None
         self._initialize_connections()
 
     @retry_on_failure(max_attempts=5, delay=2.0)

@@ -19,7 +19,6 @@ from services.analysis_service.src.cue_handler import (
     CueConverter,
     CueDisc,
     CueFile,
-    CueFormat,
     CueGenerator,
     CueParser,
     CueTrack,
@@ -29,10 +28,14 @@ from services.analysis_service.src.cue_handler import (
     SeratoGenerator,
     TraktorGenerator,
 )
+from services.analysis_service.src.cue_handler import (
+    CueFormat as AnalysisCueFormat,
+)
 
 # Import request/response models from models.cue_file to avoid duplication
 from services.tracklist_service.src.models.cue_file import BatchCueGenerationResponse as ModelBatchCueGenerationResponse
 from services.tracklist_service.src.models.cue_file import BatchGenerateCueRequest as ModelBatchGenerateCueRequest
+from services.tracklist_service.src.models.cue_file import CueFormat, ValidationResult
 from services.tracklist_service.src.models.cue_file import CueGenerationResponse as ModelCueGenerationResponse
 from services.tracklist_service.src.models.cue_file import GenerateCueRequest as ModelGenerateCueRequest
 
@@ -51,6 +54,18 @@ GenerateCueRequest = ModelGenerateCueRequest
 BatchGenerateCueRequest = ModelBatchGenerateCueRequest
 CueGenerationResponse = ModelCueGenerationResponse
 BatchCueGenerationResponse = ModelBatchCueGenerationResponse
+
+
+def _convert_format_to_analysis(format_value: CueFormat) -> AnalysisCueFormat:
+    """Convert tracklist service CueFormat to analysis service CueFormat."""
+    # Both enums have the same values, so we can convert by value
+    return AnalysisCueFormat(format_value.value)
+
+
+def _convert_format_from_analysis(format_value: AnalysisCueFormat) -> CueFormat:
+    """Convert analysis service CueFormat to tracklist service CueFormat."""
+    # Both enums have the same values, so we can convert by value
+    return CueFormat(format_value.value)
 
 
 class CueGenerationService:
@@ -146,9 +161,12 @@ class CueGenerationService:
             # Validate if requested
             validation_report = None
             if request.validate_audio and request.audio_file_path:
-                validation_report = await self._validate_against_audio(cue_content, request.audio_file_path, tracklist)
-                if validation_report and not validation_report.get("valid", False):
-                    logger.warning(f"CUE validation failed: {validation_report}")
+                validation_dict = await self._validate_against_audio(cue_content, request.audio_file_path, tracklist)
+                if validation_dict:
+                    # Convert dict to ValidationResult
+                    validation_report = ValidationResult(**validation_dict)
+                    if not validation_report.valid:
+                        logger.warning(f"CUE validation failed: {validation_report}")
 
             # Store file if requested
             cue_file_id = None
@@ -158,7 +176,7 @@ class CueGenerationService:
                     tracklist.id if hasattr(tracklist, "id") else uuid4(),
                     request.format,
                     cue_content,
-                    validation_report,
+                    validation_report.model_dump() if validation_report else None,
                 )
 
             processing_time = int((datetime.now(UTC) - start_time).total_seconds() * 1000)

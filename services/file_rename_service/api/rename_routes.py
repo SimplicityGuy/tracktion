@@ -20,11 +20,14 @@ from services.file_rename_service.api.schemas import (
     ValidateResponse,
     ValidationResult,
 )
+from services.file_rename_service.api.schemas import (
+    RenameProposal as RenameProposalSchema,
+)
 from services.file_rename_service.app.cache import proposal_cache
 from services.file_rename_service.app.proposal.batch_processor import BatchProcessor
 from services.file_rename_service.app.proposal.conflicts import FilenameConflictResolver
 from services.file_rename_service.app.proposal.generator import ProposalGenerator
-from services.file_rename_service.app.proposal.models import NamingTemplate, RenameProposal
+from services.file_rename_service.app.proposal.models import NamingTemplate
 from services.file_rename_service.app.proposal.templates import template_manager
 from services.file_rename_service.models.database import get_session_factory
 
@@ -125,7 +128,7 @@ async def propose_single_rename(
         )
 
         # Convert to response format
-        response_proposal = RenameProposal(
+        response_proposal = RenameProposalSchema(
             proposed_name=proposal.proposed_filename,
             confidence=proposal.confidence_score,
             pattern_used=", ".join(proposal.patterns_used) if proposal.patterns_used else None,
@@ -134,7 +137,7 @@ async def propose_single_rename(
 
         # Create alternatives list
         alternatives = [
-            RenameProposal(
+            RenameProposalSchema(
                 proposed_name=alt,
                 confidence=max(
                     0.1, proposal.confidence_score - 0.1 - (i * 0.05)
@@ -235,7 +238,7 @@ async def propose_batch_rename(
         # Convert proposals to response format
         successful_responses = []
         for proposal in result.successful_proposals:
-            response_proposal = RenameProposal(
+            response_proposal = RenameProposalSchema(
                 proposed_name=proposal.proposed_filename,
                 confidence=proposal.confidence_score,
                 pattern_used=", ".join(proposal.patterns_used) if proposal.patterns_used else None,
@@ -244,7 +247,7 @@ async def propose_batch_rename(
 
             # Create alternatives list
             alternatives = [
-                RenameProposal(
+                RenameProposalSchema(
                     proposed_name=alt,
                     confidence=max(0.1, proposal.confidence_score - 0.1 - (i * 0.05)),
                     pattern_used="alternative",

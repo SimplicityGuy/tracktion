@@ -3,8 +3,9 @@
 import asyncio
 import json
 from collections.abc import AsyncGenerator
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -15,6 +16,7 @@ from services.analysis_service.src.async_progress_tracker import AsyncProgressTr
 from services.analysis_service.src.repositories import AsyncAnalysisResultRepository, AsyncRecordingRepository
 from services.analysis_service.src.structured_logging import get_logger
 from shared.core_types.src.async_database import AsyncDatabaseManager
+from shared.core_types.src.models import AnalysisResult
 
 logger = get_logger(__name__)
 
@@ -131,7 +133,7 @@ async def stream_audio(
     file_path = recording.file_path
 
     # Verify file exists
-    if not Path(file_path).exists():
+    if not file_path or not Path(file_path).exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Audio file not found: {file_path}")
 
     # Handle Range requests from headers if not in query params
@@ -149,6 +151,8 @@ async def stream_audio(
             pass
 
     # Get file info
+    if not file_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File path is None")
     file_path_obj = Path(file_path)
     file_size = file_path_obj.stat().st_size
     file_ext = file_path_obj.suffix.lower()
@@ -187,6 +191,8 @@ async def stream_audio(
         status_code = status.HTTP_200_OK
 
     try:
+        if not file_path:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File path is None")
         return StreamingResponse(
             generate_audio_chunks(file_path, chunk_size, start, end),
             media_type=media_type,
@@ -297,7 +303,11 @@ async def generate_analysis_events(
         stage_message = "Initializing analysis"
 
         if analysis_results:
-            latest_result = max(analysis_results, key=lambda x: x.created_at)
+
+            def get_analysis_created_at(result: AnalysisResult) -> datetime:
+                return cast("datetime", result.created_at)
+
+            latest_result = max(analysis_results, key=get_analysis_created_at)
             if latest_result.analysis_type == "bpm":
                 current_stage = "bpm_detection"
                 stage_message = f"Detecting BPM ({latest_result.status})"
@@ -497,9 +507,14 @@ async def generate_log_stream(recording_id: str, follow: bool = False) -> AsyncG
 
     # Show historical analysis results
     if analysis_results:
-        for result in sorted(analysis_results, key=lambda x: x.created_at):
+
+        def get_result_created_at(result: AnalysisResult) -> datetime:
+            return cast("datetime", result.created_at)
+
+        for result in sorted(analysis_results, key=get_result_created_at):
             created_time = result.created_at.strftime("%H:%M:%S") if result.created_at else "unknown"
-            yield f"[{created_time}] [{result.status.upper()}] {result.analysis_type} analysis"
+            status_display = result.status.upper() if result.status else "UNKNOWN"
+            yield f"[{created_time}] [{status_display}] {result.analysis_type} analysis"
             if result.status == "completed":
                 if result.result_data and result.confidence_score:
                     yield f" - Result: {result.result_data} (confidence: {result.confidence_score:.2f})"
@@ -552,7 +567,10 @@ async def generate_log_stream(recording_id: str, follow: bool = False) -> AsyncG
         current_results = await analysis_result_repo.get_by_recording_id(recording_uuid)
         if len(current_results) > last_seen_results:
             # New results found
-            new_results = sorted(current_results, key=lambda x: x.created_at)[last_seen_results:]
+            def get_current_result_created_at(result: AnalysisResult) -> datetime:
+                return cast("datetime", result.created_at)
+
+            new_results = sorted(current_results, key=get_current_result_created_at)[last_seen_results:]
             for result in new_results:
                 yield f"[{poll_count:03d}s] [NEW] {result.analysis_type} analysis: {result.status}\n"
                 if result.status == "completed" and result.processing_time_ms:

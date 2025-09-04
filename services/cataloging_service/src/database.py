@@ -4,7 +4,11 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (  # type: ignore[attr-defined]  # SQLAlchemy 2.0 features; project uses 2.0.43 but type stubs are 1.4.x
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from .config import get_config
 

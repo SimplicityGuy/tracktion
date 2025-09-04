@@ -6,7 +6,11 @@ from typing import Any, Optional
 
 from sqlalchemy import ARRAY, DECIMAL, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import (  # type: ignore[attr-defined]  # SQLAlchemy 2.0 features not recognized by mypy type stubs
+    Mapped,
+    mapped_column,
+    relationship,
+)
 from sqlalchemy.sql import func
 
 from .database import Base

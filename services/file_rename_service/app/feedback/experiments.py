@@ -133,6 +133,10 @@ class ExperimentManager:
                     start_date=current_time,
                     end_date=current_time + timedelta(hours=duration_hours),
                     status=ExperimentStatus.PENDING,
+                    sample_size_a=0,
+                    sample_size_b=0,
+                    statistical_significance=None,
+                    winner=None,
                 )
             except Exception as e:
                 raise ExperimentError(f"Failed to create experiment object: {type(e).__name__}") from None

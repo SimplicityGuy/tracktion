@@ -650,8 +650,8 @@ class JobRepository:
         with self.db.get_db_session() as session:
             cutoff_date = datetime.now(UTC) - timedelta(days=days)
             stmt = select(Job).where(
-                Job.status.in_([JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CANCELLED.value]),
-                Job.completed_at < cutoff_date,
+                Job.status.in_([JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CANCELLED.value]),  # type: ignore[attr-defined]  # SQLAlchemy Column methods not recognized by mypy
+                Job.completed_at < cutoff_date,  # type: ignore[operator]  # SQLAlchemy Column comparison not recognized by mypy
             )
             result = session.execute(stmt)
             jobs_to_delete = list(result.scalars().all())

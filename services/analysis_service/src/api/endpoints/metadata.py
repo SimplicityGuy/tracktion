@@ -69,11 +69,14 @@ async def get_metadata(recording_id: UUID) -> MetadataResponse:
 
     # Get metadata from database
     metadata_items = await metadata_repo.get_by_recording_id(recording_id)
-    metadata_dict = {item.key: item.value for item in metadata_items}
+    # Ensure key and value are strings to match dict[str, str] expectation
+    metadata_dict: dict[str, str] = {
+        str(item.key): str(item.value) for item in metadata_items if item.key is not None and item.value is not None
+    }
 
     # Extract standard metadata fields with defaults
     def get_metadata_value(key: str, default: Any = None, convert_type: type = str) -> Any:
-        value = metadata_dict.get(key, default)
+        value = metadata_dict.get(key, str(default) if default is not None else None)
         if value is not None and convert_type is not str:
             try:
                 return convert_type(value)
@@ -94,7 +97,7 @@ async def get_metadata(recording_id: UUID) -> MetadataResponse:
         "sample_rate",
         "channels",
     }
-    custom_fields = {k: v for k, v in metadata_dict.items() if k not in standard_fields}
+    custom_fields: dict[str, Any] = {k: v for k, v in metadata_dict.items() if k not in standard_fields}
 
     return MetadataResponse(
         recording_id=recording_id,

@@ -7,7 +7,10 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 import pika
 from croniter import croniter
@@ -141,7 +144,9 @@ class BatchJobQueue:
         }
         # Convert to proper types for Redis
         redis_data: dict[str, str] = {k: str(v) for k, v in batch_metadata.items()}
-        self.redis.hset(f"batch:{batch_id}", mapping=redis_data)
+        self.redis.hset(
+            f"batch:{batch_id}", mapping=cast("Mapping[str | bytes, bytes | float | int | str]", redis_data)
+        )
         self.redis.expire(f"batch:{batch_id}", 86400)  # 24 hour TTL
 
         # Enqueue jobs
@@ -163,7 +168,9 @@ class BatchJobQueue:
             job_dict = asdict(job)
             # Convert to proper types for Redis
             redis_job_data: dict[str, str] = {k: str(v) for k, v in job_dict.items()}
-            self.redis.hset(f"job:{job.id}", mapping=redis_job_data)
+            self.redis.hset(
+                f"job:{job.id}", mapping=cast("Mapping[str | bytes, bytes | float | int | str]", redis_job_data)
+            )
             self.redis.sadd(f"batch:{batch_id}:jobs", job.id)
 
         logger.info(f"Batch {batch_id} enqueued with {len(deduplicated_jobs)} jobs (priority: {priority})")
@@ -191,7 +198,7 @@ class BatchJobQueue:
 
             if existing_job_id:
                 # Check if existing job is still active
-                existing_job: dict[str, Any] = self.redis.hgetall(f"job:{existing_job_id}")
+                existing_job: dict[str, Any] = cast("dict[str, Any]", self.redis.hgetall(f"job:{existing_job_id}"))
                 if existing_job:
                     status = existing_job.get("status")
                     if status and status in ["pending", "processing"]:
@@ -242,7 +249,10 @@ class BatchJobQueue:
 
         # Convert to proper types for Redis
         redis_schedule_data: dict[str, str] = {k: str(v) for k, v in schedule_data.items()}
-        self.redis.hset(f"schedule:{schedule_id}", mapping=redis_schedule_data)
+        self.redis.hset(
+            f"schedule:{schedule_id}",
+            mapping=cast("Mapping[str | bytes, bytes | float | int | str]", redis_schedule_data),
+        )
         self.redis.zadd("scheduled_batches", {schedule_id: next_run.timestamp()})
 
         logger.info(f"Batch scheduled with ID {schedule_id}, next run: {next_run}")
@@ -277,8 +287,10 @@ class BatchJobQueue:
                         # Check if the keys are bytes or strings
                         if any(isinstance(k, bytes) for k in job_data):
                             # Keys are bytes, so check for b"status"
-                            if b"status" in job_data:
-                                status_value = job_data[b"status"]
+                            status_bytes_key = b"status"
+                            job_data_any: dict[Any, Any] = job_data  # Redis can return bytes or strings
+                            if status_bytes_key in job_data_any:
+                                status_value = job_data_any[status_bytes_key]
                         elif "status" in job_data:
                             status_value = job_data["status"]
 
@@ -298,7 +310,7 @@ class BatchJobQueue:
                     (jobs_status["completed"] / len(job_ids)) * 100 if job_ids else 0
                 )
 
-        return dict(batch_meta)
+        return dict(cast("dict[Any, Any]", batch_meta))
 
     def cancel_batch(self, batch_id: str) -> bool:
         """Cancel a batch job.
@@ -317,9 +329,9 @@ class BatchJobQueue:
         self.redis.hset(f"batch:{batch_id}", "status", "cancelled")
 
         # Cancel pending jobs
-        job_ids: set[Any] = self.redis.smembers(f"batch:{batch_id}:jobs")
+        job_ids: set[Any] = cast("set[Any]", self.redis.smembers(f"batch:{batch_id}:jobs"))
         for job_id in job_ids:
-            job_data: dict[str, Any] = self.redis.hgetall(f"job:{job_id}")
+            job_data: dict[str, Any] = cast("dict[str, Any]", self.redis.hgetall(f"job:{job_id}"))
             if job_data and job_data.get("status") == "pending":
                 self.redis.hset(f"job:{job_id}", "status", "cancelled")
 

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlencode, urljoin
 from uuid import uuid4
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, PageElement, Tag
 
 from services.tracklist_service.src.models.search_models import (
     PaginationInfo,
@@ -129,11 +129,13 @@ class SearchScraper(ScraperBase):
 
         # Find result containers based on actual 1001tracklists.com structure
         # Each search result is in a generic container with cursor=pointer
-        result_containers = soup.find_all("generic", attrs={"cursor": "pointer"})
+        result_containers_raw = soup.find_all("generic", attrs={"cursor": "pointer"})
 
-        # Filter out advertisement containers
+        # Filter out advertisement containers with proper type checking
         result_containers = [
-            container for container in result_containers if not self._is_advertisement_container(container)
+            container
+            for container in result_containers_raw
+            if isinstance(container, Tag) and not self._is_advertisement_container(container)
         ]
 
         for container in result_containers:
@@ -168,16 +170,21 @@ class SearchScraper(ScraperBase):
 
             # Extract metadata from the generic container
             metadata_container = container.find("generic", recursive=True)
-            if not metadata_container:
+            if not metadata_container or not isinstance(metadata_container, Tag):
                 logger.warning("No metadata container found in search result")
                 metadata_container = container
 
             # Extract DJ/creator name from creator section
             creator_elem = metadata_container.find("generic", string="creator")
             dj_name = "Unknown DJ"
-            if creator_elem and creator_elem.parent:
+            if (
+                creator_elem
+                and isinstance(creator_elem, Tag)
+                and creator_elem.parent
+                and isinstance(creator_elem.parent, Tag)
+            ):
                 creator_link = creator_elem.parent.find("link")
-                if creator_link:
+                if creator_link and isinstance(creator_link, Tag):
                     dj_name = creator_link.get_text(strip=True)
 
             # Extract event name from title (for live sets)
@@ -194,10 +201,10 @@ class SearchScraper(ScraperBase):
             # Extract date from tracklist date section
             date_elem = metadata_container.find("generic", string="tracklist date")
             result_date = None
-            if date_elem and date_elem.parent:
+            if date_elem and isinstance(date_elem, Tag) and date_elem.parent and isinstance(date_elem.parent, Tag):
                 date_text_elem = date_elem.parent.find("text")
-                if date_text_elem:
-                    date_text = date_text_elem.strip()
+                if date_text_elem and isinstance(date_text_elem, Tag):
+                    date_text = date_text_elem.get_text(strip=True)
                     result_date = self._parse_date(date_text)
 
             # Extract venue from event name or title
@@ -214,10 +221,15 @@ class SearchScraper(ScraperBase):
             # Extract track count from IDed tracks section
             track_count = None
             tracks_elem = metadata_container.find("generic", string="IDed tracks / total tracks")
-            if tracks_elem and tracks_elem.parent:
+            if (
+                tracks_elem
+                and isinstance(tracks_elem, Tag)
+                and tracks_elem.parent
+                and isinstance(tracks_elem.parent, Tag)
+            ):
                 tracks_text_elem = tracks_elem.parent.find("text")
-                if tracks_text_elem:
-                    tracks_text = tracks_text_elem.strip()
+                if tracks_text_elem and isinstance(tracks_text_elem, Tag):
+                    tracks_text = tracks_text_elem.get_text(strip=True)
                     # Extract from formats like "34/39" or "all/18"
                     if "/" in tracks_text:
                         try:
@@ -229,18 +241,23 @@ class SearchScraper(ScraperBase):
             # Extract genre from musicstyle(s) section
             genre = None
             genre_elem = metadata_container.find("generic", string="musicstyle(s)")
-            if genre_elem and genre_elem.parent:
+            if genre_elem and isinstance(genre_elem, Tag) and genre_elem.parent and isinstance(genre_elem.parent, Tag):
                 genre_text_elem = genre_elem.parent.find("text")
-                if genre_text_elem:
-                    genre = genre_text_elem.strip()
+                if genre_text_elem and isinstance(genre_text_elem, Tag):
+                    genre = genre_text_elem.get_text(strip=True)
 
             # Extract duration from play time section
             duration = None
             duration_elem = metadata_container.find("generic", string="play time")
-            if duration_elem and duration_elem.parent:
+            if (
+                duration_elem
+                and isinstance(duration_elem, Tag)
+                and duration_elem.parent
+                and isinstance(duration_elem.parent, Tag)
+            ):
                 duration_text_elem = duration_elem.parent.find("text")
-                if duration_text_elem:
-                    duration_text = duration_text_elem.strip()
+                if duration_text_elem and isinstance(duration_text_elem, Tag):
+                    duration_text = duration_text_elem.get_text(strip=True)
                     duration = self._parse_duration(duration_text)
 
             # Create search result
@@ -251,7 +268,7 @@ class SearchScraper(ScraperBase):
                 venue=venue,
                 set_type=set_type,
                 url=url,
-                duration=duration,
+                duration=str(duration) if duration is not None else None,
                 track_count=track_count,
                 genre=genre,
                 description=title,  # Use title as description
@@ -301,10 +318,11 @@ class SearchScraper(ScraperBase):
         # If we couldn't find total items, estimate from current page
         if total_items == 0:
             # Filter out ads from count
+            actual_results_raw = soup.find_all("generic", attrs={"cursor": "pointer"})
             actual_results = [
                 container
-                for container in soup.find_all("generic", attrs={"cursor": "pointer"})
-                if not self._is_advertisement_container(container)
+                for container in actual_results_raw
+                if isinstance(container, Tag) and not self._is_advertisement_container(container)
             ]
             total_items = len(actual_results)
 
@@ -389,7 +407,7 @@ class SearchScraper(ScraperBase):
             correlation_id=uuid4(),
         )
 
-    def _is_advertisement_container(self, container: Tag) -> bool:
+    def _is_advertisement_container(self, container: PageElement) -> bool:
         """Check if a container is an advertisement.
 
         Args:
@@ -398,6 +416,10 @@ class SearchScraper(ScraperBase):
         Returns:
             True if container is an advertisement
         """
+        # Ensure we have a Tag to work with
+        if not isinstance(container, Tag):
+            return False
+
         # Check for advertisement text or class indicators
         if container.find(text="ADVERTISEMENT"):
             return True

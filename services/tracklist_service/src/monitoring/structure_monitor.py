@@ -8,7 +8,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
 
 import redis.asyncio as redis
 from bs4 import BeautifulSoup, Tag
@@ -378,12 +381,15 @@ class StructureMonitor:
 
             # Also store in version history
             history_key = f"structure:history:{page_type}"
-            await self.redis_client.lpush(
-                history_key,
-                json.dumps({"timestamp": datetime.now(UTC).isoformat(), "structure": structure}),
+            await cast(
+                "Awaitable[int]",
+                self.redis_client.lpush(
+                    history_key,
+                    json.dumps({"timestamp": datetime.now(UTC).isoformat(), "structure": structure}),
+                ),
             )
             # Keep only last 10 versions
-            await self.redis_client.ltrim(history_key, 0, 9)
+            await cast("Awaitable[str]", self.redis_client.ltrim(history_key, 0, 9))
 
         # Update local cache
         self._baseline_cache[page_type] = structure

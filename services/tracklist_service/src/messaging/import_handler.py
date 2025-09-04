@@ -8,7 +8,7 @@ with proper error handling, retry logic, and message acknowledgments.
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -110,7 +110,9 @@ class ImportMessageHandler:
         self.exchange_name = self.config.message_queue.exchange_name
 
         # Message handlers
-        self.import_handlers: list[Callable[[ImportJobMessage], None]] = []
+        self.import_handlers: list[
+            Callable[[ImportJobMessage], None] | Callable[[ImportJobMessage], Coroutine[Any, Any, None]]
+        ] = []
 
     async def connect(self) -> None:
         """Establish connection to RabbitMQ."""
@@ -337,12 +339,14 @@ class ImportMessageHandler:
         await import_queue.consume(process_import_message)
         logger.info("Started consuming import messages")
 
-    def register_import_handler(self, handler: Callable[[ImportJobMessage], None]) -> None:
+    def register_import_handler(
+        self, handler: Callable[[ImportJobMessage], None] | Callable[[ImportJobMessage], Coroutine[Any, Any, None]]
+    ) -> None:
         """
         Register a handler for import messages.
 
         Args:
-            handler: Async function to handle import messages
+            handler: Sync or async function to handle import messages
         """
         self.import_handlers.append(handler)
         logger.info(f"Registered import handler: {handler.__name__}")

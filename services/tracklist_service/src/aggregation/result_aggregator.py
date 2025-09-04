@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from redis import Redis
@@ -587,7 +587,7 @@ class ResultAggregator:
         results = []
 
         for key in self.redis.scan_iter(match=pattern):
-            data = await self.redis.hgetall(key)
+            data = cast("dict[Any, Any]", self.redis.hgetall(key))
             if data and "result" in data:
                 result = json.loads(data["result"])
                 job_id = key.split(":")[-1]

@@ -210,6 +210,7 @@ class FeedbackProcessor:
             confidence_score=confidence_score,
             timestamp=datetime.now(UTC),
             model_version=model_version,
+            processing_time_ms=None,  # Will be set after processing time calculation
             context_metadata=context_metadata or {},
         )
 
@@ -279,6 +280,9 @@ class FeedbackProcessor:
                 feedbacks=batch_feedback,
                 batch_id=str(uuid4()),
                 created_at=datetime.now(UTC),
+                processed=False,
+                processed_at=None,
+                error=None,
             )
 
             # Store batch

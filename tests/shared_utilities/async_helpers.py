@@ -34,7 +34,7 @@ def async_semaphore():
 
 
 @pytest.fixture
-async def async_task_pool() -> AsyncGenerator[Callable, None]:
+async def async_task_pool() -> AsyncGenerator[Callable]:
     """Task pool for managing concurrent test operations."""
     tasks = []
 

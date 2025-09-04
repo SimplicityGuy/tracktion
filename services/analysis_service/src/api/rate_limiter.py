@@ -11,7 +11,7 @@ from collections import defaultdict, deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -520,7 +520,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             for key, value in headers.items():
                 response.headers[key] = value
 
-            return response  # Rate limiter response type
+            return cast("Response", response)
 
         finally:
             # Release connection

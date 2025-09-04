@@ -58,6 +58,10 @@ async def submit_recording(request: RecordingRequest) -> dict[str, Any]:
             file_name=file_name,
         )
 
+        # Validate recording was created successfully
+        if not recording or not recording.id:
+            raise HTTPException(status_code=500, detail="Failed to create recording")
+
         # Submit to message queue for processing
         correlation_id = await message_publisher.publish_analysis_request(
             recording_id=recording.id,
@@ -103,6 +107,10 @@ async def get_recording_status(recording_id: UUID) -> RecordingResponse:
         if not recording:
             raise HTTPException(status_code=404, detail=f"Recording {recording_id} not found")
 
+        # Validate recording fields
+        if not recording.id or not recording.file_path:
+            raise HTTPException(status_code=500, detail="Recording data is incomplete")
+
         # Get metadata from database
         metadata_repo = AsyncMetadataRepository(recording_repository.db)
         metadata_list = await metadata_repo.get_by_recording_id(recording_id)
@@ -146,17 +154,21 @@ async def list_recordings(
             status_filter=status,
         )
 
-        # Convert to response format
-        return [
-            RecordingResponse(
-                id=recording.id,
-                file_path=recording.file_path,
-                status=recording.processing_status or "pending",
-                priority=5,  # Default priority since not stored in Recording model
-                metadata={"file_size": recording.file_size} if recording.file_size else {},
+        # Convert to response format with validation
+        validated_recordings: list[RecordingResponse] = []
+        for recording in recordings:
+            if not recording.id or not recording.file_path:
+                continue  # Skip invalid recordings
+            validated_recordings.append(
+                RecordingResponse(
+                    id=recording.id,
+                    file_path=recording.file_path,
+                    status=recording.processing_status or "pending",
+                    priority=5,  # Default priority since not stored in Recording model
+                    metadata={"file_size": recording.file_size} if recording.file_size else {},
+                )
             )
-            for recording in recordings
-        ]
+        return validated_recordings
     except Exception as e:
         logger.error(f"Failed to list recordings: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve recordings: {e!s}") from e

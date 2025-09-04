@@ -4,7 +4,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from shared.core_types.src.rename_proposal_repository import RenameProposalRepository
@@ -260,6 +260,14 @@ class BatchProcessor:
             }
 
         try:
+            # Validate recording has required fields
+            if not recording.file_name or not recording.file_path:
+                return {
+                    "success": False,
+                    "error": f"Recording {recording_id} missing file_name or file_path",
+                    "proposal_id": None,
+                }
+
             # Get metadata from MetadataRepository
             metadata_list = self.metadata_repo.get_by_recording(recording_id)
             metadata_dict = {m.key: m.value for m in metadata_list} if metadata_list else {}
@@ -321,8 +329,8 @@ class BatchProcessor:
 
             # Calculate confidence score
             confidence, components = self.confidence_scorer.calculate_confidence(
-                metadata=metadata_dict,
-                original_filename=recording.file_name,
+                metadata=cast("dict[str, str | None]", metadata_dict),  # Metadata values are non-null in our model
+                original_filename=recording.file_name,  # Already validated above
                 proposed_filename=resolved_filename,
                 conflicts=conflicts,
                 warnings=warnings,
@@ -342,8 +350,8 @@ class BatchProcessor:
             # Create proposal in database
             created_proposal = self.proposal_repo.create(
                 recording_id=recording_id,
-                original_path=str(Path(recording.file_path).parent),
-                original_filename=recording.file_name,
+                original_path=str(Path(recording.file_path).parent),  # Already validated above
+                original_filename=recording.file_name,  # Already validated above
                 proposed_filename=resolved_filename,
                 full_proposed_path=resolved_path,
                 confidence_score=confidence,
@@ -374,11 +382,11 @@ class BatchProcessor:
         Returns:
             Dictionary mapping directory paths to sets of filenames
         """
-        directory_contents = {}
+        directory_contents: dict[str, set[str]] = {}
 
         for recording_id in recording_ids:
             recording = self.recording_repo.get_by_id(recording_id)
-            if recording:
+            if recording and recording.file_path:
                 directory = str(Path(recording.file_path).parent)
 
                 if directory not in directory_contents:

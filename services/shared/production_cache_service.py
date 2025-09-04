@@ -119,7 +119,7 @@ class ProductionCacheService:
             if cached_data:
                 self._stats["hits"] += 1
                 logger.debug(f"Cache hit: {cache_key}")
-                return self._deserialize_value(cached_data)
+                return self._deserialize_value(cast("str", cached_data))
 
             self._stats["misses"] += 1
             logger.debug(f"Cache miss: {cache_key}")
@@ -326,7 +326,7 @@ class ProductionCacheService:
 
             if value:
                 self._stats["hits"] += 1
-                return self._deserialize_value(value)
+                return self._deserialize_value(cast("str", value))
 
             self._stats["misses"] += 1
             return None
@@ -355,7 +355,7 @@ class ProductionCacheService:
 
             if hash_data:
                 self._stats["hits"] += 1
-                return {field: self._deserialize_value(value) for field, value in hash_data.items()}
+                return {field: self._deserialize_value(cast("str", value)) for field, value in hash_data.items()}
 
             self._stats["misses"] += 1
             return {}
@@ -393,7 +393,7 @@ class ProductionCacheService:
 
             if keys:
                 deleted = self.redis_client.delete(*keys)
-                deleted_count = cast("int", deleted) if deleted is not None else 0
+                deleted_count = deleted if deleted is not None else 0
                 self._stats["deletes"] += deleted_count
                 logger.info(f"Deleted {deleted_count} keys matching pattern: {full_pattern}")
                 return deleted_count
@@ -443,7 +443,7 @@ class ProductionCacheService:
                 stats["hit_rate"] = (hits / total_reads * 100) if total_reads > 0 else 0.0
 
                 # Get Redis info
-                info = self.redis_client.info()
+                info = cast("dict[Any, Any]", self.redis_client.info())
                 stats.update(
                     {
                         "redis_memory": info.get("used_memory_human", "N/A"),

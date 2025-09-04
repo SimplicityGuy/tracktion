@@ -34,12 +34,12 @@ class BaseMessage(BaseModel):
 
     def to_json(self) -> str:
         """Convert message to JSON string."""
-        return self.model_dump_json()  # type: ignore[no-any-return]  # Pydantic returns str but typed as Any
+        return str(self.model_dump_json())
 
     @classmethod
     def from_json(cls, json_str: str) -> "BaseMessage":
         """Create message from JSON string."""
-        return cls.model_validate_json(json_str)  # type: ignore[no-any-return]  # Pydantic returns model but typed as Any
+        return cls.model_validate_json(json_str)
 
 
 class CueGenerationMessage(BaseMessage):
@@ -214,12 +214,12 @@ class MessageBatch(BaseModel):
 
     def to_json(self) -> str:
         """Convert batch to JSON string."""
-        return self.model_dump_json()  # type: ignore[no-any-return]  # Pydantic returns str but typed as Any
+        return str(self.model_dump_json())
 
     @classmethod
     def from_json(cls, json_str: str) -> "MessageBatch":
         """Create batch from JSON string."""
-        return cls.model_validate_json(json_str)  # type: ignore[no-any-return]  # Pydantic returns model but typed as Any
+        return cls.model_validate_json(json_str)
 
 
 # Message routing configuration

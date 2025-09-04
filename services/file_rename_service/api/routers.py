@@ -205,9 +205,9 @@ async def submit_feedback(
         db.add(feedback)
 
         # Update history with feedback
-        history.was_accepted = request.was_accepted
-        history.feedback_rating = request.rating
-        history.user_feedback = request.comment
+        history.was_accepted = request.was_accepted  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
+        history.feedback_rating = request.rating  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
+        history.user_feedback = request.comment  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
 
         # Send to RabbitMQ for pattern learning
         if rabbitmq_manager.is_connected:
@@ -227,7 +227,7 @@ async def submit_feedback(
         db.commit()
 
         return RenameFeedbackResponse(
-            feedback_id=feedback.id,
+            feedback_id=int(feedback.id),
             message="Feedback submitted successfully",
             patterns_updated=True,
         )
@@ -272,15 +272,15 @@ async def get_patterns(
 
         return [
             PatternResponse(
-                id=p.id,
-                pattern_type=p.pattern_type,
-                pattern_value=p.pattern_value,
-                description=p.description,
-                category=p.category,
-                frequency=p.frequency,
-                confidence_score=p.confidence_score,
-                created_at=p.created_at,
-                updated_at=p.updated_at,
+                id=int(p.id),
+                pattern_type=str(p.pattern_type),
+                pattern_value=str(p.pattern_value),
+                description=str(p.description) if p.description else None,
+                category=str(p.category) if p.category else None,
+                frequency=int(p.frequency),
+                confidence_score=float(p.confidence_score),
+                created_at=p.created_at,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
+                updated_at=p.updated_at,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
             )
             for p in patterns
         ]
@@ -319,14 +319,14 @@ async def get_history(
 
         return [
             RenameHistoryResponse(
-                id=h.id,
-                original_name=h.original_name,
-                proposed_name=h.proposed_name,
-                final_name=h.final_name,
-                confidence_score=h.confidence_score,
-                was_accepted=h.was_accepted,
-                feedback_rating=h.feedback_rating,
-                created_at=h.created_at,
+                id=int(h.id),
+                original_name=str(h.original_name),
+                proposed_name=str(h.proposed_name),
+                final_name=str(h.final_name) if h.final_name else None,
+                confidence_score=float(h.confidence_score) if h.confidence_score else None,
+                was_accepted=bool(h.was_accepted) if h.was_accepted is not None else None,
+                feedback_rating=int(h.feedback_rating) if h.feedback_rating else None,
+                created_at=h.created_at,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
             )
             for h in history
         ]

@@ -468,6 +468,8 @@ class OnlineLearner:
                         rejection_rate=0.0,
                         modification_rate=0.0,
                         accuracy_trend=[],
+                        last_retrained=None,
+                        next_retrain_at=None,
                         performance_metrics={},
                     )
                 except Exception as e:

@@ -4,7 +4,7 @@ import logging
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -52,14 +52,14 @@ class TransactionManager:
                 # Get the proposal
                 stmt = select(RenameProposal).where(RenameProposal.id == proposal_id)
                 result = session.execute(stmt)
-                proposal = cast("RenameProposal | None", result.scalar_one_or_none())
+                proposal = result.scalar_one_or_none()
                 if not proposal:
                     raise ValueError(f"Proposal {proposal_id} not found")
 
                 # Get the recording
                 stmt = select(Recording).where(Recording.id == proposal.recording_id)
                 result = session.execute(stmt)
-                recording = cast("Recording | None", result.scalar_one_or_none())
+                recording = result.scalar_one_or_none()
                 if not recording:
                     raise ValueError(f"Recording {proposal.recording_id} not found")
 
@@ -178,11 +178,15 @@ class TransactionManager:
             )
 
         # Check that the source file exists
+        if proposal.original_path is None:
+            return False, "Source path is not set"
         source_path = Path(proposal.original_path)
         if not source_path.exists():
             return False, f"Source file does not exist: {proposal.original_path}"
 
         # Check that destination doesn't exist
+        if proposal.full_proposed_path is None:
+            return False, "Proposed path is not set"
         dest_path = Path(proposal.full_proposed_path)
         if dest_path.exists():
             return False, f"Destination already exists: {proposal.full_proposed_path}"
@@ -213,11 +217,15 @@ class TransactionManager:
             )
 
         # Check that the current file exists
+        if proposal.full_proposed_path is None:
+            return False, "Proposed path is not set"
         current_path = Path(proposal.full_proposed_path)
         if not current_path.exists():
             return False, f"Current file does not exist: {proposal.full_proposed_path}"
 
         # Check that original path doesn't exist
+        if proposal.original_path is None:
+            return False, "Original path is not set"
         original_path = Path(proposal.original_path)
         if original_path.exists():
             return False, f"Original path already exists: {proposal.original_path}"

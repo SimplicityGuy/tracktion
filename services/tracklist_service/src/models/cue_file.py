@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as POSTGRES_UUID
 
-from .tracklist import Base
+from .base import Base
 
 
 class CueFormat(str, Enum):
@@ -126,16 +126,16 @@ class CueFileDB(Base):
     def to_model(self) -> CueFile:
         """Convert to Pydantic model."""
         return CueFile(
-            id=self.id,
-            tracklist_id=self.tracklist_id,
-            file_path=self.file_path,
+            id=self.id,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            tracklist_id=self.tracklist_id,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            file_path=self.file_path,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
             format=CueFormat(self.format),
-            file_size=self.file_size,
-            checksum=self.checksum,
-            created_at=self.created_at,
-            updated_at=self.updated_at,
-            version=self.version,
-            is_active=self.is_active,
+            file_size=self.file_size,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            checksum=self.checksum,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            created_at=self.created_at,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            updated_at=self.updated_at,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            version=self.version,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            is_active=self.is_active,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
             metadata=(self.format_metadata if isinstance(self.format_metadata, dict) else {}),
         )
 
@@ -184,24 +184,24 @@ class CueGenerationJobDB(Base):
         validation_report = None
         if self.validation_report:
             try:
-                validation_report = ValidationResult(**self.validation_report)
+                validation_report = ValidationResult(**self.validation_report)  # type: ignore[misc]  # JSON column returns dict at runtime
             except Exception:
                 # Handle cases where stored data doesn't match current model
                 validation_report = None
 
         return CueGenerationJob(
-            id=self.id,
-            tracklist_id=self.tracklist_id,
+            id=self.id,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            tracklist_id=self.tracklist_id,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
             format=CueFormat(self.format),
             status=CueGenerationStatus(self.status),
-            created_at=self.created_at,
-            started_at=self.started_at,
-            completed_at=self.completed_at,
-            cue_file_id=self.cue_file_id,
-            error_message=self.error_message,
+            created_at=self.created_at,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            started_at=self.started_at,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            completed_at=self.completed_at,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            cue_file_id=self.cue_file_id,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
+            error_message=self.error_message,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
             validation_report=validation_report,
             options=self.options if isinstance(self.options, dict) else {},
-            progress=self.progress,
+            progress=self.progress,  # type: ignore[arg-type]  # SQLAlchemy instance attribute assignment at runtime
         )
 
     @classmethod

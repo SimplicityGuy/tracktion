@@ -7,7 +7,7 @@ with fuzzy matching and confidence scoring.
 
 import logging
 from difflib import SequenceMatcher
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_
@@ -91,15 +91,17 @@ class CatalogSearchService:
         results = base_query.filter(or_(*conditions)).limit(limit * 3).all()
 
         # Group results by recording and calculate confidence scores
-        recordings_map = {}
-        for recording, metadata in results:
-            if recording.id not in recordings_map:
-                recordings_map[recording.id] = {
+        recordings_map: dict[UUID, dict[str, Any]] = {}
+        for recording, metadata in cast("list[tuple[Recording, Metadata]]", results):
+            rec_id: UUID = recording.id
+            metadata_key: str = metadata.key
+            if rec_id not in recordings_map:
+                recordings_map[rec_id] = {
                     "recording": recording,
                     "metadata": {},
                     "confidence": 0.0,
                 }
-            recordings_map[recording.id]["metadata"][metadata.key] = metadata.value
+            recordings_map[rec_id]["metadata"][metadata_key] = metadata.value
 
         # Calculate confidence scores
         scored_results = []
@@ -147,7 +149,8 @@ class CatalogSearchService:
 
         # Apply threshold
         if confidence >= threshold:
-            return (best_match.id, confidence)
+            match_id: UUID = best_match.id
+            return (match_id, confidence)
 
         return None
 
@@ -368,8 +371,9 @@ class CatalogSearchService:
         """
         metadata_items = self.db.query(Metadata).filter(Metadata.recording_id == track_id).all()
 
-        metadata = {}
+        metadata: dict[str, Any] = {}
         for item in metadata_items:
-            metadata[item.key] = item.value
+            key: str = item.key
+            metadata[key] = item.value
 
         return metadata

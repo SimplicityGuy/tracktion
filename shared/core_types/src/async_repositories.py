@@ -384,7 +384,7 @@ class AsyncTracklistRepository:
         """
         async with self.db.get_db_session() as session:
             # Using PostgreSQL JSONB containment operator
-            stmt = select(Tracklist).where(Tracklist.tracks.cast(String).contains(track_name))
+            stmt = select(Tracklist).where(Tracklist.tracks.cast(String).contains(track_name))  # type: ignore[attr-defined]  # SQLAlchemy Column methods not recognized by mypy
             result = await session.execute(stmt)
             return list(result.scalars().all())
 

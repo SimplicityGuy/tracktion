@@ -1,7 +1,7 @@
 """Rate limiting middleware for FastAPI applications."""
 
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import Request, Response
@@ -27,7 +27,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.limiter = rate_limiter
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Any]) -> Response | JSONResponse:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response | JSONResponse:
         """Process request through rate limiting middleware.
 
         Args:

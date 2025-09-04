@@ -24,7 +24,7 @@ class DatabaseManager:
 
     _instance: "DatabaseManager | None" = None
     _engine: Engine | None = None
-    _session_local: sessionmaker[Session] | None = None
+    _session_local: sessionmaker | None = None
     _initialized: bool = False
 
     def __new__(cls) -> "DatabaseManager":
@@ -43,7 +43,7 @@ class DatabaseManager:
         return self._engine
 
     @property
-    def session_local(self) -> sessionmaker[Session]:
+    def session_local(self) -> sessionmaker:
         """Get the session factory."""
         if self._session_local is None:
             self._initialize()

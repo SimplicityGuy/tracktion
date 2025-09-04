@@ -33,6 +33,9 @@ from services.tracklist_service.src.models.cue_file import (
     CueGenerationResponse,
     GenerateCueRequest,
 )
+from services.tracklist_service.src.models.cue_file import (
+    CueFormat as LocalCueFormat,
+)
 from services.tracklist_service.src.models.tracklist import Tracklist, TracklistDB
 from services.tracklist_service.src.services.cue_generation_service import CueGenerationService
 from services.tracklist_service.src.services.storage_service import StorageService
@@ -93,7 +96,7 @@ class CueGenerationMessageHandler:
 
             # Create generation request
             request = GenerateCueRequest(
-                format=CueFormat(message.format),
+                format=LocalCueFormat(message.format),
                 options=message.options,
                 validate_audio=message.validate_audio,
                 audio_file_path=message.audio_file_path,
@@ -178,7 +181,7 @@ class CueGenerationMessageHandler:
 
             # Create batch generation request
             request = BatchGenerateCueRequest(
-                formats=[CueFormat(fmt) for fmt in message.formats],
+                formats=[LocalCueFormat(fmt) for fmt in message.formats],
                 options=message.options,
                 validate_audio=message.validate_audio,
                 audio_file_path=message.audio_file_path,

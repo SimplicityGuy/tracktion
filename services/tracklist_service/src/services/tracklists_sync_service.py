@@ -252,7 +252,7 @@ class TracklistsSyncService:
             # Get the tracklist
             tracklist = await self.session.get(TracklistDB, tracklist_id)
             if not tracklist:
-                sync_event.status = "failed"
+                sync_event.status = "failed"  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
                 await self.session.commit()
                 return False, "Tracklist not found"
 
@@ -286,8 +286,8 @@ class TracklistsSyncService:
             sync_config.last_sync_at = datetime.now(UTC)
 
             # Mark sync event as completed
-            sync_event.status = "completed"
-            sync_event.completed_at = datetime.now(UTC)
+            sync_event.status = "completed"  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
+            sync_event.completed_at = datetime.now(UTC)  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
 
             await self.session.commit()
 
@@ -295,7 +295,7 @@ class TracklistsSyncService:
 
         except Exception as e:
             logger.error(f"Failed to apply updates for tracklist {tracklist_id}: {e}")
-            sync_event.status = "failed"
+            sync_event.status = "failed"  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
             await self.session.commit()
             return False, str(e)
 

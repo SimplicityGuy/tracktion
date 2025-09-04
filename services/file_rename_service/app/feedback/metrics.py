@@ -150,7 +150,7 @@ class MetricsTracker:
             approval_trend.append(window_approved / len(window))
 
             # Average confidence in window
-            avg_confidence = np.mean([f.confidence_score for f in window])
+            avg_confidence = float(np.mean([f.confidence_score for f in window]))
             confidence_trend.append(avg_confidence)
 
         # Calculate trend direction
@@ -187,10 +187,10 @@ class MetricsTracker:
 
         if processing_times:
             perf_stats = {
-                "avg_processing_time_ms": np.mean(processing_times),
-                "p50_processing_time_ms": np.percentile(processing_times, 50),
-                "p95_processing_time_ms": np.percentile(processing_times, 95),
-                "p99_processing_time_ms": np.percentile(processing_times, 99),
+                "avg_processing_time_ms": float(np.mean(processing_times)),
+                "p50_processing_time_ms": float(np.percentile(processing_times, 50)),
+                "p95_processing_time_ms": float(np.percentile(processing_times, 95)),
+                "p99_processing_time_ms": float(np.percentile(processing_times, 99)),
                 "max_processing_time_ms": max(processing_times),
                 "min_processing_time_ms": min(processing_times),
             }
@@ -224,30 +224,31 @@ class MetricsTracker:
 
         # Confidence by action
         if approved:
-            metrics["approved_avg_confidence"] = np.mean([f.confidence_score for f in approved])
-            metrics["approved_std_confidence"] = np.std([f.confidence_score for f in approved])
+            metrics["approved_avg_confidence"] = float(np.mean([f.confidence_score for f in approved]))
+            metrics["approved_std_confidence"] = float(np.std([f.confidence_score for f in approved]))
 
         if rejected:
-            metrics["rejected_avg_confidence"] = np.mean([f.confidence_score for f in rejected])
-            metrics["rejected_std_confidence"] = np.std([f.confidence_score for f in rejected])
+            metrics["rejected_avg_confidence"] = float(np.mean([f.confidence_score for f in rejected]))
+            metrics["rejected_std_confidence"] = float(np.std([f.confidence_score for f in rejected]))
 
         if modified:
-            metrics["modified_avg_confidence"] = np.mean([f.confidence_score for f in modified])
-            metrics["modified_std_confidence"] = np.std([f.confidence_score for f in modified])
+            metrics["modified_avg_confidence"] = float(np.mean([f.confidence_score for f in modified]))
+            metrics["modified_std_confidence"] = float(np.std([f.confidence_score for f in modified]))
 
         # Confidence distribution
         all_confidences = [f.confidence_score for f in feedbacks]
-        metrics["confidence_distribution"] = {
+        confidence_dist: dict[str, float] = {
             "0.0-0.2": sum(1 for c in all_confidences if 0.0 <= c < 0.2) / len(feedbacks),
             "0.2-0.4": sum(1 for c in all_confidences if 0.2 <= c < 0.4) / len(feedbacks),
             "0.4-0.6": sum(1 for c in all_confidences if 0.4 <= c < 0.6) / len(feedbacks),
             "0.6-0.8": sum(1 for c in all_confidences if 0.6 <= c < 0.8) / len(feedbacks),
             "0.8-1.0": sum(1 for c in all_confidences if 0.8 <= c <= 1.0) / len(feedbacks),
         }
+        metrics["confidence_distribution"] = confidence_dist  # type: ignore[assignment]
 
         # Calibration analysis
-        calibration = self._calculate_calibration(feedbacks)
-        metrics["calibration"] = calibration
+        calibration_data: dict[str, float] = self._calculate_calibration(feedbacks)
+        metrics["calibration"] = calibration_data  # type: ignore[assignment]
 
         return metrics
 
@@ -333,8 +334,8 @@ class MetricsTracker:
         rejection_improvement = baseline_metrics["rejection_rate"] - current_metrics["rejection_rate"]
 
         # Confidence improvements
-        baseline_conf = np.mean([f.confidence_score for f in baseline_feedbacks])
-        current_conf = np.mean([f.confidence_score for f in current_feedbacks])
+        baseline_conf = float(np.mean([f.confidence_score for f in baseline_feedbacks]))
+        current_conf = float(np.mean([f.confidence_score for f in current_feedbacks]))
         confidence_improvement = current_conf - baseline_conf
 
         return {
@@ -409,11 +410,11 @@ class MetricsTracker:
         # Check processing times
         recent_times = [f.processing_time_ms for f in recent if f.processing_time_ms]
         if recent_times:
-            avg_time = np.mean(recent_times)
-            p95_time = np.percentile(recent_times, 95)
+            avg_time = float(np.mean(recent_times))
+            p95_time = float(np.percentile(recent_times, 95))
         else:
-            avg_time = 0
-            p95_time = 0
+            avg_time = 0.0
+            p95_time = 0.0
 
         # Health checks
         checks = {

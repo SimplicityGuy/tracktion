@@ -5,7 +5,10 @@ import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
 
 import redis.asyncio as redis
 
@@ -221,15 +224,18 @@ class RateLimiter:
         return {allowed, remaining, reset_time}
         """
 
-        result = await self.redis.eval(
-            script,
-            1,  # Number of keys
-            key,  # The key
-            str(bucket.rate),  # Rate per second (as string)
-            str(bucket.capacity),  # Base capacity (as string)
-            str(bucket.burst_allowance),  # Burst allowance (as string)
-            str(cost),  # Tokens to consume (as string)
-            str(current_time),  # Current timestamp (as string)
+        result = await cast(
+            "Awaitable[str]",
+            self.redis.eval(
+                script,
+                1,  # Number of keys
+                key,  # The key
+                str(bucket.rate),  # Rate per second (as string)
+                str(bucket.capacity),  # Base capacity (as string)
+                str(bucket.burst_allowance),  # Burst allowance (as string)
+                str(cost),  # Tokens to consume (as string)
+                str(current_time),  # Current timestamp (as string)
+            ),
         )
         return [int(x) for x in result]
 
@@ -247,7 +253,7 @@ class RateLimiter:
         bucket = self.tiers.get(tier, self.tiers[RateLimitTier.FREE.value])
 
         # Get current bucket state
-        bucket_data = await self.redis.hmget(key, ["tokens", "last_refill"])
+        bucket_data = await cast("Awaitable[list[Any]]", self.redis.hmget(key, ["tokens", "last_refill"]))
         tokens = float(bucket_data[0]) if bucket_data[0] else bucket.capacity + bucket.burst_allowance
         last_refill = int(bucket_data[1]) if bucket_data[1] else int(time.time())
 

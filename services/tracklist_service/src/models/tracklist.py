@@ -12,12 +12,9 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as POSTGRES_UUID
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import relationship
 
-
-# Create Base class with proper typing
-class Base(DeclarativeBase):
-    pass
+from .base import Base
 
 
 class TrackEntry(BaseModel):
@@ -34,6 +31,8 @@ class TrackEntry(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Confidence score")
     transition_type: str | None = Field(None, description="Type of transition to next track")
     is_manual_entry: bool = Field(default=False, description="Flag for manually entered tracks")
+    bpm: float | None = Field(None, ge=60, le=200, description="BPM if available")
+    key: str | None = Field(None, description="Musical key if available")
 
     @field_validator("position")
     @classmethod
@@ -65,6 +64,8 @@ class TrackEntry(BaseModel):
             "confidence": self.confidence,
             "transition_type": self.transition_type,
             "is_manual_entry": self.is_manual_entry,
+            "bpm": self.bpm,
+            "key": self.key,
         }
 
     @classmethod
@@ -82,6 +83,8 @@ class TrackEntry(BaseModel):
             confidence=data.get("confidence", 1.0),
             transition_type=data.get("transition_type"),
             is_manual_entry=data.get("is_manual_entry", False),
+            bpm=data.get("bpm"),
+            key=data.get("key"),
         )
 
 
@@ -172,18 +175,18 @@ class TracklistDB(Base):
         tracks_list = [TrackEntry.from_dict(t) for t in tracks_data]
 
         return Tracklist(
-            id=self.id,
-            audio_file_id=self.audio_file_id,
-            source=self.source,
-            created_at=self.created_at,
-            updated_at=self.updated_at,
+            id=self.id,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
+            audio_file_id=self.audio_file_id,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
+            source=self.source,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
+            created_at=self.created_at,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
+            updated_at=self.updated_at,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
             tracks=tracks_list,
-            cue_file_id=self.cue_file_id,
-            confidence_score=self.confidence_score,
-            draft_version=self.draft_version,
-            is_draft=self.is_draft,
-            parent_tracklist_id=self.parent_tracklist_id,
-            default_cue_format=self.default_cue_format,
+            cue_file_id=self.cue_file_id,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
+            confidence_score=self.confidence_score,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
+            draft_version=self.draft_version,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
+            is_draft=self.is_draft,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
+            parent_tracklist_id=self.parent_tracklist_id,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
+            default_cue_format=self.default_cue_format,  # type: ignore[arg-type]  # SQLAlchemy loaded instance returns actual value, not Column
         )
 
     @classmethod

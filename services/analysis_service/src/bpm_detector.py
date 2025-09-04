@@ -153,7 +153,7 @@ class BPMDetector:
             logger.error(f"BPM detection failed for {audio_path}: {e!s}")
             raise RuntimeError(f"BPM detection failed: {e!s}") from e
 
-    def _extract_rhythm(self, audio: np.ndarray) -> tuple[Any, ...]:
+    def _extract_rhythm(self, audio: np.ndarray) -> tuple[float, np.ndarray, float, Any, np.ndarray]:
         """
         Extract rhythm using RhythmExtractor2013.
 
@@ -165,7 +165,7 @@ class BPMDetector:
         """
         return self.rhythm_extractor(audio)  # type: ignore[no-any-return]
 
-    def _estimate_bpm_percival(self, audio: np.ndarray) -> Any:
+    def _estimate_bpm_percival(self, audio: np.ndarray) -> float:
         """
         Estimate BPM using Percival's algorithm as fallback.
 
@@ -175,7 +175,7 @@ class BPMDetector:
         Returns:
             Estimated BPM
         """
-        return self.percival_estimator(audio)
+        return self.percival_estimator(audio)  # type: ignore[no-any-return]  # Essentia lacks proper type annotations
 
     def _is_tempo_stable(self, beat_intervals: np.ndarray, threshold: float = 0.15) -> bool:
         """

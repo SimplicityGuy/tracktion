@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import redis
 import xxhash
@@ -26,6 +26,18 @@ from services.analysis_service.src.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class Hasher(Protocol):
+    """Protocol for hash objects with update and hexdigest methods."""
+
+    def update(self, data: bytes) -> None:
+        """Update hasher with data."""
+        ...
+
+    def hexdigest(self) -> str:
+        """Return hex digest."""
+        ...
 
 
 class AudioCache:
@@ -124,12 +136,12 @@ class AudioCache:
             if self.use_xxh128:
                 # Use xxHash128 for faster hashing (requires xxhash library)
                 try:
-                    hasher = xxhash.xxh128()
+                    hasher = cast("Hasher", xxhash.xxh128())
                 except ImportError:
                     logger.warning("xxhash not available, falling back to SHA256")
-                    hasher = hashlib.sha256()  # Hasher type assignment
+                    hasher = cast("Hasher", hashlib.sha256())  # Both types implement same interface
             else:
-                hasher = hashlib.sha256()  # Hasher type assignment
+                hasher = cast("Hasher", hashlib.sha256())  # Both types implement same interface
 
             # Read file in chunks to handle large files
             with Path(file_path).open("rb") as f:
@@ -162,7 +174,7 @@ class AudioCache:
             # Try with larger chunk size to reduce memory pressure
             try:
                 logger.info(f"Retrying hash generation with larger chunks for {file_path}")
-                hasher = hashlib.sha256()  # Use SHA256 as fallback for memory issues
+                hasher = cast("Hasher", hashlib.sha256())  # Use SHA256 as fallback for memory issues
                 with Path(file_path).open("rb") as f:
                     while chunk := f.read(65536):  # 64KB chunks instead of 8KB
                         hasher.update(chunk)
@@ -587,7 +599,7 @@ class AudioCache:
                 else:
                     try:
                         # Type cast for mypy - synchronous Redis client returns int
-                        count = cast("int", deleted_count) if deleted_count is not None else 0
+                        count = deleted_count if deleted_count is not None else 0
                     except (TypeError, ValueError):
                         count = 0
                 logger.info(f"Flushed {count} cache entries for version {self.algorithm_version}")

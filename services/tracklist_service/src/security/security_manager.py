@@ -8,7 +8,10 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from ipaddress import AddressValueError, IPv4Address, IPv6Address
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Mapping
 
 import redis.asyncio as redis
 from fastapi import Request, Response
@@ -136,7 +139,9 @@ class SecurityManager:
                 return False
 
             # Get IP access rules from Redis
-            hgetall_result = await self.redis.hgetall(f"{self.ip_rules_key}:{normalized_ip}")
+            hgetall_result = await cast(
+                "Awaitable[dict[Any, Any]]", self.redis.hgetall(f"{self.ip_rules_key}:{normalized_ip}")
+            )
             rules_data = dict(hgetall_result) if hgetall_result else {}
 
             if rules_data:
@@ -145,7 +150,7 @@ class SecurityManager:
                 # Check if rule is active and not expired
                 if not rule.is_active or rule.is_expired():
                     # Clean up expired/inactive rule
-                    await self.redis.hdel(self.ip_rules_key, normalized_ip)
+                    await cast("Awaitable[int]", self.redis.hdel(self.ip_rules_key, normalized_ip))
                 # Apply rule
                 elif rule.rule_type == AccessRuleType.BLACKLIST:
                     logger.info(f"IP {ip} blocked by blacklist rule: {rule.reason}")
@@ -214,7 +219,13 @@ class SecurityManager:
             )
 
             # Store in Redis
-            await self.redis.hset(f"{self.ip_rules_key}:{normalized_ip}", mapping=rule.to_dict())
+            await cast(
+                "Awaitable[int]",
+                self.redis.hset(
+                    f"{self.ip_rules_key}:{normalized_ip}",
+                    mapping=cast("Mapping[str | bytes, bytes | float | int | str]", rule.to_dict()),
+                ),
+            )
 
             # Set expiration if specified
             if expires_at:
@@ -305,9 +316,12 @@ class SecurityManager:
                 "abuse_score": abuse_score.to_dict() if abuse_score else None,
             }
 
-            await self.redis.hset(
-                f"{self.blocked_users_key}:{user.id}",
-                mapping={k: json.dumps(v) if isinstance(v, dict) else str(v) for k, v in block_data.items()},
+            await cast(
+                "Awaitable[int]",
+                self.redis.hset(
+                    f"{self.blocked_users_key}:{user.id}",
+                    mapping={k: json.dumps(v) if isinstance(v, dict) else str(v) for k, v in block_data.items()},
+                ),
             )
 
             # Set expiration
@@ -329,7 +343,9 @@ class SecurityManager:
             Tuple of (is_blocked, reason)
         """
         try:
-            hgetall_result = await self.redis.hgetall(f"{self.blocked_users_key}:{user.id}")
+            hgetall_result = await cast(
+                "Awaitable[dict[Any, Any]]", self.redis.hgetall(f"{self.blocked_users_key}:{user.id}")
+            )
             block_data = dict(hgetall_result) if hgetall_result else {}
 
             if not block_data:
@@ -395,7 +411,12 @@ class SecurityManager:
             date_key = datetime.now(UTC).strftime("%Y-%m-%d")
             log_key = f"{self.audit_logs_key}:{date_key}:{audit_log.event_id}"
 
-            await self.redis.hset(log_key, mapping=audit_log.to_dict())
+            await cast(
+                "Awaitable[int]",
+                self.redis.hset(
+                    log_key, mapping=cast("Mapping[str | bytes, bytes | float | int | str]", audit_log.to_dict())
+                ),
+            )
 
             # Set expiration (90 days)
             await self.redis.expire(log_key, 90 * 24 * 3600)
@@ -448,7 +469,12 @@ class SecurityManager:
             date_key = datetime.now(UTC).strftime("%Y-%m-%d")
             log_key = f"{self.audit_logs_key}:violations:{date_key}:{audit_log.event_id}"
 
-            await self.redis.hset(log_key, mapping=audit_log.to_dict())
+            await cast(
+                "Awaitable[int]",
+                self.redis.hset(
+                    log_key, mapping=cast("Mapping[str | bytes, bytes | float | int | str]", audit_log.to_dict())
+                ),
+            )
             await self.redis.expire(log_key, 90 * 24 * 3600)
 
             # Add to violations timeline
@@ -504,7 +530,7 @@ class SecurityManager:
 
                 for log_id in log_ids:
                     log_key = f"{self.audit_logs_key}:{date_key}:{log_id}"
-                    hgetall_result = await self.redis.hgetall(log_key)
+                    hgetall_result = await cast("Awaitable[dict[Any, Any]]", self.redis.hgetall(log_key))
                     log_data = dict(hgetall_result) if hgetall_result else {}
 
                     if log_data:
@@ -556,7 +582,7 @@ class SecurityManager:
             pattern = f"{self.ip_rules_key}:*"
 
             async for key in self.redis.scan_iter(match=pattern):
-                hgetall_result = await self.redis.hgetall(key)
+                hgetall_result = await cast("Awaitable[dict[Any, Any]]", self.redis.hgetall(key))
                 rule_data = dict(hgetall_result) if hgetall_result else {}
                 if rule_data:
                     rule = IPAccessRule.from_dict(rule_data)

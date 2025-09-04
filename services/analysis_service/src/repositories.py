@@ -1,7 +1,7 @@
 """Async repository pattern implementations for Analysis Service."""
 
 import logging
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -40,7 +40,7 @@ class AsyncRecordingRepository:
                 .options(selectinload(Recording.metadata_items))
                 .options(selectinload(Recording.tracklist))
             )
-            return cast("Recording | None", result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_by_file_path(self, file_path: str) -> Recording | None:
         """Get recording by file path.
@@ -53,7 +53,7 @@ class AsyncRecordingRepository:
         """
         async with self.db.get_db_session() as session:
             result = await session.execute(select(Recording).where(Recording.file_path == file_path))
-            return cast("Recording | None", result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def list_paginated(
         self,
@@ -73,7 +73,7 @@ class AsyncRecordingRepository:
         """
         async with self.db.get_db_session() as session:
             # Build query
-            query = select(Recording).where(Recording.deleted_at.is_(None))
+            query = select(Recording).where(Recording.deleted_at.is_(None))  # type: ignore[attr-defined]  # deleted_at is nullable SQLAlchemy column, mypy can't infer .is_() method availability at runtime
 
             if status_filter:
                 query = query.where(Recording.processing_status == status_filter)
@@ -89,7 +89,7 @@ class AsyncRecordingRepository:
                 query.offset(offset)
                 .limit(limit)
                 .options(selectinload(Recording.metadata_items))
-                .order_by(Recording.created_at.desc())
+                .order_by(Recording.created_at.desc())  # type: ignore[attr-defined]  # created_at is non-nullable SQLAlchemy column, mypy can't infer .desc() method availability at runtime
             )
             recordings = list(result.scalars().all())
 
@@ -112,7 +112,7 @@ class AsyncRecordingRepository:
                 .where(Recording.id == recording_id)
                 .values(processing_status=status, processing_error=error, updated_at=func.current_timestamp())
             )
-            return cast("bool", result.rowcount > 0)
+            return result.rowcount > 0  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def create(
         self,
@@ -188,7 +188,7 @@ class AsyncMetadataRepository:
             result = await session.execute(
                 select(Metadata).where(Metadata.recording_id == recording_id, Metadata.key == key)
             )
-            return cast("Metadata | None", result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def create_batch(self, recording_id: UUID, metadata_items: dict[str, str]) -> list[Metadata]:
         """Create multiple metadata items for a recording.
@@ -232,7 +232,7 @@ class AsyncMetadataRepository:
                 .values(value=value)
                 .returning(Metadata)
             )
-            return cast("Metadata | None", result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
 
 class AsyncTracklistRepository:
@@ -257,7 +257,7 @@ class AsyncTracklistRepository:
         """
         async with self.db.get_db_session() as session:
             result = await session.execute(select(Tracklist).where(Tracklist.recording_id == recording_id))
-            return cast("Tracklist | None", result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def create(
         self,
@@ -307,7 +307,7 @@ class AsyncTracklistRepository:
                 .values(tracks=tracks)
                 .returning(Tracklist)
             )
-            return cast("Tracklist | None", result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
 
 class AsyncAnalysisResultRepository:
@@ -334,7 +334,7 @@ class AsyncAnalysisResultRepository:
             result = await session.execute(
                 select(AnalysisResult)
                 .where(AnalysisResult.recording_id == recording_id)
-                .order_by(AnalysisResult.created_at.desc())
+                .order_by(AnalysisResult.created_at.desc())  # type: ignore[attr-defined]  # created_at is non-nullable SQLAlchemy column, mypy can't infer .desc() method availability at runtime
             )
             return list(result.scalars().all())
 
@@ -353,7 +353,7 @@ class AsyncAnalysisResultRepository:
                 .where(AnalysisResult.id == analysis_result_id)
                 .options(selectinload(AnalysisResult.recording))
             )
-            return cast("AnalysisResult | None", result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_by_recording_and_type(self, recording_id: UUID, analysis_type: str) -> AnalysisResult | None:
         """Get analysis result by recording ID and analysis type.
@@ -373,10 +373,10 @@ class AsyncAnalysisResultRepository:
                     AnalysisResult.analysis_type == analysis_type,
                     AnalysisResult.status == "completed",
                 )
-                .order_by(AnalysisResult.created_at.desc())
+                .order_by(AnalysisResult.created_at.desc())  # type: ignore[attr-defined]  # created_at is non-nullable SQLAlchemy column, mypy can't infer .desc() method availability at runtime
                 .limit(1)
             )
-            return cast("AnalysisResult | None", result.scalar_one_or_none())
+            return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_completed_results_for_recording(self, recording_id: UUID) -> dict[str, Any]:
         """Get all completed analysis results for a recording formatted for API response.
@@ -391,7 +391,7 @@ class AsyncAnalysisResultRepository:
             result = await session.execute(
                 select(AnalysisResult)
                 .where(AnalysisResult.recording_id == recording_id, AnalysisResult.status == "completed")
-                .order_by(AnalysisResult.created_at.desc())
+                .order_by(AnalysisResult.created_at.desc())  # type: ignore[attr-defined]  # created_at is non-nullable SQLAlchemy column, mypy can't infer .desc() method availability at runtime
             )
             analysis_results = result.scalars().all()
 
@@ -467,7 +467,7 @@ class AsyncAnalysisResultRepository:
             True if updated, False if not found
         """
         async with self.db.get_db_session() as session:
-            update_data = {"status": status, "updated_at": func.current_timestamp()}
+            update_data: dict[str, Any] = {"status": status, "updated_at": func.current_timestamp()}
             if result_data is not None:
                 update_data["result_data"] = result_data
             if error_message is not None:
@@ -478,7 +478,7 @@ class AsyncAnalysisResultRepository:
             result = await session.execute(
                 update(AnalysisResult).where(AnalysisResult.id == analysis_id).values(**update_data)
             )
-            return cast("bool", result.rowcount > 0)
+            return result.rowcount > 0  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def update_result(
         self,
@@ -514,4 +514,4 @@ class AsyncAnalysisResultRepository:
             result = await session.execute(
                 update(AnalysisResult).where(AnalysisResult.id == analysis_result_id).values(**update_values)
             )
-            return cast("bool", result.rowcount > 0)
+            return result.rowcount > 0  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime

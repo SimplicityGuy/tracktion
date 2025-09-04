@@ -7,7 +7,7 @@ Provides REST endpoints for searching 1001tracklists.com.
 import logging
 import time
 from datetime import date
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
@@ -102,7 +102,7 @@ async def search_tracklists(
                 f"Cache hit: correlation_id={correlation_id}, "
                 f"query='{query}', time={cached_response.response_time_ms:.2f}ms"
             )
-            return cached_response  # type: ignore[no-any-return]  # Cache system uses Any for flexible response handling
+            return cast("SearchResponse", cached_response)
 
         # Check if this search failed recently
         recent_error = cache.is_search_failed_recently(request)

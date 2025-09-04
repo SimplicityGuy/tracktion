@@ -1,6 +1,7 @@
 """API endpoints for tracklist synchronization operations."""
 
 import logging
+from collections.abc import Generator
 from typing import Any
 from uuid import UUID
 
@@ -8,6 +9,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from services.tracklist_service.src.database import get_db_session
 from services.tracklist_service.src.models.synchronization import SyncEvent
@@ -21,7 +23,7 @@ from services.tracklist_service.src.services.version_service import VersionServi
 
 
 # Database dependency using proper database connection
-def get_db() -> AsyncSession:
+def get_db() -> Generator[Session]:
     """Get database session for dependency injection."""
     # Using sync generator as FastAPI handles it properly
     yield from get_db_session()
@@ -484,10 +486,9 @@ async def compare_versions(
     try:
         version_service = VersionService(db)
 
-        # Get both versions
-        # Note: Design mismatch - API uses UUID but service expects int
-        v1 = await version_service.get_version(tracklist_id, version1)  # type: ignore[arg-type]
-        v2 = await version_service.get_version(tracklist_id, version2)  # type: ignore[arg-type]
+        # Get both versions by their UUIDs
+        v1 = await version_service.get_version_by_id(version1)
+        v2 = await version_service.get_version_by_id(version2)
 
         if not v1 or v1.tracklist_id != tracklist_id:
             raise HTTPException(
@@ -501,9 +502,11 @@ async def compare_versions(
                 detail=f"Version {version2} not found",
             )
 
-        # Compare versions
-        # Note: Design mismatch - API uses UUID but service expects int
-        diff = await version_service.get_version_diff(tracklist_id, version1, version2)  # type: ignore[arg-type]
+        # Compare versions using their version numbers
+        # Cast to int to help mypy understand these are values, not column descriptors
+        version1_number: int = v1.version_number  # type: ignore[assignment]  # SQLAlchemy loaded instance returns actual value, not Column
+        version2_number: int = v2.version_number  # type: ignore[assignment]  # SQLAlchemy loaded instance returns actual value, not Column
+        diff = await version_service.get_version_diff(tracklist_id, version1_number, version2_number)
 
         return {
             "tracklist_id": str(tracklist_id),

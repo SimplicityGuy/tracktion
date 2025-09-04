@@ -7,7 +7,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 from urllib.parse import urlparse
 
 import pika
@@ -407,7 +410,7 @@ class RetryManager:
         redis_retry_data: dict[str, str] = {k: str(v) for k, v in retry_data.items()}
         self.redis.hset(
             f"retry:{job.id}",
-            mapping=redis_retry_data,
+            mapping=cast("Mapping[str | bytes, bytes | float | int | str]", redis_retry_data),
         )
         self.redis.expire(f"retry:{job.id}", int(delay) + 3600)  # Expire after delay + 1 hour
 
@@ -465,7 +468,9 @@ class RetryManager:
         # Store in Redis for analysis
         # Convert to proper types for Redis
         redis_dlq_data: dict[str, str] = {k: str(v) for k, v in dlq_message.items()}
-        self.redis.hset(f"dlq:{job.id}", mapping=redis_dlq_data)
+        self.redis.hset(
+            f"dlq:{job.id}", mapping=cast("Mapping[str | bytes, bytes | float | int | str]", redis_dlq_data)
+        )
 
         # Get retry count before cleanup
         retry_count = self.failed_jobs[job.id].retry_count if job.id in self.failed_jobs else 0

@@ -8,7 +8,10 @@ from uuid import UUID
 
 import aio_pika
 from aio_pika import ExchangeType, IncomingMessage
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (  # type: ignore[attr-defined]  # SQLAlchemy 2.0 features; project uses 2.0.43 but type stubs are 1.4.x
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from services.tracklist_service.src.config import get_config
 from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient, RabbitMQConfig

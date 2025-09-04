@@ -3,6 +3,7 @@ CUE file repository for database operations.
 """
 
 import logging
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import and_, desc, func
@@ -46,16 +47,16 @@ class CueFileRepository:
             if existing_files:
                 # Mark previous versions as inactive
                 for existing_file in existing_files:
-                    existing_file.is_active = False
+                    existing_file.is_active = False  # type: ignore[assignment]  # SQLAlchemy instance attribute assignment at runtime
 
                 # Set new version number
                 latest_version = max(f.version for f in existing_files)
-                cue_file_db.version = latest_version + 1
+                cue_file_db.version = latest_version + 1  # type: ignore[assignment]  # SQLAlchemy instance attribute assignment at runtime
             else:
-                cue_file_db.version = 1
+                cue_file_db.version = 1  # type: ignore[assignment]  # SQLAlchemy instance attribute assignment at runtime
 
             # Ensure new file is active
-            cue_file_db.is_active = True
+            cue_file_db.is_active = True  # type: ignore[assignment]  # SQLAlchemy instance attribute assignment at runtime
 
             self.session.add(cue_file_db)
             await self.session.commit()
@@ -88,7 +89,7 @@ class CueFileRepository:
             else:
                 logger.debug(f"CUE file {cue_file_id} not found")
 
-            return cue_file  # type: ignore[no-any-return]  # SQLAlchemy returns model but typed as Any
+            return cast("CueFileDB | None", cue_file)
 
         except Exception as e:
             logger.error(f"Failed to get CUE file {cue_file_id}: {e}", exc_info=True)
@@ -184,7 +185,7 @@ class CueFileRepository:
             else:
                 logger.debug(f"No active CUE file found for tracklist {tracklist_id} format {cue_format}")
 
-            return cue_file  # type: ignore[no-any-return]  # SQLAlchemy returns model but typed as Any
+            return cast("CueFileDB | None", cue_file)
 
         except Exception as e:
             logger.error(

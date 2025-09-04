@@ -43,7 +43,7 @@ class APIMessagePublisher:
                 client_properties={"connection_name": "analysis_api_publisher"},
             )
             self.channel = await self.connection.channel()
-            # Enable publisher confirms for reliability
+            # Enable publisher confirms for reliability - using proper aio_pika pattern
             await self.channel.confirm_delivery()
             self.exchange = await self.channel.declare_exchange(self.exchange_name, ExchangeType.TOPIC, durable=True)
             logger.info(f"Connected to RabbitMQ exchange: {self.exchange_name}")

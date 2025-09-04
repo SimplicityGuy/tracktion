@@ -1,7 +1,6 @@
 """Metadata repository implementation."""
 
 from collections.abc import Sequence
-from typing import cast
 from uuid import UUID
 
 from services.cataloging_service.src.models.metadata import Metadata
@@ -32,7 +31,7 @@ class MetadataRepository(BaseRepository[Metadata]):
             List of metadata entries for the recording
         """
         result = await self.session.execute(select(Metadata).where(Metadata.recording_id == recording_id))
-        return cast("Sequence[Metadata]", result.scalars().all())
+        return result.scalars().all()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_by_key(self, recording_id: UUID, key: str) -> Metadata | None:
         """Get metadata by recording ID and key.
@@ -47,7 +46,7 @@ class MetadataRepository(BaseRepository[Metadata]):
         result = await self.session.execute(
             select(Metadata).where((Metadata.recording_id == recording_id) & (Metadata.key == key))
         )
-        return cast("Metadata | None", result.scalar_one_or_none())
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def upsert(self, recording_id: UUID, key: str, value: str) -> Metadata:
         """Insert or update metadata entry.
@@ -96,7 +95,7 @@ class MetadataRepository(BaseRepository[Metadata]):
             Number of deleted entries
         """
         result = await self.session.execute(delete(Metadata).where(Metadata.recording_id == recording_id))
-        return cast("int", result.rowcount)
+        return result.rowcount  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def search_by_key_value(self, key: str, value: str, limit: int = 100) -> Sequence[Metadata]:
         """Search metadata by key and value pattern.
@@ -110,6 +109,6 @@ class MetadataRepository(BaseRepository[Metadata]):
             List of matching metadata entries
         """
         result = await self.session.execute(
-            select(Metadata).where((Metadata.key == key) & (Metadata.value.ilike(f"%{value}%"))).limit(limit)
+            select(Metadata).where((Metadata.key == key) & (Metadata.value.ilike(f"%{value}%"))).limit(limit)  # type: ignore[attr-defined]  # value is non-nullable SQLAlchemy column, mypy can't infer .ilike() method availability at runtime
         )
-        return cast("Sequence[Metadata]", result.scalars().all())
+        return result.scalars().all()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime

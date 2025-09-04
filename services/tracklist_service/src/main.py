@@ -10,7 +10,7 @@ import signal
 import sys
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager, suppress
-from typing import Any
+from typing import Any, cast
 
 import redis.asyncio as redis
 import structlog
@@ -155,7 +155,7 @@ def create_app() -> FastAPI:
             middleware = RateLimitMiddleware(app, _app_context.rate_limiter)
             return await middleware.dispatch(request, call_next)
         # If rate limiter not initialized yet, pass through
-        return await call_next(request)
+        return cast("Response", await call_next(request))
 
     # Include API routes
     app.include_router(search_router, prefix=config.api.api_prefix)

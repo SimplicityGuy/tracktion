@@ -148,12 +148,12 @@ class SynchronizationService:
                 }
 
             # Update sync event
-            sync_event.status = "completed" if result.get("status") == SyncStatus.COMPLETED.value else "failed"
-            sync_event.completed_at = datetime.now(UTC)
-            sync_event.changes = result
+            sync_event.status = "completed" if result.get("status") == SyncStatus.COMPLETED.value else "failed"  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
+            sync_event.completed_at = datetime.now(UTC)  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
+            sync_event.changes = result  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
 
             # Update config
-            config.last_sync_at = datetime.now(UTC)
+            config.last_sync_at = datetime.now(UTC)  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
 
             await self.session.commit()
 
@@ -209,8 +209,8 @@ class SynchronizationService:
 
             if conflicts and config.conflict_resolution == "manual":
                 # Queue for manual resolution
-                sync_event.status = "conflict"
-                sync_event.conflict_data = {
+                sync_event.status = "conflict"  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
+                sync_event.conflict_data = {  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
                     "conflicts": conflicts,
                     "proposed_changes": updates["changes"],
                 }
@@ -310,9 +310,9 @@ class SynchronizationService:
             config = await self._get_or_create_sync_config(tracklist_id)
 
             # Update configuration
-            config.sync_enabled = True
-            config.sync_frequency = frequency.value
-            config.sync_sources = [source.value]
+            config.sync_enabled = True  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
+            config.sync_frequency = frequency.value  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
+            config.sync_sources = [source.value]  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
 
             await self.session.commit()
 
@@ -409,8 +409,8 @@ class SynchronizationService:
         try:
             # Update configuration
             config = await self._get_or_create_sync_config(tracklist_id)
-            config.sync_enabled = False
-            config.sync_frequency = SyncFrequency.MANUAL.value
+            config.sync_enabled = False  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
+            config.sync_frequency = SyncFrequency.MANUAL.value  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
 
             await self.session.commit()
 

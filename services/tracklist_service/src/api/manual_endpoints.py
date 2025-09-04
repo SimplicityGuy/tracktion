@@ -201,6 +201,8 @@ def add_track(
         catalog_track_id=None,
         transition_type=None,
         is_manual_entry=True,
+        bpm=None,
+        key=None,
     )
 
     # Add track and sort by position
@@ -478,13 +480,20 @@ def search_catalog(
         limit=limit,
     )
 
-    search_results = []
+    search_results: list[CatalogSearchResult] = []
     for recording, confidence in results:
         # Get metadata for the recording
-        metadata = catalog_service.get_catalog_track_metadata(recording.id)
+        # recording.id is a primary key and should never be None
+        recording_id = recording.id
+        if recording_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Invalid recording data: missing ID"
+            )
+
+        metadata = catalog_service.get_catalog_track_metadata(recording_id)
 
         result = CatalogSearchResult(
-            catalog_track_id=recording.id,
+            catalog_track_id=recording_id,
             artist=metadata.get("artist"),
             title=metadata.get("title"),
             album=metadata.get("album"),

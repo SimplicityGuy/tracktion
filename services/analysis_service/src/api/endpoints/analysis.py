@@ -72,7 +72,12 @@ async def start_analysis(request: AnalysisRequest) -> dict[str, Any]:
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {request.recording_id}"
         )
 
-    # Verify file exists
+    # Verify file path and existence
+    if not recording.file_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Recording {request.recording_id} has no file path"
+        )
+
     if not Path(recording.file_path).exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Audio file not found: {recording.file_path}"
@@ -130,7 +135,7 @@ async def get_analysis_status(recording_id: UUID) -> AnalysisResponse:
     # Convert analysis results to response format
     result_items: list[AnalysisResult] = [
         AnalysisResult(
-            type=analysis.analysis_type,
+            type=analysis.analysis_type or "unknown",
             value=analysis.result_data,
             confidence=analysis.confidence_score or 0.0,
             metadata={
@@ -296,7 +301,12 @@ async def generate_waveform(
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
 
-    # Verify file exists
+    # Verify file path and existence
+    if not recording.file_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Recording {recording_id} has no file path"
+        )
+
     if not Path(recording.file_path).exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Audio file not found: {recording.file_path}"
@@ -355,7 +365,12 @@ async def generate_spectrogram(
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
 
-    # Verify file exists
+    # Verify file path and existence
+    if not recording.file_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Recording {recording_id} has no file path"
+        )
+
     if not Path(recording.file_path).exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Audio file not found: {recording.file_path}"

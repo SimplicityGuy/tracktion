@@ -4,11 +4,11 @@ import json
 import logging
 import statistics
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from fastapi import WebSocket
 from redis import Redis
@@ -393,7 +393,11 @@ class ProgressTracker:
             job: Job progress data
         """
         key = f"job_progress:{job.job_id}"
-        self.redis.hset(key, mapping=job.to_dict())
+        # Convert dict values to Redis-compatible types (str, int, float, bytes)
+        job_data = job.to_dict()
+        redis_mapping = {k: str(v) if v is not None else "" for k, v in job_data.items()}
+        # Cast to the expected Mapping type for Redis hset
+        self.redis.hset(key, mapping=cast("Mapping[str | bytes, bytes | float | int | str]", redis_mapping))
         self.redis.expire(key, self.persistence_ttl)
 
     async def _persist_batch_progress(self, batch: BatchProgress) -> None:
@@ -403,7 +407,11 @@ class ProgressTracker:
             batch: Batch progress data
         """
         key = f"batch_progress:{batch.batch_id}"
-        self.redis.hset(key, mapping=batch.to_dict())
+        # Convert dict values to Redis-compatible types (str, int, float, bytes)
+        batch_data = batch.to_dict()
+        redis_mapping = {k: str(v) if v is not None else "" for k, v in batch_data.items()}
+        # Cast to the expected Mapping type for Redis hset
+        self.redis.hset(key, mapping=cast("Mapping[str | bytes, bytes | float | int | str]", redis_mapping))
         self.redis.expire(key, self.persistence_ttl)
 
     def get_job_progress(self, job_id: str) -> JobProgress | None:

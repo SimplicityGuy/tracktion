@@ -5,7 +5,7 @@ import logging
 import time
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Any, cast
+from typing import Any
 from uuid import uuid4
 
 import redis
@@ -346,10 +346,10 @@ class ProgressTracker:
 
         # Get sample of items from each queue
         # Cast to satisfy mypy - synchronous redis client with decode_responses=True returns set[str]
-        queued_members: set[str] = cast("set[str]", self.redis_client.smembers(self.queue_key) or set())
-        active_members: set[str] = cast("set[str]", self.redis_client.smembers(self.active_key) or set())
-        completed_members: set[str] = cast("set[str]", self.redis_client.smembers(self.completed_key) or set())
-        failed_members: set[str] = cast("set[str]", self.redis_client.smembers(self.failed_key) or set())
+        queued_members: set[str] = self.redis_client.smembers(self.queue_key) or set()
+        active_members: set[str] = self.redis_client.smembers(self.active_key) or set()
+        completed_members: set[str] = self.redis_client.smembers(self.completed_key) or set()
+        failed_members: set[str] = self.redis_client.smembers(self.failed_key) or set()
 
         queued_ids = list(queued_members)[:10]
         active_ids = list(active_members)[:10]
@@ -374,7 +374,7 @@ class ProgressTracker:
         Returns:
             Dictionary with various statistics
         """
-        stats_data: dict[str, str] = cast("dict[str, str]", self.redis_client.hgetall(self.stats_key) or {})
+        stats_data: dict[str, str] = self.redis_client.hgetall(self.stats_key) or {}
 
         # Convert string values to appropriate types
         stats: dict[str, Any] = {}
@@ -419,10 +419,10 @@ class ProgressTracker:
         all_ids: set[str] = set()
 
         # Cast to satisfy mypy - synchronous redis client with decode_responses=True returns set[str]
-        queued_members: set[str] = cast("set[str]", self.redis_client.smembers(self.queue_key) or set())
-        active_members: set[str] = cast("set[str]", self.redis_client.smembers(self.active_key) or set())
-        completed_members: set[str] = cast("set[str]", self.redis_client.smembers(self.completed_key) or set())
-        failed_members: set[str] = cast("set[str]", self.redis_client.smembers(self.failed_key) or set())
+        queued_members: set[str] = self.redis_client.smembers(self.queue_key) or set()
+        active_members: set[str] = self.redis_client.smembers(self.active_key) or set()
+        completed_members: set[str] = self.redis_client.smembers(self.completed_key) or set()
+        failed_members: set[str] = self.redis_client.smembers(self.failed_key) or set()
 
         all_ids.update(queued_members)
         all_ids.update(active_members)

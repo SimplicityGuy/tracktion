@@ -65,6 +65,8 @@ def sample_tracklist():
                 end_time=timedelta(minutes=5, seconds=30),
                 confidence=1.0,
                 is_manual_entry=True,
+                bpm=None,
+                key=None,
             ),
             TrackEntry(
                 position=2,
@@ -78,6 +80,8 @@ def sample_tracklist():
                 end_time=timedelta(minutes=10, seconds=15),
                 confidence=0.9,
                 is_manual_entry=True,
+                bpm=None,
+                key=None,
             ),
             TrackEntry(
                 position=3,
@@ -91,6 +95,8 @@ def sample_tracklist():
                 end_time=timedelta(minutes=15),
                 confidence=0.85,
                 is_manual_entry=True,
+                bpm=None,
+                key=None,
             ),
         ],
     )
@@ -117,6 +123,7 @@ class TestCueGenerationFlow:
         request = GenerateCueRequest(
             format=CueFormat.STANDARD,
             validate_audio=False,
+            audio_file_path=None,
         )
 
         response = await cue_generation_service.generate_cue_file(sample_tracklist, request)
@@ -133,6 +140,7 @@ class TestCueGenerationFlow:
         request = BatchGenerateCueRequest(
             formats=[CueFormat.STANDARD, CueFormat.CDJ, CueFormat.TRAKTOR],
             validate_audio=False,
+            audio_file_path=None,
         )
 
         response = await cue_generation_service.generate_multiple_formats(sample_tracklist, request)
@@ -153,6 +161,7 @@ class TestCueGenerationFlow:
         request = GenerateCueRequest(
             format=CueFormat.STANDARD,
             validate_audio=False,
+            audio_file_path=None,
         )
 
         response = await cue_generation_service.generate_cue_file(sample_tracklist, request)
@@ -191,6 +200,8 @@ class TestCueGenerationFlow:
                     end_time=timedelta(minutes=6),  # Overlaps with track 2
                     confidence=1.0,
                     is_manual_entry=True,
+                    bpm=None,
+                    key=None,
                 ),
                 TrackEntry(
                     position=2,
@@ -204,6 +215,8 @@ class TestCueGenerationFlow:
                     end_time=timedelta(minutes=10),
                     confidence=1.0,
                     is_manual_entry=True,
+                    bpm=None,
+                    key=None,
                 ),
             ],
         )
@@ -224,6 +237,7 @@ class TestCueGenerationFlow:
             request = GenerateCueRequest(
                 format=CueFormat.STANDARD,
                 validate_audio=False,
+                audio_file_path=None,
             )
 
             response = await cue_generation_service.generate_cue_file(sample_tracklist, request)
@@ -248,6 +262,7 @@ class TestCueGenerationFlow:
         request = GenerateCueRequest(
             format=CueFormat.STANDARD,
             validate_audio=False,
+            audio_file_path=None,
         )
 
         response = await cue_generation_service.generate_cue_file(sample_tracklist, request)
@@ -285,6 +300,8 @@ class TestManualTracklistToCueFlow:
                     end_time=timedelta(minutes=3),
                     confidence=1.0,
                     is_manual_entry=True,
+                    bpm=None,
+                    key=None,
                 )
             ],
         )
@@ -299,6 +316,7 @@ class TestManualTracklistToCueFlow:
         request = GenerateCueRequest(
             format=CueFormat.STANDARD,
             validate_audio=False,
+            audio_file_path=None,
         )
 
         response = await cue_generation_service.generate_cue_file(published, request)

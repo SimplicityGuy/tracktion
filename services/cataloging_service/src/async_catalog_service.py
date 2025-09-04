@@ -68,6 +68,8 @@ class AsyncCatalogService:
 
             # Add metadata if provided
             if metadata:
+                if recording.id is None:
+                    raise ValueError("Recording creation failed - ID is None")
                 await self.metadata_repo.batch_create(recording_id=recording.id, metadata_dict=metadata)
 
             logger.info(f"Successfully cataloged file: {file_path}")
@@ -96,6 +98,8 @@ class AsyncCatalogService:
 
                 if existing:
                     # Update existing metadata
+                    if existing.id is None:
+                        raise ValueError(f"Metadata entry has invalid ID for key '{key}'")
                     updated = await self.metadata_repo.update(existing.id, value)
                     if updated:
                         updated_metadata.append(updated)
@@ -134,6 +138,8 @@ class AsyncCatalogService:
             existing = await self.tracklist_repo.get_by_recording(recording_id)
             if existing:
                 logger.info(f"Updating existing tracklist for recording {recording_id}")
+                if existing.id is None:
+                    raise ValueError("Existing tracklist has invalid ID")
                 updated = await self.tracklist_repo.update(
                     tracklist_id=existing.id,
                     source=source,
@@ -173,6 +179,8 @@ class AsyncCatalogService:
                 return False
 
             # Delete the recording (cascades to metadata and tracklist)
+            if recording.id is None:
+                raise ValueError("Recording has invalid ID - cannot delete")
             deleted = await self.recording_repo.delete(recording.id)
 
             if deleted:
@@ -202,6 +210,8 @@ class AsyncCatalogService:
                 return None
 
             # Update the recording with new path and name
+            if recording.id is None:
+                raise ValueError("Recording has invalid ID - cannot update")
             updated = await self.recording_repo.update(
                 recording_id=recording.id, file_path=new_path, file_name=new_name
             )
@@ -266,7 +276,7 @@ class AsyncCatalogService:
 
             # Filter by file name if provided
             if file_name:
-                recordings = [r for r in recordings if file_name.lower() in r.file_name.lower()]
+                recordings = [r for r in recordings if r.file_name and file_name.lower() in r.file_name.lower()]
 
             return recordings
 

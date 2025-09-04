@@ -7,9 +7,9 @@ Provides caching for search results to reduce scraping load.
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
-import redis
+import redis.asyncio as redis
 from redis.exceptions import RedisError
 
 from services.tracklist_service.src.config import get_config
@@ -43,15 +43,14 @@ class RedisCache:
                     socket_connect_timeout=5,
                     socket_timeout=5,
                 )
-                # Test connection
-                self.client.ping()
-                logger.info("Redis cache connected successfully")
+                # Connection will be tested on first use
+                logger.info("Redis cache initialized successfully")
             except RedisError as e:
                 logger.error(f"Failed to connect to Redis: {e}")
                 self.enabled = False
                 self.client = None
 
-    def get_cached_response(self, request: SearchRequest) -> SearchResponse | None:
+    async def get_cached_response(self, request: SearchRequest) -> SearchResponse | None:
         """Get cached search response if available.
 
         Args:
@@ -77,7 +76,7 @@ class RedisCache:
             key = cache_key.generate_key(self.config.key_prefix)
 
             # Get cached data
-            cached_data = self.client.get(key)
+            cached_data = await self.client.get(key)
 
             if cached_data:
                 logger.debug(f"Cache hit for key: {key}")
@@ -91,10 +90,10 @@ class RedisCache:
                     response = cached_response.response
                     response.cache_hit = True
                     response.correlation_id = request.correlation_id
-                    return response  # type: ignore[no-any-return]  # Redis cache response typing
+                    return cast("SearchResponse | None", response)
                 # Expired - delete from cache
                 logger.debug(f"Cache expired for key: {key}")
-                self.client.delete(key)
+                await self.client.delete(key)
 
             logger.debug(f"Cache miss for key: {key}")
             return None
@@ -103,7 +102,7 @@ class RedisCache:
             logger.error(f"Error retrieving from cache: {e}")
             return None
 
-    def cache_response(
+    async def cache_response(
         self,
         request: SearchRequest,
         response: SearchResponse,
@@ -152,7 +151,7 @@ class RedisCache:
 
             # Store in Redis with expiration
             ttl_seconds = ttl_hours * 3600
-            self.client.setex(
+            await self.client.setex(
                 key,
                 ttl_seconds,
                 cached_response.model_dump_json(),
@@ -165,7 +164,7 @@ class RedisCache:
             logger.error(f"Error caching response: {e}")
             return False
 
-    def cache_failed_search(self, request: SearchRequest, error_message: str) -> bool:
+    async def cache_failed_search(self, request: SearchRequest, error_message: str) -> bool:
         """Cache a failed search to prevent repeated failures.
 
         Args:
@@ -199,7 +198,7 @@ class RedisCache:
             }
 
             ttl_seconds = self.config.failed_search_ttl_minutes * 60
-            self.client.setex(
+            await self.client.setex(
                 key,
                 ttl_seconds,
                 json.dumps(failed_data),
@@ -212,7 +211,7 @@ class RedisCache:
             logger.error(f"Error caching failed search: {e}")
             return False
 
-    def is_search_failed_recently(self, request: SearchRequest) -> str | None:
+    async def is_search_failed_recently(self, request: SearchRequest) -> str | None:
         """Check if a search has failed recently.
 
         Args:
@@ -238,7 +237,7 @@ class RedisCache:
             key = cache_key.generate_key(f"{self.config.key_prefix}failed:")
 
             # Check for failed search
-            failed_data = self.client.get(key)
+            failed_data = await self.client.get(key)
 
             if failed_data:
                 data = json.loads(failed_data)
@@ -251,7 +250,7 @@ class RedisCache:
             logger.error(f"Error checking failed search cache: {e}")
             return None
 
-    def clear_cache(self, pattern: str | None = None) -> int:
+    async def clear_cache(self, pattern: str | None = None) -> int:
         """Clear cache entries matching a pattern.
 
         Args:
@@ -269,11 +268,11 @@ class RedisCache:
                 pattern = f"{self.config.key_prefix}*"
 
             # Find all matching keys
-            keys = list(self.client.scan_iter(match=pattern))
+            keys = [key async for key in self.client.scan_iter(match=pattern)]
 
             if keys:
                 # Delete all matching keys
-                deleted = self.client.delete(*keys)
+                deleted = await self.client.delete(*keys)
                 logger.info(f"Cleared {deleted} cache entries matching pattern: {pattern}")
                 return int(deleted)
 
@@ -283,7 +282,7 @@ class RedisCache:
             logger.error(f"Error clearing cache: {e}")
             return 0
 
-    def get_cache_stats(self) -> dict[str, Any]:
+    async def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics.
 
         Returns:
@@ -294,11 +293,15 @@ class RedisCache:
 
         try:
             # Get Redis info
-            info: dict[str, Any] = self.client.info()
+            info = await self.client.info()
 
             # Count tracklist keys
-            tracklist_keys = len(list(self.client.scan_iter(match=f"{self.config.key_prefix}*")))
-            failed_keys = len(list(self.client.scan_iter(match=f"{self.config.key_prefix}failed:*")))
+            tracklist_keys = 0
+            async for _key in self.client.scan_iter(match=f"{self.config.key_prefix}*"):
+                tracklist_keys += 1
+            failed_keys = 0
+            async for _key in self.client.scan_iter(match=f"{self.config.key_prefix}failed:*"):
+                failed_keys += 1
 
             return {
                 "enabled": True,
@@ -327,7 +330,7 @@ class RedisCache:
             return None
 
         try:
-            value = self.client.get(key)
+            value = await self.client.get(key)
             return str(value) if value is not None else None
         except Exception as e:
             logger.error(f"Error getting value from cache: {e}")
@@ -348,7 +351,7 @@ class RedisCache:
             return False
 
         try:
-            self.client.setex(key, ttl, value)
+            await self.client.setex(key, ttl, value)
             return True
         except Exception as e:
             logger.error(f"Error setting value in cache: {e}")
@@ -367,7 +370,7 @@ class RedisCache:
             return 0
 
         try:
-            return int(self.client.delete(key))
+            return int(await self.client.delete(key))
         except Exception as e:
             logger.error(f"Error deleting from cache: {e}")
             return 0
@@ -382,17 +385,17 @@ class RedisCache:
             return False
 
         try:
-            self.client.ping()
+            await self.client.ping()
             return True
         except Exception as e:
             logger.error(f"Redis ping failed: {e}")
             return False
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Close Redis connection."""
         if self.client:
             try:
-                self.client.close()
+                await self.client.aclose()
                 logger.info("Redis cache connection closed")
             except Exception as e:
                 logger.error(f"Error closing Redis connection: {e}")
@@ -416,10 +419,10 @@ class RedisCacheSingleton:
         return getattr(self._instance, name)
 
     @classmethod
-    def close(cls) -> None:
+    async def close(cls) -> None:
         """Close the singleton cache instance."""
         if cls._instance:
-            cls._instance.close()
+            await cls._instance.close()
             cls._instance = None
 
     @classmethod
@@ -437,6 +440,6 @@ def get_cache() -> "RedisCacheSingleton":
     return RedisCacheSingleton()
 
 
-def close_cache() -> None:
+async def close_cache() -> None:
     """Close the singleton cache instance."""
-    RedisCacheSingleton.close()
+    await RedisCacheSingleton.close()

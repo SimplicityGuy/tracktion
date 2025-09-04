@@ -106,7 +106,7 @@ class DraftService:
             new_draft = self.create_draft(draft.audio_file_id, tracks)
             new_draft_db = self.db.query(TracklistDB).filter_by(id=new_draft.id).first()
             if new_draft_db:
-                new_draft_db.parent_tracklist_id = draft_id
+                new_draft_db.parent_tracklist_id = draft_id  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
             self.db.commit()
 
             # Cache new version
@@ -116,17 +116,17 @@ class DraftService:
             return new_draft
 
         # Update existing draft
-        draft_db.tracks = [track.to_dict() for track in tracks]
-        draft_db.updated_at = datetime.now(UTC)
+        draft_db.tracks = [track.to_dict() for track in tracks]  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
+        draft_db.updated_at = datetime.now(UTC)  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
         self.db.commit()
 
         # Update cache
         draft.tracks = tracks
-        draft.updated_at = draft_db.updated_at
+        draft.updated_at = draft_db.updated_at  # type: ignore[assignment]  # SQLAlchemy loaded instance returns actual value, not Column
         if self.redis:
             self._cache_draft(draft)
 
-        return draft  # type: ignore[no-any-return]  # to_model() returns Tracklist but typed as Any
+        return draft
 
     def get_draft(self, draft_id: UUID) -> Tracklist | None:
         """Retrieve a draft tracklist.
@@ -162,7 +162,7 @@ class DraftService:
         if self.redis:
             self._cache_draft(draft)
 
-        return draft  # type: ignore[no-any-return]  # to_model() returns Tracklist but typed as Any
+        return draft
 
     def list_drafts(
         self,
@@ -224,16 +224,16 @@ class DraftService:
         if existing_published:
             # Create a backup/archive entry
             archive = TracklistDB.from_model(existing_published.to_model())
-            archive.id = uuid4()
+            archive.id = uuid4()  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
             archive.parent_tracklist_id = existing_published.id
             self.db.add(archive)
 
         # Convert draft to published
-        draft_db.is_draft = False
-        draft_db.updated_at = datetime.now(UTC)
+        draft_db.is_draft = False  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
+        draft_db.updated_at = datetime.now(UTC)  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
 
         # Clear draft version since it's now published
-        draft_db.draft_version = None
+        draft_db.draft_version = None  # type: ignore[assignment]  # SQLAlchemy loaded instance allows assignment of actual values
 
         self.db.commit()
 
@@ -241,7 +241,7 @@ class DraftService:
         if self.redis:
             self._invalidate_cache(draft_id)
 
-        return draft_db.to_model()  # type: ignore[no-any-return]  # to_model() returns Tracklist but typed as Any
+        return draft_db.to_model()
 
     def delete_draft(self, draft_id: UUID) -> bool:
         """Delete a draft tracklist.
@@ -434,7 +434,7 @@ class DraftService:
             else:
                 # Should not happen with Redis, but handle gracefully
                 return None
-            return Tracklist.model_validate(data)  # type: ignore[no-any-return]  # Pydantic returns model but typed as Any
+            return Tracklist.model_validate(data)
 
         return None
 

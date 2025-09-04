@@ -1,7 +1,6 @@
 """Recording repository implementation."""
 
 from collections.abc import Sequence
-from typing import cast
 from uuid import UUID
 
 from services.cataloging_service.src.models.recording import Recording
@@ -33,7 +32,7 @@ class RecordingRepository(BaseRepository[Recording]):
             The recording if found, None otherwise
         """
         result = await self.session.execute(select(Recording).where(Recording.file_path == file_path))
-        return cast("Recording | None", result.scalar_one_or_none())
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_by_sha256_hash(self, sha256_hash: str) -> Recording | None:
         """Get a recording by SHA256 hash.
@@ -45,7 +44,7 @@ class RecordingRepository(BaseRepository[Recording]):
             The recording if found, None otherwise
         """
         result = await self.session.execute(select(Recording).where(Recording.sha256_hash == sha256_hash))
-        return cast("Recording | None", result.scalar_one_or_none())
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_by_xxh128_hash(self, xxh128_hash: str) -> Recording | None:
         """Get a recording by XXH128 hash.
@@ -57,7 +56,7 @@ class RecordingRepository(BaseRepository[Recording]):
             The recording if found, None otherwise
         """
         result = await self.session.execute(select(Recording).where(Recording.xxh128_hash == xxh128_hash))
-        return cast("Recording | None", result.scalar_one_or_none())
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_with_metadata(self, id: UUID) -> Recording | None:
         """Get a recording with its metadata.
@@ -71,7 +70,7 @@ class RecordingRepository(BaseRepository[Recording]):
         result = await self.session.execute(
             select(Recording).options(selectinload(Recording.metadata_items)).where(Recording.id == id)
         )
-        return cast("Recording | None", result.scalar_one_or_none())
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_with_tracklists(self, id: UUID) -> Recording | None:
         """Get a recording with its tracklists.
@@ -85,7 +84,7 @@ class RecordingRepository(BaseRepository[Recording]):
         result = await self.session.execute(
             select(Recording).options(selectinload(Recording.tracklists)).where(Recording.id == id)
         )
-        return cast("Recording | None", result.scalar_one_or_none())
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_with_all_relations(self, id: UUID) -> Recording | None:
         """Get a recording with all its related data.
@@ -101,7 +100,7 @@ class RecordingRepository(BaseRepository[Recording]):
             .options(selectinload(Recording.metadata_items), selectinload(Recording.tracklists))
             .where(Recording.id == id)
         )
-        return cast("Recording | None", result.scalar_one_or_none())
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def search_by_file_name(self, file_name: str, limit: int = 100) -> Sequence[Recording]:
         """Search recordings by file name pattern.
@@ -114,6 +113,6 @@ class RecordingRepository(BaseRepository[Recording]):
             List of matching recordings
         """
         result = await self.session.execute(
-            select(Recording).where(Recording.file_name.ilike(f"%{file_name}%")).limit(limit)
+            select(Recording).where(Recording.file_name.ilike(f"%{file_name}%")).limit(limit)  # type: ignore[attr-defined]  # file_name is non-nullable SQLAlchemy column, mypy can't infer .ilike() method availability at runtime
         )
-        return cast("Sequence[Recording]", result.scalars().all())
+        return result.scalars().all()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime

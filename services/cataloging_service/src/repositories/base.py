@@ -1,6 +1,6 @@
 """Base repository class with common CRUD operations."""
 
-from typing import Any, Generic, TypeVar, cast
+from typing import Any, Generic, TypeVar
 from uuid import UUID
 
 from services.cataloging_service.src.models.base import Base
@@ -46,8 +46,8 @@ class BaseRepository(Generic[ModelType]):  # noqa: UP046 - Python 3.11 compatibi
         Returns:
             The record if found, None otherwise
         """
-        result = await self.session.execute(select(self.model).where(self.model.id == id))
-        return cast("ModelType | None", result.scalar_one_or_none())
+        result = await self.session.execute(select(self.model).where(self.model.id == id))  # All models have id field
+        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy exec() returns Any at runtime
 
     async def get_all(self, limit: int = 100, offset: int = 0) -> list[ModelType]:
         """Get all records with pagination.

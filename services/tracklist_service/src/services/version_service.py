@@ -1,7 +1,7 @@
 """Version management service for tracklist versioning."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import and_, select
@@ -55,7 +55,7 @@ class VersionService:
 
         # Mark previous version as not current
         if current_version:
-            current_version.is_current = False
+            current_version.is_current = False  # type: ignore[assignment]  # SQLAlchemy instance attribute assignment at runtime
             self.session.add(current_version)
 
         # Create new version
@@ -93,7 +93,7 @@ class VersionService:
             )
         )
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy returns model but typed as Any
+        return cast("TracklistVersion | None", result.scalar_one_or_none())
 
     async def get_version(self, tracklist_id: UUID, version_number: int) -> TracklistVersion | None:
         """Get a specific version of a tracklist.
@@ -112,7 +112,7 @@ class VersionService:
             )
         )
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy returns model but typed as Any
+        return cast("TracklistVersion | None", result.scalar_one_or_none())
 
     async def list_versions(self, tracklist_id: UUID, limit: int = 50, offset: int = 0) -> list[TracklistVersion]:
         """List versions for a tracklist.
@@ -171,7 +171,7 @@ class VersionService:
         await self.session.commit()
         await self.session.refresh(tracklist)
 
-        return tracklist  # type: ignore[no-any-return]  # SQLAlchemy model after refresh typed as Any
+        return cast("TracklistDB", tracklist)
 
     async def get_version_diff(self, tracklist_id: UUID, version1: int, version2: int) -> dict[str, Any]:
         """Get differences between two versions.
@@ -278,7 +278,7 @@ class VersionService:
         """
         query = select(TracklistVersion).where(TracklistVersion.id == version_id)
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()  # type: ignore[no-any-return]  # SQLAlchemy returns model but typed as Any
+        return cast("TracklistVersion | None", result.scalar_one_or_none())
 
     async def rollback_to_version_by_id(self, tracklist_id: UUID, version_id: UUID) -> TracklistDB:
         """Rollback tracklist to a specific version using version ID.

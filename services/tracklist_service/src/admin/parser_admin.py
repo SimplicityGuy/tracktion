@@ -211,6 +211,10 @@ async def update_selectors(
         )
 
         # Create admin operation for background task
+        # Ensure timestamp is not None (should never be None from create_operation)
+        if operation_history.timestamp is None:
+            raise ValueError("Operation history timestamp cannot be None")
+
         admin_operation = AdminOperation(
             operation_id=operation_id,
             operation_type="selector_update",

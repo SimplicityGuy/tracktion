@@ -124,6 +124,8 @@ class ImportService:
                 catalog_track_id=None,  # Will be set if track is found in catalog
                 confidence=(0.9 if not track.is_id else 0.5),  # Lower confidence for ID'd tracks
                 transition_type=None,  # Will be set from transitions if available
+                bpm=None,  # Will be set from analysis if available
+                key=None,  # Will be set from analysis if available
             )
             track_entries.append(entry)
 

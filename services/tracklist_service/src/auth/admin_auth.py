@@ -17,13 +17,16 @@ from pydantic import BaseModel
 
 # Configuration
 # JWT secret key - MUST be set in production via environment variable
-SECRET_KEY = os.getenv("ADMIN_JWT_SECRET")
-if not SECRET_KEY:
+_secret_key = os.getenv("ADMIN_JWT_SECRET")
+if not _secret_key:
     # Only use a default in development - log a warning
     import logging
 
     logging.warning("ADMIN_JWT_SECRET not set - using insecure default for development only!")
-    SECRET_KEY = "INSECURE-DEVELOPMENT-KEY-CHANGE-IN-PRODUCTION"
+    _secret_key = "INSECURE-DEVELOPMENT-KEY-CHANGE-IN-PRODUCTION"
+
+# Type-safe SECRET_KEY - guaranteed to be a string after the above logic
+SECRET_KEY: str = _secret_key
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ADMIN_TOKEN_EXPIRE_MINUTES", "30"))

@@ -81,7 +81,7 @@ async def get_tracklist(recording_id: UUID) -> TracklistResponse:
         )
 
     # Convert database tracks to API response format
-    tracks = []
+    tracks: list[TrackInfo] = []
     if tracklist.tracks:
         for i, track_data in enumerate(tracklist.tracks, 1):
             # Create TrackInfo from the JSONB track data
@@ -97,7 +97,7 @@ async def get_tracklist(recording_id: UUID) -> TracklistResponse:
             tracks.append(track)
 
     # Determine format based on source
-    format_type = "cue" if tracklist.cue_file_path else tracklist.source
+    format_type = "cue" if tracklist.cue_file_path else (tracklist.source or "unknown")
 
     return TracklistResponse(
         recording_id=recording_id,
@@ -130,7 +130,7 @@ async def detect_tracks(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
 
     # Verify file exists
-    if not Path(recording.file_path).exists():
+    if not recording.file_path or not Path(recording.file_path or "").exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Audio file not found: {recording.file_path}"
         )
@@ -181,7 +181,7 @@ async def split_tracks(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recording not found: {recording_id}")
 
     # Verify file exists
-    if not Path(recording.file_path).exists():
+    if not recording.file_path or not Path(recording.file_path or "").exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Audio file not found: {recording.file_path}"
         )
@@ -259,6 +259,9 @@ async def parse_cue_sheet(request: CueSheetRequest) -> dict[str, Any]:
     )
 
     # Submit CUE parsing request to message queue
+    if not recording.id:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Recording ID is None")
+
     correlation_id = await message_publisher.publish_analysis_request(
         recording_id=recording.id,
         file_path=request.audio_file_path,

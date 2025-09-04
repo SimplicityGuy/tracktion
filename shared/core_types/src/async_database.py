@@ -6,14 +6,19 @@ import os
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from functools import wraps
-from typing import Any
+from typing import Any, cast
 
 import asyncpg
 from dotenv import load_dotenv
 from neo4j import AsyncDriver, AsyncGraphDatabase
 from redis import asyncio as aioredis
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (  # type: ignore[attr-defined]  # SQLAlchemy 2.0 async features not recognized by mypy type stubs
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 # Load environment variables
 load_dotenv()
@@ -256,7 +261,7 @@ async def get_async_db_session() -> AsyncSession:
         await async_db_manager.initialize()
         if not async_db_manager.AsyncSessionLocal:
             raise RuntimeError("Async database not initialized")
-    return async_db_manager.AsyncSessionLocal()
+    return cast("AsyncSession", async_db_manager.AsyncSessionLocal())
 
 
 async def get_async_neo4j_driver() -> AsyncDriver:

@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from fastapi import HTTPException, Request, Response, status
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -52,7 +52,7 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
             # Add timeout info to response headers
             response.headers["X-Timeout"] = str(timeout)
 
-            return response  # FastAPI response type
+            return cast("Response", response)
 
         except TimeoutError as e:
             # Log timeout
@@ -137,7 +137,8 @@ class RequestCancellationMiddleware(BaseHTTPMiddleware):
 
         try:
             # Process request
-            return await call_next(request)  # FastAPI response type  # FastAPI/Starlette response
+            response = await call_next(request)
+            return cast("Response", response)
 
         except asyncio.CancelledError as e:
             # Log cancellation

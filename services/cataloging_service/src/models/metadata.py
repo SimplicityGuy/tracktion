@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import (  # type: ignore[attr-defined]  # SQLAlchemy 2.0 features; project uses 2.0.43 but type stubs are 1.4.x
+    Mapped,
+    mapped_column,
+    relationship,
+)
 
 from .base import Base
 

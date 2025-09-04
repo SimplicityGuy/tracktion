@@ -9,6 +9,7 @@ import hashlib
 import logging
 import tempfile
 import time
+from collections.abc import Generator
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -17,6 +18,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from services.tracklist_service.src.database import get_db_session as db_session_getter
 from services.tracklist_service.src.messaging.message_schemas import (
@@ -33,7 +35,7 @@ from services.tracklist_service.src.models.cue_file import (
     CueGenerationResponse,
     GenerateCueRequest,
 )
-from services.tracklist_service.src.models.tracklist import Tracklist
+from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
 from services.tracklist_service.src.repository.cue_file_repository import CueFileRepository
 from services.tracklist_service.src.services.audio_validation_service import AudioValidationService
 from services.tracklist_service.src.services.cache_service import CacheConfig, CacheService
@@ -41,6 +43,7 @@ from services.tracklist_service.src.services.cue_generation_service import CueGe
 from services.tracklist_service.src.services.storage_service import StorageConfig, StorageService
 from shared.core_types.src.async_database import AsyncDatabaseManager
 from shared.core_types.src.async_repositories import AsyncTracklistRepository
+from shared.core_types.src.database import DatabaseManager
 from shared.core_types.src.models import Tracklist as TracklistModel
 from shared.core_types.src.repositories import JobRepository
 
@@ -73,22 +76,23 @@ cache_config = CacheConfig(
 )
 cache_service = CacheService(cache_config)
 
-# Initialize database manager and CUE generation service with cache
-db_manager = AsyncDatabaseManager()
-cue_generation_service = CueGenerationService(storage_service, cache_service, db_manager)  # type: ignore[arg-type]  # AsyncDatabaseManager vs DatabaseManager type mismatch
+# Initialize database managers - async for repositories, sync for services
+async_db_manager = AsyncDatabaseManager()
+sync_db_manager = DatabaseManager()
 
-# Initialize tracklist repository
-tracklist_repo = AsyncTracklistRepository(db_manager)
+# Initialize CUE generation service with sync database manager
+cue_generation_service = CueGenerationService(storage_service, cache_service, sync_db_manager)
+
+# Initialize tracklist repository with async database manager
+tracklist_repo = AsyncTracklistRepository(async_db_manager)
 audio_validation_service = AudioValidationService()
 
-# Initialize job repository for API endpoints
-job_repo: JobRepository | None = None
-if db_manager:
-    job_repo = JobRepository(db_manager)  # type: ignore[arg-type]  # JobRepository expects DatabaseManager but we have AsyncDatabaseManager - API compatibility maintained
+# Initialize job repository for API endpoints with sync database manager
+job_repo = JobRepository(sync_db_manager)
 
 
 # Database dependency using proper database connection
-def get_db_session() -> AsyncSession:
+def get_db_session() -> Generator[Session]:
     """Get database session for dependency injection."""
     # Using sync generator as FastAPI handles it properly
     yield from db_session_getter()
@@ -107,7 +111,7 @@ async def get_tracklist_by_id(tracklist_id: UUID) -> Tracklist:
     Helper function to retrieve tracklist by ID.
     """
     # First, try to get by exact UUID
-    async with db_manager.get_db_session() as session:
+    async with async_db_manager.get_db_session() as session:
         result = await session.execute(select(TracklistModel).where(TracklistModel.id == tracklist_id))
         tracklist_db = result.scalar_one_or_none()
 
@@ -118,12 +122,22 @@ async def get_tracklist_by_id(tracklist_id: UUID) -> Tracklist:
             )
 
         # Convert DB model to API Tracklist model
+        tracks_data = tracklist_db.tracks if isinstance(tracklist_db.tracks, list) else []
+        tracks_list = [TrackEntry.from_dict(t) for t in tracks_data] if tracks_data else []
+
         return Tracklist(
             id=tracklist_db.id,
-            recording_id=tracklist_db.recording_id,
+            audio_file_id=tracklist_db.audio_file_id,
             source=tracklist_db.source,
-            tracks=tracklist_db.tracks or [],
-            cue_file_path=tracklist_db.cue_file_path,
+            created_at=tracklist_db.created_at,
+            updated_at=tracklist_db.updated_at,
+            tracks=tracks_list,
+            cue_file_id=tracklist_db.cue_file_id,
+            confidence_score=tracklist_db.confidence_score or 1.0,
+            draft_version=tracklist_db.draft_version,
+            is_draft=tracklist_db.is_draft or False,
+            parent_tracklist_id=tracklist_db.parent_tracklist_id,
+            default_cue_format=tracklist_db.default_cue_format,
         )
 
 
@@ -286,7 +300,8 @@ async def generate_cue_for_tracklist(
         tracklist = await get_tracklist_by_id(tracklist_id)
 
         # Generate CUE file
-        return await generate_cue_file(request, tracklist, background_tasks, async_processing)  # type: ignore[no-any-return]  # Complex async type resolution
+        result: CueGenerationResponse = await generate_cue_file(request, tracklist, background_tasks, async_processing)
+        return result
 
     except HTTPException:
         raise
@@ -456,7 +471,7 @@ async def download_cue_file(
     """
     try:
         # Get CUE file from database first
-        async with db_manager.get_db_session() as session:
+        async with async_db_manager.get_db_session() as session:
             cue_file_repo = CueFileRepository(session)
             cue_file = await cue_file_repo.get_cue_file_by_id(cue_file_id)
             if not cue_file:
@@ -485,7 +500,7 @@ async def download_cue_file(
                     "Content-Disposition": f"attachment; filename={filename}",
                     "Cache-Control": "no-cache",
                     "X-File-Version": str(cue_file.version),
-                    "X-File-Format": cue_file.format,
+                    "X-File-Format": str(cue_file.format),
                 },
             )
 
@@ -690,7 +705,7 @@ async def download_cue_file_by_id(
                 "Content-Disposition": f"attachment; filename={filename}",
                 "Cache-Control": "no-cache",
                 "X-File-Version": str(cue_file.version),
-                "X-File-Format": cue_file.format,
+                "X-File-Format": str(cue_file.format),
             },
         )
 

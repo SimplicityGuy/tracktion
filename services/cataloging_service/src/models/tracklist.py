@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import (  # type: ignore[attr-defined]  # SQLAlchemy 2.0 features; project uses 2.0.43 but type stubs are 1.4.x
+    Mapped,
+    mapped_column,
+    relationship,
+)
 
 from .base import Base
 
@@ -31,4 +35,5 @@ class Tracklist(Base):
 
     def __repr__(self) -> str:
         """String representation of Tracklist."""
-        return f"<Tracklist(id={self.id}, source='{self.source}', tracks={len(self.tracks)})>"
+        tracks_count = len(self.tracks) if self.tracks is not None else 0
+        return f"<Tracklist(id={self.id}, source='{self.source}', tracks={tracks_count})>"

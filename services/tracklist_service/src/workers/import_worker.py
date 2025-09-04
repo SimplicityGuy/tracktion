@@ -26,6 +26,7 @@ from services.tracklist_service.src.messaging.import_handler import (
     setup_import_message_handler,
 )
 from services.tracklist_service.src.models.cue_file import CueFormat
+from services.tracklist_service.src.models.tracklist import Tracklist
 from services.tracklist_service.src.services.cue_integration import CueIntegrationService
 from services.tracklist_service.src.services.import_service import ImportService
 from services.tracklist_service.src.services.matching_service import MatchingService
@@ -57,7 +58,7 @@ class ImportWorker:
             await setup_import_message_handler()
 
             # Register this worker as message handler
-            import_message_handler.register_import_handler(self.process_import_job)  # type: ignore[arg-type]  # Handler signature mismatch - async vs sync interface
+            import_message_handler.register_import_handler(self.process_import_job)
 
             # Start consuming messages
             await import_message_handler.start_consuming()
@@ -107,9 +108,8 @@ class ImportWorker:
                 "Step 1: Importing tracklist from 1001tracklists",
                 extra={"correlation_id": correlation_id},
             )
-            imported_tracklist = self.import_service.import_tracklist(
+            scraped_tracklist = self.import_service.fetch_tracklist_from_1001(
                 url=request.url,
-                audio_file_id=request.audio_file_id,
                 force_refresh=request.force_refresh,
             )
 
@@ -119,27 +119,42 @@ class ImportWorker:
                 extra={"correlation_id": correlation_id},
             )
             matching_result = self.matching_service.match_tracklist_to_audio(
-                scraped_tracklist=imported_tracklist,
+                scraped_tracklist=scraped_tracklist,
                 audio_metadata={"audio_file_id": request.audio_file_id},
             )
 
             # Update tracklist with matching confidence from tuple result
             _ = matching_result[0]  # confidence_score - not used yet
 
+            # Convert scraped tracks to TrackEntry format
+            track_entries = self.import_service.transform_to_track_entries(scraped_tracklist.tracks)
+
             # Step 3: Apply timing adjustments
             logger.info(
                 "Step 3: Applying timing adjustments",
                 extra={"correlation_id": correlation_id},
             )
-            adjusted_tracklist = self.timing_service.adjust_track_timings(
-                tracks=imported_tracklist,
+            adjusted_tracks = self.timing_service.adjust_track_timings(
+                tracks=track_entries,
                 audio_duration=(matching_result[1].get("duration_seconds") if len(matching_result) > 1 else None),
+            )
+
+            # Create final tracklist object
+            final_tracklist = Tracklist(
+                audio_file_id=request.audio_file_id,
+                source="1001tracklists",
+                tracks=adjusted_tracks,
+                confidence_score=matching_result[0],
+                cue_file_id=None,
+                draft_version=None,
+                parent_tracklist_id=None,
+                default_cue_format=None,
             )
 
             # Step 4: Generate CUE file
             logger.info("Step 4: Generating CUE file", extra={"correlation_id": correlation_id})
             _ = self.cue_integration_service.generate_cue_content(
-                tracklist=imported_tracklist,
+                tracklist=final_tracklist,
                 audio_filename=f"audio_file_{request.audio_file_id}.wav",
                 cue_format=CueFormat(request.cue_format),
             )  # cue_result - not used yet
@@ -166,7 +181,7 @@ class ImportWorker:
             result_message = ImportResultMessage(
                 correlation_id=correlation_id,
                 success=True,
-                tracklist_id=str(imported_tracklist.id),
+                tracklist_id=str(final_tracklist.id),
                 processing_time_ms=processing_time_ms,
                 completed_at=datetime.now(UTC).isoformat(),
             )
@@ -179,9 +194,9 @@ class ImportWorker:
                 "Successfully processed import job",
                 extra={
                     "correlation_id": correlation_id,
-                    "tracklist_id": str(imported_tracklist.id),
+                    "tracklist_id": str(final_tracklist.id),
                     "processing_time_ms": processing_time_ms,
-                    "track_count": len(adjusted_tracklist),
+                    "track_count": len(adjusted_tracks),
                 },
             )
 

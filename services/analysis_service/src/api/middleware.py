@@ -3,6 +3,7 @@
 import time
 import uuid
 from collections.abc import Callable
+from typing import cast
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -37,7 +38,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         # Add request ID to response headers
         response.headers["X-Request-ID"] = request_id
 
-        return response  # FastAPI middleware return type
+        return cast("Response", response)
 
 
 class TimingMiddleware(BaseHTTPMiddleware):
@@ -68,7 +69,7 @@ class TimingMiddleware(BaseHTTPMiddleware):
             },
         )
 
-        return response  # FastAPI middleware return type
+        return cast("Response", response)
 
 
 class ErrorHandlingMiddleware(BaseHTTPMiddleware):
@@ -77,7 +78,8 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Handle errors globally with proper logging."""
         try:
-            return await call_next(request)  # FastAPI middleware return type  # FastAPI/Starlette response
+            response = await call_next(request)
+            return cast("Response", response)
         except Exception as e:
             # Get request ID if available
             request_id = getattr(request.state, "request_id", None)

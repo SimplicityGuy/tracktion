@@ -117,6 +117,8 @@ class TracklistMessageConsumer:
                         cue_file_path = body.get("cue_file_path")
 
                         # Upsert the tracklist
+                        if recording.id is None:
+                            raise ValueError("Recording ID cannot be None")
                         await tracklist_repo.upsert(
                             recording_id=recording.id,
                             source=source,
@@ -144,6 +146,8 @@ class TracklistMessageConsumer:
                         # Store metadata
                         metadata_repo = MetadataRepository(session)
 
+                        if recording.id is None:
+                            raise ValueError("Recording ID cannot be None")
                         for key, value in metadata.items():
                             await metadata_repo.upsert(recording.id, key, str(value))
 

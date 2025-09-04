@@ -6,6 +6,7 @@ for streaming updates to clients.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -14,17 +15,20 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-try:
-    # Try newer redis with async support
-    import redis.asyncio as aioredis
-except ImportError:
-    try:
-        # Fallback to aioredis if available
-        import aioredis
-    except ImportError:
-        # No redis support available
-        aioredis = None
 from aiohttp import web
+
+# Try newer redis with async support first, then fallback to aioredis
+redis_client = None
+with contextlib.suppress(ImportError):
+    import redis.asyncio as _redis_asyncio
+
+    redis_client = _redis_asyncio
+
+if redis_client is None:
+    with contextlib.suppress(ImportError):
+        import aioredis as _aioredis
+
+        redis_client = _aioredis
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +108,7 @@ class AsyncProgressTracker:
         self.websocket_connections: set[web.WebSocketResponse] = set()
 
         # Redis connection
-        self.redis: aioredis.Redis | None = None
+        self.redis: Any | None = None
 
         # Update throttling
         self.last_update_times: dict[str, float] = {}
@@ -113,14 +117,14 @@ class AsyncProgressTracker:
 
     async def initialize(self) -> None:
         """Initialize Redis connection and other async resources."""
-        if self.redis_url and aioredis:
+        if self.redis_url and redis_client:
             try:
-                self.redis = await aioredis.from_url(self.redis_url, encoding="utf-8", decode_responses=True)
+                self.redis = await redis_client.from_url(self.redis_url, encoding="utf-8", decode_responses=True)
                 logger.info("Connected to Redis for progress state storage")
             except Exception as e:
                 logger.warning(f"Failed to connect to Redis: {e!s}")
                 self.redis = None
-        elif self.redis_url and not aioredis:
+        elif self.redis_url and not redis_client:
             logger.warning("Redis URL provided but redis library not available")
             self.redis = None
 
@@ -409,13 +413,13 @@ class AsyncProgressTracker:
             key = f"progress:{task_id}"
             data = {
                 "task_id": str(progress.task_id),
-                "total_stages": int(progress.total_stages),
-                "current_stage": int(progress.current_stage),
+                "total_stages": str(progress.total_stages),
+                "current_stage": str(progress.current_stage),
                 "stage_name": str(progress.stage_name),
-                "stage_progress": float(progress.stage_progress),
-                "overall_progress": float(progress.overall_progress),
-                "start_time": float(progress.start_time),
-                "last_update": float(progress.last_update),
+                "stage_progress": str(progress.stage_progress),
+                "overall_progress": str(progress.overall_progress),
+                "start_time": str(progress.start_time),
+                "last_update": str(progress.last_update),
                 "metadata": json.dumps(progress.metadata),
             }
 

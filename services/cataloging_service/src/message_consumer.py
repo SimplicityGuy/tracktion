@@ -166,6 +166,8 @@ class CatalogingMessageConsumer:
                             await metadata_repo.bulk_create(recording.id, metadata)
                     else:
                         # Update existing recording
+                        if existing.id is None:
+                            raise ValueError("Recording ID cannot be None")
                         await recording_repo.update(
                             existing.id,
                             sha256_hash=sha256_hash,
@@ -178,6 +180,8 @@ class CatalogingMessageConsumer:
 
                     existing = await recording_repo.get_by_file_path(file_path)
                     if existing:
+                        if existing.id is None:
+                            raise ValueError("Recording ID cannot be None")
                         await recording_repo.update(
                             existing.id,
                             sha256_hash=sha256_hash,
@@ -187,6 +191,8 @@ class CatalogingMessageConsumer:
                         # Update metadata if provided
                         metadata = body.get("metadata", {})
                         if metadata:
+                            if existing.id is None:
+                                raise ValueError("Recording ID cannot be None")
                             for key, value in metadata.items():
                                 await metadata_repo.upsert(existing.id, key, value)
                     else:
@@ -204,6 +210,8 @@ class CatalogingMessageConsumer:
                 elif event_type == "deleted":
                     existing = await recording_repo.get_by_file_path(file_path)
                     if existing:
+                        if existing.id is None:
+                            raise ValueError("Recording ID cannot be None")
                         await recording_repo.delete(existing.id)
 
                 elif event_type in ["moved", "renamed"]:
@@ -211,6 +219,8 @@ class CatalogingMessageConsumer:
                         new_name = file_path.split("/")[-1] if "/" in file_path else file_path
                         existing = await recording_repo.get_by_file_path(old_path)
                         if existing:
+                            if existing.id is None:
+                                raise ValueError("Recording ID cannot be None")
                             await recording_repo.update(
                                 existing.id,
                                 file_path=file_path,

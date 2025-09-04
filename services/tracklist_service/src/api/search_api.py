@@ -7,7 +7,7 @@ Provides REST API endpoints for searching DJ sets and tracklists.
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
@@ -196,7 +196,7 @@ async def search_1001tracklists(
             "error": None,
             "cached": False,
             "processing_time_ms": int((time.time() - start_time) * 1000),
-            "correlation_id": correlation_id,
+            "correlation_id": str(correlation_id),
         }
 
         # Cache the results for future requests
@@ -206,7 +206,18 @@ async def search_1001tracklists(
         except Exception as e:
             logger.warning(f"Failed to cache search results: {e}")
 
-        return SearchResponse(**response_data)
+        return SearchResponse(
+            success=cast("bool", response_data["success"]),
+            results=cast("list[SearchResult]", response_data["results"]),
+            total_count=cast("int", response_data["total_count"]),
+            page=cast("int", response_data["page"]),
+            page_size=cast("int", response_data["page_size"]),
+            has_more=cast("bool", response_data["has_more"]),
+            error=cast("str", response_data["error"]) if response_data["error"] else None,
+            cached=cast("bool", response_data["cached"]),
+            processing_time_ms=cast("int", response_data["processing_time_ms"]),
+            correlation_id=cast("str", response_data["correlation_id"]),
+        )
 
     except HTTPException:
         raise

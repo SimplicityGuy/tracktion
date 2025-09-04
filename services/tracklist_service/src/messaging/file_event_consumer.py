@@ -6,7 +6,10 @@ import logging
 from typing import Any
 
 from aio_pika import ExchangeType, IncomingMessage
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    async_sessionmaker,  # type: ignore[attr-defined]  # SQLAlchemy 2.0 async feature not recognized by mypy type stubs
+    create_async_engine,
+)
 
 from services.tracklist_service.src.config import get_config
 from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient, RabbitMQConfig

@@ -3,11 +3,11 @@
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from redis.asyncio import Redis
 
@@ -149,7 +149,7 @@ class AlertManager:
                 failed_key = f"failed:extractions:{page_type or '*'}"
                 failed_extractions = []
                 if page_type:
-                    failed_data = await self.redis_client.lrange(failed_key, 0, 9)
+                    failed_data = await cast("Awaitable[list[Any]]", self.redis_client.lrange(failed_key, 0, 9))
                     failed_extractions = [json.loads(f) for f in failed_data if f]
 
                 status = HealthStatus(

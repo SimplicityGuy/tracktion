@@ -6,7 +6,10 @@ import logging
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
 
 from redis.asyncio import Redis
 
@@ -104,13 +107,13 @@ class NotificationHistoryLogger:
             entry_json = json.dumps(entry.to_dict())
 
             # Add to list and set expiration
-            await self.redis_client.lpush(key, entry_json)
-            await self.redis_client.expire(key, 86400 * self.retention_days)
+            await cast("Awaitable[int]", self.redis_client.lpush(key, entry_json))
+            await cast("Awaitable[bool]", self.redis_client.expire(key, 86400 * self.retention_days))
 
             # Also maintain a global history key with limited entries
             global_key = "notifications:history:global"
-            await self.redis_client.lpush(global_key, entry_json)
-            await self.redis_client.ltrim(global_key, 0, 999)  # Keep last 1000
+            await cast("Awaitable[int]", self.redis_client.lpush(global_key, entry_json))
+            await cast("Awaitable[str]", self.redis_client.ltrim(global_key, 0, 999))  # Keep last 1000
             await self.redis_client.expire(global_key, 86400 * self.retention_days)
 
         except Exception as e:
@@ -180,7 +183,7 @@ class NotificationHistoryLogger:
 
             # Fetch entries from Redis
             if self.redis_client:
-                raw_entries = await self.redis_client.lrange(key, 0, limit * 2)
+                raw_entries = await cast("Awaitable[list[Any]]", self.redis_client.lrange(key, 0, limit * 2))
             else:
                 return entries
 

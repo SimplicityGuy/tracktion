@@ -213,7 +213,8 @@ class AsyncRedisCache:
             True if cached successfully
         """
         try:
-            return cast("bool", await self.redis.setex(f"analysis:{key}", ttl, json.dumps(result)))
+            result_status = await self.redis.setex(f"analysis:{key}", ttl, json.dumps(result))
+            return bool(result_status)  # Convert Redis response to bool
         except Exception as e:
             logger.error(f"Error caching analysis result: {e}")
             return False
@@ -247,7 +248,8 @@ class AsyncRedisCache:
         keys = [key async for key in self.redis.scan_iter(match=pattern)]
 
         if keys:
-            return cast("int", await self.redis.delete(*keys))
+            deleted_count = await self.redis.delete(*keys)
+            return int(deleted_count)  # Convert Redis response to int
         return 0
 
 
@@ -308,6 +310,14 @@ class AsyncStorageHandler:
                     )
 
             # Create graph relationships in Neo4j
+            # Validate required fields before Neo4j operation
+            if not recording.file_path:
+                logger.error(f"Recording {recording_id} has no file_path")
+                return False
+            if not recording.file_name:
+                logger.error(f"Recording {recording_id} has no file_name")
+                return False
+
             await self.neo4j_repo.create_recording_node(
                 recording_id=recording_id,
                 file_path=recording.file_path,

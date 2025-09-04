@@ -3,7 +3,10 @@
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
 
 import redis.asyncio as redis
 
@@ -180,13 +183,13 @@ class QuotaManager:
         for key in keys:
             try:
                 if quota_type == QuotaType.DAILY:
-                    await self.redis.hset(key, "daily_used", "0")
-                    await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))
+                    await cast("Awaitable[int]", self.redis.hset(key, "daily_used", "0"))
+                    await cast("Awaitable[int]", self.redis.hset(key, "last_daily_reset", str(int(now.timestamp()))))
                 elif quota_type == QuotaType.MONTHLY:
-                    await self.redis.hset(key, "daily_used", "0")
-                    await self.redis.hset(key, "monthly_used", "0")
-                    await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))
-                    await self.redis.hset(key, "last_monthly_reset", str(int(now.timestamp())))
+                    await cast("Awaitable[int]", self.redis.hset(key, "daily_used", "0"))
+                    await cast("Awaitable[int]", self.redis.hset(key, "monthly_used", "0"))
+                    await cast("Awaitable[int]", self.redis.hset(key, "last_daily_reset", str(int(now.timestamp()))))
+                    await cast("Awaitable[int]", self.redis.hset(key, "last_monthly_reset", str(int(now.timestamp()))))
                 reset_count += 1
             except Exception as e:
                 key_str = key.decode() if isinstance(key, bytes) else key
@@ -333,9 +336,12 @@ class QuotaManager:
         now = datetime.now(UTC)
 
         # Get stored usage data
-        usage_data = await self.redis.hmget(
-            key,
-            ["daily_used", "monthly_used", "last_daily_reset", "last_monthly_reset"],
+        usage_data = await cast(
+            "Awaitable[list[Any]]",
+            self.redis.hmget(
+                key,
+                ["daily_used", "monthly_used", "last_daily_reset", "last_monthly_reset"],
+            ),
         )
 
         daily_used = int(usage_data[0]) if usage_data[0] else 0
@@ -346,18 +352,18 @@ class QuotaManager:
         # Check if we need to reset daily usage
         if now.date() > last_daily_reset.date():
             daily_used = 0
-            await self.redis.hset(key, "daily_used", "0")
-            await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))
+            await cast("Awaitable[int]", self.redis.hset(key, "daily_used", "0"))
+            await cast("Awaitable[int]", self.redis.hset(key, "last_daily_reset", str(int(now.timestamp()))))
             last_daily_reset = now
 
         # Check if we need to reset monthly usage
         if now.month != last_monthly_reset.month or now.year != last_monthly_reset.year:
             monthly_used = 0
             daily_used = 0  # Reset daily too
-            await self.redis.hset(key, "monthly_used", "0")
-            await self.redis.hset(key, "daily_used", "0")
-            await self.redis.hset(key, "last_monthly_reset", str(int(now.timestamp())))
-            await self.redis.hset(key, "last_daily_reset", str(int(now.timestamp())))
+            await cast("Awaitable[int]", self.redis.hset(key, "monthly_used", "0"))
+            await cast("Awaitable[int]", self.redis.hset(key, "daily_used", "0"))
+            await cast("Awaitable[int]", self.redis.hset(key, "last_monthly_reset", str(int(now.timestamp()))))
+            await cast("Awaitable[int]", self.redis.hset(key, "last_daily_reset", str(int(now.timestamp()))))
             last_monthly_reset = now
             last_daily_reset = now
 

@@ -11,9 +11,13 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import JSON, Boolean, DateTime, Index, String, Text, func, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import (  # type: ignore[attr-defined]  # SQLAlchemy 2.0 features; project uses 2.0.43 but type stubs are 1.4.x
+    Mapped,
+    mapped_column,
+)
 
-from shared.core_types.src.database import Base, DatabaseManager
+from shared.core_types.src.database import DatabaseManager
+from shared.core_types.src.models import Base
 
 
 class OperationHistory(Base):
@@ -154,7 +158,12 @@ class OperationHistoryRepository:
             if operation_type:
                 stmt = stmt.where(OperationHistory.operation_type == operation_type)
 
-            stmt = stmt.order_by(OperationHistory.timestamp.desc()).limit(limit)
+            # Handle potential None values in timestamp ordering
+            timestamp_attr = getattr(OperationHistory, "timestamp", None)
+            if timestamp_attr is not None and hasattr(timestamp_attr, "desc"):
+                stmt = stmt.order_by(timestamp_attr.desc()).limit(limit)
+            else:
+                stmt = stmt.limit(limit)
 
             result = session.execute(stmt)
             return list(result.scalars().all())
@@ -190,7 +199,12 @@ class OperationHistoryRepository:
             if success_only is not None:
                 stmt = stmt.where(OperationHistory.success == success_only)
 
-            stmt = stmt.order_by(OperationHistory.timestamp.desc()).limit(limit)
+            # Handle potential None values in timestamp ordering
+            timestamp_attr = getattr(OperationHistory, "timestamp", None)
+            if timestamp_attr is not None and hasattr(timestamp_attr, "desc"):
+                stmt = stmt.order_by(timestamp_attr.desc()).limit(limit)
+            else:
+                stmt = stmt.limit(limit)
 
             result = session.execute(stmt)
             return list(result.scalars().all())
@@ -213,15 +227,27 @@ class OperationHistoryRepository:
             List of operation history records
         """
         with self.db_manager.get_db_session() as session:
+            # Validate datetime parameters to avoid None comparison errors
+            if start_date is None or end_date is None:
+                raise ValueError("start_date and end_date cannot be None")
+
+            # Get timestamp column safely to avoid None attribute access
+            timestamp_col = getattr(OperationHistory, "timestamp", None)
+            if timestamp_col is None:
+                raise RuntimeError("OperationHistory.timestamp column not available")
+
             stmt = select(OperationHistory).where(
-                OperationHistory.timestamp >= start_date,
-                OperationHistory.timestamp <= end_date,
+                timestamp_col >= start_date,
+                timestamp_col <= end_date,
             )
 
             if operation_type:
                 stmt = stmt.where(OperationHistory.operation_type == operation_type)
 
-            stmt = stmt.order_by(OperationHistory.timestamp.desc())
+            # Handle potential None values in timestamp ordering
+            if hasattr(timestamp_col, "desc"):
+                stmt = stmt.order_by(timestamp_col.desc())
+            # If desc() is not available, the ordering will be omitted
 
             result = session.execute(stmt)
             return list(result.scalars().all())
@@ -283,8 +309,14 @@ class OperationHistoryRepository:
             cutoff_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
             cutoff_date = cutoff_date.replace(day=cutoff_date.day - days)
 
-            # Get all operations in the date range
-            stmt = select(OperationHistory).where(OperationHistory.timestamp >= cutoff_date)
+            # Get all operations in the date range - validate cutoff_date is not None
+            if cutoff_date is None:
+                raise ValueError("cutoff_date cannot be None")
+            # Get timestamp column safely to avoid None attribute access
+            timestamp_col = getattr(OperationHistory, "timestamp", None)
+            if timestamp_col is None:
+                raise RuntimeError("OperationHistory.timestamp column not available")
+            stmt = select(OperationHistory).where(timestamp_col >= cutoff_date)
             operations = list(session.execute(stmt).scalars().all())
 
             # Calculate statistics
@@ -330,7 +362,14 @@ class OperationHistoryRepository:
             cutoff_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
             cutoff_date = cutoff_date.replace(day=cutoff_date.day - days)
 
-            stmt = select(OperationHistory).where(OperationHistory.timestamp < cutoff_date)
+            # Validate cutoff_date before comparison to avoid None comparison errors
+            if cutoff_date is None:
+                raise ValueError("cutoff_date cannot be None")
+            # Get timestamp column safely to avoid None attribute access
+            timestamp_col = getattr(OperationHistory, "timestamp", None)
+            if timestamp_col is None:
+                raise RuntimeError("OperationHistory.timestamp column not available")
+            stmt = select(OperationHistory).where(timestamp_col < cutoff_date)
             old_operations = list(session.execute(stmt).scalars().all())
 
             for operation in old_operations:

@@ -210,7 +210,7 @@ class ConnectionPoolManager:
             # Update metrics
             self._update_metrics(service_name)
 
-            return success  # type: ignore[no-any-return] # Boolean value from health check comparison, known to be bool
+            return success
 
         except Exception as e:
             pool_health_checks.labels(service=service_name, status="error").inc()
