@@ -1,8 +1,8 @@
 """
-Storage service for CUE files with filesystem and S3 support.
+Storage service for CUE files with filesystem support.
 
 This module provides file storage capabilities for CUE files with support for
-both local filesystem and S3 cloud storage, including versioning and retrieval.
+local filesystem storage, including versioning and retrieval.
 """
 
 import hashlib
@@ -15,20 +15,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-try:
-    import boto3
-    from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
-
-    BOTO3_AVAILABLE = True
-except ImportError:
-    # boto3 not available - S3 backend will not be functional
-    BOTO3_AVAILABLE = False
-    boto3 = None
-    BotoCoreError = Exception
-    ClientError = Exception
-    NoCredentialsError = Exception
 from pydantic import BaseModel, Field
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +29,6 @@ class StorageConfig(BaseModel):
             "base_path": "/data/cue_files/",
             "structure": "{year}/{month}/{audio_file_id}/{format}.cue",
             "permissions": "644",
-        }
-    )
-    s3: dict[str, Any] = Field(
-        default_factory=lambda: {
-            "bucket": "tracktion-cue-files",
-            "prefix": "cue_files/",
-            "structure": "{year}/{month}/{audio_file_id}/{format}.cue",
-            "acl": "private",
-            "storage_class": "STANDARD_IA",
         }
     )
     backup: bool = Field(True, description="Keep previous versions")
@@ -247,7 +225,13 @@ class FilesystemBackend(StorageBackend):
             # Backup versions
             for backup in full_path.parent.glob(f"{full_path.name}.v*"):
                 stat = backup.stat()
-                version_num = backup.suffix.split(".v")[1]
+                # Safely extract version number
+                try:
+                    version_num = backup.suffix.split(".v")[-1]
+                    if not version_num.isdigit():
+                        version_num = "unknown"
+                except (IndexError, AttributeError):
+                    version_num = "unknown"
                 versions.append(
                     {
                         "version": version_num,
@@ -275,8 +259,12 @@ class FilesystemBackend(StorageBackend):
             version_numbers = []
             for v in existing_versions:
                 try:
-                    version_numbers.append(int(v.suffix.split(suffix)[1]))
-                except (ValueError, IndexError):
+                    # Extract version number from suffix like '.v1', '.v2', etc.
+                    suffix_part = v.suffix.split(suffix)[-1]
+                    if suffix_part.isdigit():
+                        version_numbers.append(int(suffix_part))
+                except (ValueError, IndexError) as e:
+                    logger.debug(f"Failed to parse version from {v}: {e}")
                     continue
             if version_numbers:
                 version = max(version_numbers) + 1
@@ -287,329 +275,6 @@ class FilesystemBackend(StorageBackend):
         logger.debug(f"Created backup: {backup_path}")
 
         return version
-
-
-class S3Backend(StorageBackend):
-    """AWS S3 storage backend with retry logic and error handling."""
-
-    def __init__(self, config: dict[str, Any]):
-        """Initialize S3 backend with configuration."""
-        if not BOTO3_AVAILABLE:
-            raise RuntimeError("boto3 is not available. Install boto3 to use S3 backend.")
-
-        self.bucket = config.get("bucket", "tracktion-cue-files")
-        self.prefix = config.get("prefix", "cue_files/")
-        self.acl = config.get("acl", "private")
-        self.storage_class = config.get("storage_class", "STANDARD_IA")
-        self.region = config.get("region", "us-east-1")
-
-        # Initialize S3 client with configuration
-        try:
-            self.s3_client = boto3.client(
-                "s3",
-                region_name=self.region,
-                # AWS credentials will be picked up from environment variables,
-                # IAM roles, or AWS credentials file
-            )
-
-            # Test connection by checking if bucket exists
-            self._verify_bucket_access()
-            logger.info(f"S3 backend initialized for bucket: {self.bucket}")
-
-        except NoCredentialsError as e:
-            logger.error(
-                "AWS credentials not found. Configure credentials via environment variables, "
-                "IAM roles, or AWS credentials file."
-            )
-            raise RuntimeError("AWS credentials not configured") from e
-        except Exception as e:
-            logger.error(f"Failed to initialize S3 client: {e}")
-            raise RuntimeError(f"S3 initialization failed: {e}") from e
-
-    def _verify_bucket_access(self) -> None:
-        """Verify bucket exists and we have access."""
-        try:
-            self.s3_client.head_bucket(Bucket=self.bucket)
-            logger.debug(f"Verified access to S3 bucket: {self.bucket}")
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "404":
-                raise RuntimeError(f"S3 bucket '{self.bucket}' does not exist") from e
-            if error_code == "403":
-                raise RuntimeError(f"Access denied to S3 bucket '{self.bucket}'. Check bucket permissions.") from e
-            raise RuntimeError(f"Failed to access S3 bucket '{self.bucket}': {e}") from e
-
-    def _get_s3_key(self, file_path: str) -> str:
-        """Generate S3 key from file path."""
-        # Remove leading slash if present and combine with prefix
-        clean_path = file_path.lstrip("/")
-        return f"{self.prefix}{clean_path}"
-
-    @retry(
-        retry=retry_if_exception_type((ClientError, BotoCoreError)),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
-    def store(self, content: str, file_path: str, metadata: dict[str, Any] | None = None) -> StorageResult:
-        """Store content to S3 with retry logic."""
-        try:
-            s3_key = self._get_s3_key(file_path)
-            content_bytes = content.encode("utf-8")
-
-            # Calculate checksum
-            checksum = hashlib.sha256(content_bytes).hexdigest()
-            file_size = len(content_bytes)
-
-            # Prepare S3 metadata
-            s3_metadata = {
-                "checksum": checksum,
-                "content-type": "text/plain; charset=utf-8",
-                "original-filename": file_path.split("/")[-1],
-            }
-
-            # Add custom metadata if provided
-            if metadata:
-                for key, value in metadata.items():
-                    # S3 metadata keys must be lowercase and cannot contain underscores
-                    clean_key = str(key).lower().replace("_", "-")
-                    s3_metadata[clean_key] = str(value)
-
-            # Check if file already exists to determine version
-            version = 1
-            try:
-                existing_versions = self._list_object_versions(s3_key)
-                if existing_versions:
-                    version = len(existing_versions) + 1
-            except Exception as e:
-                logger.warning(f"Could not determine version for {s3_key}: {e}")
-
-            # Upload to S3
-            upload_args = {
-                "Bucket": self.bucket,
-                "Key": s3_key,
-                "Body": content_bytes,
-                "ContentType": "text/plain; charset=utf-8",
-                "Metadata": s3_metadata,
-                "StorageClass": self.storage_class,
-            }
-
-            # Add ACL if specified and not None
-            if self.acl and self.acl.lower() != "none":
-                upload_args["ACL"] = self.acl
-
-            self.s3_client.put_object(**upload_args)
-
-            # Generate S3 URL
-            s3_url = f"s3://{self.bucket}/{s3_key}"
-
-            logger.info(f"Stored file to S3: {s3_url} (size: {file_size}, checksum: {checksum[:8]}...)")
-
-            return StorageResult(
-                success=True,
-                file_path=s3_url,
-                checksum=checksum,
-                file_size=file_size,
-                version=version,
-                error=None,
-                metadata=metadata or {},
-            )
-
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
-
-            if error_code == "NoSuchBucket":
-                error_msg = f"S3 bucket '{self.bucket}' does not exist"
-            elif error_code == "AccessDenied":
-                error_msg = f"Access denied to S3 bucket '{self.bucket}'. Check IAM permissions."
-            else:
-                error_msg = f"S3 error ({error_code}): {error_message}"
-
-            logger.error(f"Failed to store file to S3 {file_path}: {error_msg}", exc_info=True)
-            return StorageResult(
-                success=False,
-                file_path="",
-                checksum="",
-                file_size=0,
-                version=0,
-                error=error_msg,
-                metadata={},
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to store file to S3 {file_path}: {e}", exc_info=True)
-            return StorageResult(
-                success=False,
-                file_path="",
-                checksum="",
-                file_size=0,
-                version=0,
-                error=str(e),
-                metadata={},
-            )
-
-    @retry(
-        retry=retry_if_exception_type((ClientError, BotoCoreError)),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
-    def retrieve(self, file_path: str) -> tuple[bool, str | None, str | None]:
-        """Retrieve content from S3 with retry logic."""
-        try:
-            # Handle both S3 URLs and relative paths
-            if file_path.startswith("s3://"):
-                # Extract key from S3 URL: s3://bucket/key
-                parts = file_path[5:].split("/", 1)
-                if len(parts) != 2 or parts[0] != self.bucket:
-                    return False, None, f"Invalid S3 URL or wrong bucket: {file_path}"
-                s3_key = parts[1]
-            else:
-                s3_key = self._get_s3_key(file_path)
-
-            # Get object from S3
-            response = self.s3_client.get_object(Bucket=self.bucket, Key=s3_key)
-
-            # Read content
-            content = response["Body"].read().decode("utf-8")
-
-            logger.debug(f"Retrieved file from S3: s3://{self.bucket}/{s3_key} ({len(content)} bytes)")
-            return True, content, None
-
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-
-            if error_code == "NoSuchKey":
-                error_msg = f"File not found in S3: {file_path}"
-            elif error_code == "NoSuchBucket":
-                error_msg = f"S3 bucket '{self.bucket}' does not exist"
-            elif error_code == "AccessDenied":
-                error_msg = f"Access denied to S3 object: {file_path}"
-            else:
-                error_msg = f"S3 error ({error_code}): {e.response['Error']['Message']}"
-
-            logger.error(f"Failed to retrieve file from S3 {file_path}: {error_msg}")
-            return False, None, error_msg
-
-        except Exception as e:
-            logger.error(f"Failed to retrieve file from S3 {file_path}: {e}", exc_info=True)
-            return False, None, str(e)
-
-    @retry(
-        retry=retry_if_exception_type((ClientError, BotoCoreError)),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
-    def delete(self, file_path: str) -> bool:
-        """Delete file from S3 with retry logic."""
-        try:
-            # Handle both S3 URLs and relative paths
-            if file_path.startswith("s3://"):
-                parts = file_path[5:].split("/", 1)
-                if len(parts) != 2 or parts[0] != self.bucket:
-                    logger.error(f"Invalid S3 URL or wrong bucket: {file_path}")
-                    return False
-                s3_key = parts[1]
-            else:
-                s3_key = self._get_s3_key(file_path)
-
-            # Check if file exists before deletion
-            if not self._object_exists(s3_key):
-                logger.warning(f"File not found for deletion: s3://{self.bucket}/{s3_key}")
-                return False
-
-            # Delete from S3
-            self.s3_client.delete_object(Bucket=self.bucket, Key=s3_key)
-
-            logger.info(f"Deleted file from S3: s3://{self.bucket}/{s3_key}")
-            return True
-
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            logger.error(f"Failed to delete file from S3 {file_path}: {error_code} - {e.response['Error']['Message']}")
-            return False
-
-        except Exception as e:
-            logger.error(f"Failed to delete file from S3 {file_path}: {e}", exc_info=True)
-            return False
-
-    def exists(self, file_path: str) -> bool:
-        """Check if file exists in S3."""
-        try:
-            # Handle both S3 URLs and relative paths
-            if file_path.startswith("s3://"):
-                parts = file_path[5:].split("/", 1)
-                if len(parts) != 2 or parts[0] != self.bucket:
-                    return False
-                s3_key = parts[1]
-            else:
-                s3_key = self._get_s3_key(file_path)
-
-            return self._object_exists(s3_key)
-
-        except Exception as e:
-            logger.error(f"Error checking if file exists in S3 {file_path}: {e}")
-            return False
-
-    def _object_exists(self, s3_key: str) -> bool:
-        """Check if S3 object exists."""
-        try:
-            self.s3_client.head_object(Bucket=self.bucket, Key=s3_key)
-            return True
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "404":
-                return False
-            raise
-
-    def list_versions(self, file_path: str) -> list[dict[str, Any]]:
-        """List all versions of a file in S3."""
-        try:
-            # Handle both S3 URLs and relative paths
-            if file_path.startswith("s3://"):
-                parts = file_path[5:].split("/", 1)
-                if len(parts) != 2 or parts[0] != self.bucket:
-                    return []
-                s3_key = parts[1]
-            else:
-                s3_key = self._get_s3_key(file_path)
-
-            return self._list_object_versions(s3_key)
-
-        except Exception as e:
-            logger.error(f"Failed to list versions for S3 file {file_path}: {e}", exc_info=True)
-            return []
-
-    def _list_object_versions(self, s3_key: str) -> list[dict[str, Any]]:
-        """List versions of an S3 object."""
-        try:
-            # List object versions
-            response = self.s3_client.list_object_versions(Bucket=self.bucket, Prefix=s3_key)
-
-            # Use list comprehension as suggested by ruff
-            versions = [
-                {
-                    "version": version["VersionId"] if version.get("VersionId") != "null" else "current",
-                    "path": f"s3://{self.bucket}/{s3_key}",
-                    "size": version["Size"],
-                    "modified": version["LastModified"].isoformat(),
-                    "storage_class": version.get("StorageClass", "STANDARD"),
-                    "etag": version["ETag"].strip('"'),
-                }
-                for version in response.get("Versions", [])
-                if version["Key"] == s3_key
-            ]
-
-            # Sort by modification date, most recent first
-            return sorted(versions, key=lambda x: x["modified"], reverse=True)
-
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchBucket":
-                logger.error(f"S3 bucket '{self.bucket}' does not exist")
-            else:
-                logger.error(f"Failed to list object versions: {e}")
-            return []
 
 
 class StorageService:
@@ -629,13 +294,10 @@ class StorageService:
         # Initialize filesystem backend
         self.backends["filesystem"] = FilesystemBackend(self.config.filesystem)
 
-        # Initialize S3 backend if configured
-        if self.config.primary == "s3":
-            if BOTO3_AVAILABLE:
-                self.backends["s3"] = S3Backend(self.config.s3)
-            else:
-                logger.warning("S3 backend requested but boto3 not available. Falling back to filesystem.")
-                self.config.primary = "filesystem"
+        # Only filesystem backend is supported
+        if self.config.primary != "filesystem":
+            logger.warning(f"Unsupported backend '{self.config.primary}' requested. Using filesystem backend.")
+            self.config.primary = "filesystem"
 
         # Set primary backend
         self.primary_backend = self.backends.get(self.config.primary, self.backends["filesystem"])
@@ -765,9 +427,30 @@ class StorageService:
         Returns:
             List of file paths
         """
-        # This would need proper implementation based on backend
-        # For now, return empty list
-        return []
+        try:
+            base_path = self.backends["filesystem"].base_path
+            cue_files = []
+
+            # Search for .cue files recursively
+            for cue_file in base_path.rglob("*.cue"):
+                # Skip metadata files
+                if ".metadata." in cue_file.name:
+                    continue
+
+                file_path = cue_file.relative_to(base_path)
+
+                # Apply filters if specified
+                if tracklist_id and str(tracklist_id) not in str(file_path):
+                    continue
+                if format_type and format_type not in str(file_path):
+                    continue
+
+                cue_files.append(str(file_path))
+
+            return sorted(cue_files)
+        except Exception as e:
+            logger.error(f"Failed to list CUE files: {e}", exc_info=True)
+            return []
 
     def get_storage_stats(self) -> dict[str, Any]:
         """

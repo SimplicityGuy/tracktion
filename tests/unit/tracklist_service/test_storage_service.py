@@ -11,7 +11,6 @@ import pytest
 
 from services.tracklist_service.src.services.storage_service import (
     FilesystemBackend,
-    S3Backend,
     StorageConfig,
     StorageResult,
     StorageService,
@@ -29,13 +28,12 @@ class TestStorageConfig:
         assert config.backup is True
         assert config.max_versions == 5
         assert "base_path" in config.filesystem
-        assert "bucket" in config.s3
 
     def test_custom_config(self):
         """Test custom storage configuration."""
-        config = StorageConfig(primary="s3", backup=False, max_versions=10)
+        config = StorageConfig(primary="filesystem", backup=False, max_versions=10)
 
-        assert config.primary == "s3"
+        assert config.primary == "filesystem"
         assert config.backup is False
         assert config.max_versions == 10
 
@@ -188,38 +186,6 @@ class TestFilesystemBackend:
         assert len(versions) <= 3
 
 
-class TestS3Backend:
-    """Test S3Backend (placeholder implementation)."""
-
-    @pytest.fixture
-    def backend(self):
-        """Create S3 backend."""
-        config = {"bucket": "test-bucket"}
-        return S3Backend(config)
-
-    def test_store_not_implemented(self, backend):
-        """Test that S3 store is not implemented."""
-        result = backend.store("content", "path.cue")
-        assert result.success is False
-        assert "not implemented" in result.error.lower()
-
-    def test_retrieve_not_implemented(self, backend):
-        """Test that S3 retrieve is not implemented."""
-        success, content, error = backend.retrieve("path.cue")
-        assert success is False
-        assert "not implemented" in error.lower()
-
-    def test_delete_not_implemented(self, backend):
-        """Test that S3 delete is not implemented."""
-        result = backend.delete("path.cue")
-        assert result is False
-
-    def test_exists_not_implemented(self, backend):
-        """Test that S3 exists is not implemented."""
-        result = backend.exists("path.cue")
-        assert result is False
-
-
 class TestStorageService:
     """Test StorageService."""
 
@@ -241,8 +207,8 @@ class TestStorageService:
         """Test storage service initialization."""
         assert storage_service.config is not None
         assert storage_service.primary_backend is not None
-        assert storage_service.backup_enabled is True
-        assert storage_service.max_versions == 5
+        assert storage_service.config.backup is True
+        assert storage_service.config.max_versions == 5
 
     def test_generate_file_path(self, storage_service):
         """Test file path generation."""
@@ -381,11 +347,13 @@ class TestStorageService:
         assert stats["backend"] == "filesystem"
 
     def test_unsupported_backend(self, temp_dir):
-        """Test creating service with unsupported backend."""
+        """Test creating service with unsupported backend falls back to filesystem."""
         config = StorageConfig(primary="unsupported")
+        config.filesystem["base_path"] = temp_dir
 
-        with pytest.raises(ValueError, match="Unsupported storage backend"):
-            StorageService(config)
+        # Should not raise, should fallback to filesystem
+        service = StorageService(config)
+        assert service.config.primary == "filesystem"
 
 
 class TestStorageResult:
