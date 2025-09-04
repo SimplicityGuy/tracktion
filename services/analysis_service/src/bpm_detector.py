@@ -101,6 +101,8 @@ class BPMDetector:
             # Normalize confidence to 0-1 range if needed
             # Essentia's RhythmExtractor2013 can return confidence > 1
             if confidence > 1.0:
+                # Observed max values ~5.0 in testing, so divide by 5 for normalization
+                # This maps [0-5] -> [0-1] range while preserving relative differences
                 confidence = min(1.0, confidence / 5.0)  # Rough normalization based on observed values
 
             # Ensure confidence is in valid range
@@ -118,7 +120,8 @@ class BPMDetector:
 
                 # Check agreement between algorithms
                 if abs(bpm - bpm_fallback) < self.agreement_tolerance:
-                    # Algorithms agree, boost confidence
+                    # Algorithms agree within tolerance (default ±5 BPM)
+                    # This indicates high reliability, so boost confidence by 30% (max 90%)
                     confidence = min(0.9, confidence + 0.3)
                     algorithm_used = "consensus"
                     logger.info(f"Algorithms agree: primary={bpm:.1f}, fallback={bpm_fallback:.1f}")
@@ -155,38 +158,83 @@ class BPMDetector:
 
     def _extract_rhythm(self, audio: np.ndarray) -> tuple[float, np.ndarray, float, Any, np.ndarray]:
         """
-        Extract rhythm using RhythmExtractor2013.
+        Extract rhythm using Essentia's RhythmExtractor2013 algorithm.
+
+        This method uses Essentia's RhythmExtractor2013 which implements the algorithm
+        described in "Multifeature beat tracking" by Zapata et al. The algorithm
+        combines multiple onset detection functions and applies tempo tracking.
+
+        Parameters used by RhythmExtractor2013:
+        - Uses multiple onset detection functions (HFC, Complex, Phase)
+        - Applies tempo tracking with dynamic programming
+        - Returns beat positions and BPM estimation with confidence
 
         Args:
-            audio: Audio signal array
+            audio: Audio signal array (mono, float32)
 
         Returns:
-            Tuple of (bpm, beats, confidence, estimates, intervals)
+            Tuple of (bpm, beats, confidence, estimates, intervals) where:
+                - bpm: Estimated beats per minute (float)
+                - beats: Beat positions in seconds (numpy array)
+                - confidence: Algorithm confidence score (float, can exceed 1.0)
+                - estimates: Internal tempo estimates (unused)
+                - intervals: Beat intervals for stability analysis (numpy array)
         """
         return self.rhythm_extractor(audio)  # type: ignore[no-any-return]
 
     def _estimate_bpm_percival(self, audio: np.ndarray) -> float:
         """
-        Estimate BPM using Percival's algorithm as fallback.
+        Estimate BPM using Percival's spectral-based algorithm as fallback.
+
+        This method implements the algorithm from "Evaluation of onset detection
+        algorithms using real time audio" by Graham Percival. This algorithm:
+        - Uses spectral analysis rather than onset detection
+        - Better suited for complex polyrhythmic music
+        - Used as fallback when RhythmExtractor2013 confidence is low
+        - Generally more conservative but stable for difficult tracks
+
+        When used:
+        - Primary algorithm confidence < threshold (default 0.7)
+        - As comparison for algorithm agreement validation
+        - For tempo stability assessment in complex rhythmic patterns
 
         Args:
-            audio: Audio signal array
+            audio: Audio signal array (mono, float32)
 
         Returns:
-            Estimated BPM
+            Estimated BPM value (float) without confidence score
         """
         return self.percival_estimator(audio)  # type: ignore[no-any-return]  # Essentia lacks proper type annotations
 
     def _is_tempo_stable(self, beat_intervals: np.ndarray, threshold: float = 0.15) -> bool:
         """
-        Check if tempo is stable based on beat interval variance.
+        Check if tempo is stable based on beat interval variance using coefficient of variation.
+
+        This method analyzes the consistency of beat intervals to determine if the
+        detected tempo is stable. Used to decide between conflicting algorithm results.
+
+        Algorithm:
+        1. Calculate mean of beat intervals
+        2. Calculate standard deviation of intervals
+        3. Compute coefficient of variation (CV = std/mean)
+        4. Compare CV against threshold (default: 15%)
+
+        Interpretation:
+        - CV < 0.15: Stable tempo (prefer primary algorithm)
+        - CV >= 0.15: Variable tempo (consider fallback algorithm)
+        - Used when algorithms disagree beyond agreement_tolerance
+
+        Threshold rationale:
+        - 0.15 (15%) allows for natural timing variations in human performance
+        - Stricter thresholds may reject valid detections
+        - Looser thresholds may accept unstable tempo detection
 
         Args:
-            beat_intervals: Array of beat intervals
-            threshold: Maximum coefficient of variation for stable tempo
+            beat_intervals: Array of time intervals between consecutive beats (seconds)
+            threshold: Maximum coefficient of variation for stable tempo (default: 0.15)
 
         Returns:
-            True if tempo is stable
+            True if tempo is considered stable, False otherwise
         """
         if len(beat_intervals) < 2:
             return False

@@ -135,14 +135,36 @@ class KeyDetector:
 
     def _detect_with_key_extractor(self, audio: np.ndarray, es: Any) -> tuple[str, str, float]:
         """
-        Primary key detection using Essentia's KeyExtractor.
+        Primary key detection using Essentia's KeyExtractor algorithm.
+
+        This method uses Essentia's KeyExtractor which implements key detection
+        based on harmonic pitch class profiles and template matching. The algorithm:
+
+        1. Analyzes the harmonic content of the audio signal
+        2. Creates a pitch class profile (chroma vector)
+        3. Matches against major/minor key templates
+        4. Returns the best matching key with confidence score
+
+        Algorithm details:
+        - Uses Krumhansl-Schmuckler key-finding algorithm
+        - Default profile type: 'bgate' (optimized for electronic music)
+        - Fallback profile type: 'temperley' (classical music oriented)
+        - Handles memory constraints by analyzing first 60 seconds if needed
+
+        Error handling:
+        - Runtime errors: Tries fallback configuration with 'temperley' profile
+        - Memory errors: Reduces audio length to 60 seconds with confidence penalty
+        - All errors: Returns default 'C major' with zero confidence
 
         Args:
-            audio: Audio signal array
-            es: Essentia standard module
+            audio: Audio signal array (mono, typically 44.1kHz)
+            es: Essentia standard module reference
 
         Returns:
-            Tuple of (key, scale, strength)
+            Tuple of (key, scale, strength) where:
+            - key: Musical key (e.g., 'C', 'F#', 'Bb')
+            - scale: Either 'major' or 'minor'
+            - strength: Algorithm confidence (0.0-1.0, higher is better)
         """
         try:
             # Use KeyExtractor for primary detection
@@ -194,14 +216,44 @@ class KeyDetector:
 
     def _detect_with_hpcp(self, audio: np.ndarray, es: Any) -> tuple[str, str, float]:
         """
-        Alternative key detection using HPCP (Harmonic Pitch Class Profile).
+        Alternative key detection using HPCP (Harmonic Pitch Class Profile) analysis.
+
+        This method provides an independent key detection approach using direct
+        HPCP computation and template matching for validation of primary results.
+
+        Algorithm workflow:
+        1. Compute spectrum from audio signal
+        2. Extract HPCP (chromagram) representing pitch class distribution
+        3. Apply Key() algorithm for template matching
+        4. Fallback to manual template correlation if main algorithm fails
+
+        HPCP (Harmonic Pitch Class Profile):
+        - Represents the relative intensity of each of the 12 pitch classes
+        - Aggregates harmonic content across all octaves
+        - More robust to octave differences than raw pitch detection
+        - Used for chord recognition and key analysis
+
+        Fallback algorithm (when main HPCP fails):
+        - Uses frame-by-frame spectral peak analysis
+        - Computes HPCP manually with reduced configuration
+        - Applies simple correlation with major scale template
+        - Returns low confidence (0.3) to indicate reduced reliability
+
+        Error handling strategy:
+        - RuntimeError: Attempts simplified HPCP configuration with manual processing
+        - MemoryError: Returns default result to prevent system instability
+        - ValueError/IndexError: Handles invalid audio characteristics gracefully
+        - All failures: Returns 'C major' with zero confidence
 
         Args:
-            audio: Audio signal array
-            es: Essentia standard module
+            audio: Audio signal array (mono, float32 format expected)
+            es: Essentia standard module reference for algorithm access
 
         Returns:
-            Tuple of (key, scale, strength)
+            Tuple of (key, scale, strength) where:
+            - key: Detected musical key using standard notation
+            - scale: Either 'major' or 'minor' scale type
+            - strength: Confidence score (0.0-1.0, lower for fallback methods)
         """
         try:
             # Compute spectrum
@@ -229,20 +281,25 @@ class KeyDetector:
                     spectrum = es.Spectrum()
                     peaks = es.SpectralPeaks()
 
-                    # Simplified processing
+                    # Simplified processing: manually process audio frames
                     hpcp_values = []
+                    # Process audio in frames: 4096 samples (~93ms at 44kHz) with 50% overlap
                     for frame in es.FrameGenerator(audio, frameSize=4096, hopSize=2048):
-                        spec = spectrum(frame)
-                        freqs, mags = peaks(spec)
+                        spec = spectrum(frame)  # Convert frame to frequency domain
+                        freqs, mags = peaks(spec)  # Find spectral peaks for pitch detection
                         if len(freqs) > 0:
+                            # Compute HPCP for this frame (harmonic pitch class profile)
                             hpcp_frame = hpcp_simple(freqs, mags)
                             hpcp_values.append(hpcp_frame)
 
                     if hpcp_values:
+                        # Average HPCP across all frames to get overall pitch class distribution
                         hpcp_mean = np.mean(hpcp_values, axis=0)
-                        # Use a simple template matching approach
-                        major_template = [1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1]  # C major template
+                        # Use template matching approach with C major scale pattern
+                        major_template = [1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1]  # C major: C-D-E-F-G-A-B
+                        # Cross-correlate HPCP with major template to find best key
                         correlation = np.correlate(hpcp_mean, major_template, mode="full")
+                        # Find index of maximum correlation (best matching key)
                         best_key_idx = np.argmax(correlation) % 12
                         keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
                         return keys[best_key_idx], "major", 0.3  # Low confidence for fallback method
@@ -272,14 +329,46 @@ class KeyDetector:
         alternative: tuple[str, str, float],
     ) -> KeyDetectionResult:
         """
-        Combine results from multiple algorithms.
+        Combine and validate results from multiple key detection algorithms.
+
+        This method implements a sophisticated algorithm consensus system that:
+        1. Compares results from KeyExtractor (primary) and HPCP (alternative)
+        2. Applies confidence adjustments based on algorithm agreement
+        3. Selects the most reliable result when algorithms disagree
+        4. Determines if manual review is recommended
+
+        Confidence adjustment strategy:
+        - Agreement: Boost confidence by agreement_boost factor (default 1.2x, max 1.0)
+        - Disagreement: Apply disagreement_penalty (default 0.8x) to selected result
+        - Algorithm switching: Use alternative if it has higher strength when disagreeing
+
+        Agreement detection:
+        - Exact match required for both key and scale
+        - No tolerance for enharmonic equivalents (F# ≠ Gb)
+        - Helps identify ambiguous or difficult-to-analyze audio
+
+        Selection when disagreeing:
+        - Compare raw strength values from both algorithms
+        - Choose algorithm with higher confidence for final result
+        - Apply disagreement penalty to account for uncertainty
+        - Preserve alternative result for manual review reference
+
+        Manual review criteria:
+        - Final confidence below needs_review_threshold (default 0.7)
+        - Helps identify tracks requiring human verification
+        - Common for: complex harmonic content, atonal music, modulating keys
 
         Args:
-            primary: Results from KeyExtractor (key, scale, strength)
-            alternative: Results from HPCP method (key, scale, strength)
+            primary: KeyExtractor results (key, scale, strength)
+            alternative: HPCP method results (key, scale, strength)
 
         Returns:
-            Combined KeyDetectionResult with confidence scoring
+            KeyDetectionResult containing:
+            - key/scale: Selected primary result
+            - confidence: Adjusted confidence score (0.0-1.0)
+            - alternative_key/scale: Alternative result if disagreement occurs
+            - agreement: Boolean indicating algorithm consensus
+            - needs_review: Boolean suggesting manual verification if confidence low
         """
         key_primary, scale_primary, strength_primary = primary
         key_alt, scale_alt, strength_alt = alternative
@@ -287,24 +376,28 @@ class KeyDetector:
         # Check agreement between algorithms
         agreement = (key_primary == key_alt) and (scale_primary == scale_alt)
 
-        # Calculate confidence based on agreement
+        # Calculate confidence based on agreement between algorithms
         if agreement:
-            # Boost confidence when algorithms agree
+            # Both algorithms detected same key+scale: boost confidence
+            # Apply agreement_boost multiplier (default 1.2x) but cap at 1.0
             confidence = min(strength_primary * self.agreement_boost, 1.0)
             logger.debug(f"Algorithms agree, boosted confidence: {confidence:.3f}")
         else:
-            # Penalize confidence when algorithms disagree
-            # Use the stronger detection as primary
+            # Algorithms disagree: apply penalty and choose stronger result
+            # Use the stronger detection as primary result for output
             if strength_primary >= strength_alt:
-                confidence = strength_primary * self.disagreement_penalty
+                # Primary algorithm is more confident, keep its result
+                confidence = strength_primary * self.disagreement_penalty  # Default 0.8x penalty
             else:
-                # Switch to alternative if it's stronger
+                # Alternative algorithm is more confident, switch to its result
                 key_primary, scale_primary = key_alt, scale_alt
-                confidence = strength_alt * self.disagreement_penalty
+                confidence = strength_alt * self.disagreement_penalty  # Apply same penalty
 
             logger.debug(f"Algorithms disagree, reduced confidence: {confidence:.3f}")
 
         # Determine if manual review is needed
+        # TODO: Implement machine learning model to improve confidence threshold
+        # Could learn from manual review feedback to optimize needs_review_threshold
         needs_review = confidence < self.needs_review_threshold
 
         return KeyDetectionResult(

@@ -26,7 +26,22 @@ class MetadataExtractionError(Exception):
 
 
 class MetadataExtractor:
-    """Extracts metadata from audio files."""
+    """Extracts metadata from audio files using the Mutagen library.
+
+    This class provides comprehensive metadata extraction capabilities for various
+    audio formats including MP3, FLAC, WAV, MP4/M4A, and OGG Vorbis. It handles
+    format-specific tag structures and normalizes output to a consistent format.
+
+    Attributes:
+        SUPPORTED_FORMATS: Set of supported file extensions.
+        VORBIS_STANDARD_FIELDS: Mapping of Vorbis comment fields to normalized names.
+
+    Example:
+        >>> extractor = MetadataExtractor()
+        >>> metadata = extractor.extract("song.mp3")
+        >>> print(metadata["title"])  # Song title
+        >>> supported = extractor.get_supported_formats()
+    """
 
     # Supported audio formats
     SUPPORTED_FORMATS: ClassVar[set[str]] = {
@@ -87,7 +102,12 @@ class MetadataExtractor:
     }
 
     def __init__(self) -> None:
-        """Initialize the metadata extractor."""
+        """Initialize the metadata extractor.
+
+        Sets up format-specific handlers for each supported audio format.
+        The handlers are optimized for each format's specific tag structure
+        and technical metadata characteristics.
+        """
         self._format_handlers = {
             ".mp3": self._extract_mp3,
             ".flac": self._extract_flac,
@@ -582,7 +602,16 @@ class MetadataExtractor:
     def get_supported_formats(self) -> set:
         """Get the set of supported audio formats.
 
+        Returns a copy of the supported formats set to prevent external
+        modification of the class-level constant.
+
         Returns:
-            Set of supported file extensions
+            Set of supported file extensions (e.g., {'.mp3', '.flac', '.wav'}).
+
+        Example:
+            >>> extractor = MetadataExtractor()
+            >>> formats = extractor.get_supported_formats()
+            >>> '.mp3' in formats
+            True
         """
         return self.SUPPORTED_FORMATS.copy()
