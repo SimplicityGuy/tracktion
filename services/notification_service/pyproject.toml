@@ -2,7 +2,7 @@
 name = "notification-service"
 version = "1.0.0"
 description = "Unified Discord notification service for Tracktion"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.9.0",
     "redis>=5.0.0",
@@ -18,11 +18,11 @@ dev = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py311"
 fix = true
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false

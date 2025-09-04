@@ -2,7 +2,7 @@
 name = "audio-analysis-research"
 version = "0.1.0"
 description = "Research spike for audio analysis libraries and techniques"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.11"
 dependencies = [ "essentia", "librosa>=0.10.1", "numpy>=1.26.0", "scipy>=1.11.0", "matplotlib>=3.8.0", "pandas>=2.1.0", "seaborn>=0.13.0", "pydub>=0.25.1", "soundfile>=0.12.1", "tensorflow>=2.15.0", "mutagen>=1.47.0", "tqdm>=4.66.0", "python-dotenv>=1.0.0",]
 
 [build-system]
@@ -17,11 +17,11 @@ packages = []
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py311"
 fix = true
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
@@ -39,7 +39,7 @@ ignore_errors = true
 
 [tool.black]
 line-length = 120
-target-version = [ "py313",]
+target-version = [ "py311",]
 include = "\\.pyi?$"
 extend-exclude = "\n(\n  /(\n      \\.eggs\n    | \\.git\n    | \\.hg\n    | \\.mypy_cache\n    | \\.tox\n    | \\.venv\n    | _build\n    | buck-out\n    | build\n    | dist\n    | migrations\n  )/\n)\n"
 

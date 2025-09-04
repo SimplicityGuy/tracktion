@@ -2,7 +2,7 @@
 name = "cataloging-service"
 version = "0.1.0"
 description = "Cataloging service for managing music file database entries"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "aio-pika>=9.0.0",
     "alembic>=1.13.0",
@@ -24,7 +24,7 @@ build-backend = "hatchling.build"
 dev = [ "mypy==1.17.1", "pre-commit>=3.0.0", "pytest>=7.0.0", "pytest-asyncio>=0.21.0", "pytest-cov>=4.0.0", "ruff>=0.1.0",]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
@@ -48,12 +48,12 @@ ignore_errors = true
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py311"
 fix = true
 
 [tool.black]
 line-length = 120
-target-version = [ "py313",]
+target-version = [ "py311",]
 include = "\\.pyi?$"
 extend-exclude = "\n(\n  /(\n      \\.eggs\n    | \\.git\n    | \\.hg\n    | \\.mypy_cache\n    | \\.tox\n    | \\.venv\n    | _build\n    | buck-out\n    | build\n    | dist\n    | migrations\n  )/\n)\n"
 

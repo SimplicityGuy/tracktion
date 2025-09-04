@@ -17,12 +17,15 @@
 # Usage: ./scripts/update-dependencies.sh [options]
 #
 # Options:
-#   --python VERSION    Update Python version (default: keep current)
+#   --python VERSION    Update Python version (default: 3.11, current project standard)
 #   --no-backup        Skip creating backup files
 #   --dry-run          Show what would be updated without making changes
 #   --major            Include major version upgrades for packages
 #   --skip-tests       Skip running tests after updates
 #   --help             Show this help message
+#
+# Note: This project is configured to stay on Python 3.11 for compatibility.
+# Use --python 3.11 explicitly or accept the safety prompt for other versions.
 
 set -euo pipefail
 
@@ -35,7 +38,7 @@ DRY_RUN=false
 MAJOR_UPGRADES=false
 SKIP_TESTS=false
 UPDATE_PYTHON=false
-PYTHON_VERSION=""
+PYTHON_VERSION="3.11"  # Default to Python 3.11
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 CHANGES_MADE=false
 
@@ -221,6 +224,20 @@ update_python_version() {
     if [[ "$current_version" == "$PYTHON_VERSION" ]]; then
         print_info "Python version is already $PYTHON_VERSION"
         return
+    fi
+
+    # Safety check: warn if trying to update beyond 3.11
+    if [[ "$PYTHON_VERSION" != "3.11" ]]; then
+        print_warning "⚠️  WARNING: You are updating to Python $PYTHON_VERSION"
+        print_warning "⚠️  This project is configured to stay on Python 3.11"
+        print_warning "⚠️  Use --python 3.11 to stay on the recommended version"
+        echo ""
+        read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_info "Aborted Python version update"
+            return
+        fi
     fi
 
     print_info "Updating Python from $current_version to $PYTHON_VERSION"

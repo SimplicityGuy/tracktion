@@ -88,11 +88,11 @@ dev-dependencies = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py311"
 fix = true
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
@@ -112,7 +112,7 @@ ignore_errors = true
 
 [tool.black]
 line-length = 120
-target-version = [ "py313",]
+target-version = [ "py311",]
 include = "\\.pyi?$"
 extend-exclude = "\n(\n  /(\n      \\.eggs\n    | \\.git\n    | \\.hg\n    | \\.mypy_cache\n    | \\.tox\n    | \\.venv\n    | _build\n    | buck-out\n    | build\n    | dist\n    | migrations\n  )/\n)\n"
 
