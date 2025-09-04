@@ -7,7 +7,7 @@ from pathlib import Path
 
 from sqlalchemy import engine_from_config, pool
 
-from alembic import context
+from alembic import context  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
 
 sys.path.append(str(Path(__file__).parent.parent))
 from services.tracklist_service.src.models.tracklist import Base

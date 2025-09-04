@@ -9,7 +9,7 @@ Create Date: 2025-08-28 12:00:00.000000
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
-from alembic import op
+from alembic import op  # type: ignore[attr-defined]  # Alembic adds attributes at runtime
 
 # revision identifiers, used by Alembic.
 revision = "004_add_cue_file_models"
