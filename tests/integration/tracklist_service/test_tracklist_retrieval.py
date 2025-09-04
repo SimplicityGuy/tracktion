@@ -16,7 +16,7 @@ from aio_pika import IncomingMessage
 
 from services.tracklist_service.src.cache.redis_cache import RedisCache
 from services.tracklist_service.src.messaging.tracklist_handler import TracklistMessageHandler
-from services.tracklist_service.src.models.tracklist import Track, Tracklist, TracklistRequest
+from services.tracklist_service.src.models.tracklist_models import Track, Tracklist, TracklistRequest
 from services.tracklist_service.src.resilience.error_handler import (
     CircuitBreaker,
     ParseError,

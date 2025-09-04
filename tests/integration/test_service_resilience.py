@@ -38,6 +38,9 @@ from services.analysis_service.src.circuit_breaker import (
     CircuitBreakerConfig,
     CircuitOpenError,
 )
+from services.analysis_service.src.circuit_breaker import (
+    CircuitState as AnalysisCircuitState,
+)
 from services.tracklist_service.src.resilience import (
     CircuitState,
     ExponentialBackoff,
@@ -546,7 +549,7 @@ class TestCircuitBreakerResilience:
                 failed_requests += 1
 
         # Verify circuit breaker opened and prevented further failures
-        assert circuit_breaker.state == CircuitState.OPEN
+        assert circuit_breaker.state == AnalysisCircuitState.OPEN
         assert failed_requests >= circuit_breaker_config.failure_threshold
 
         # Check that remaining requests were rejected quickly
@@ -570,7 +573,7 @@ class TestCircuitBreakerResilience:
                 pass
 
         # Verify circuit closed after successful operations
-        assert circuit_breaker.state == CircuitState.CLOSED
+        assert circuit_breaker.state == AnalysisCircuitState.CLOSED
         assert success_count >= circuit_breaker_config.success_threshold
 
     async def test_circuit_breaker_with_fallback_mechanism(self, resilience_suite: ResilienceTestSuite):
@@ -602,7 +605,7 @@ class TestCircuitBreakerResilience:
 
         assert fallback_called
         assert result in fallback_responses
-        assert circuit_breaker.state == CircuitState.OPEN
+        assert circuit_breaker.state == AnalysisCircuitState.OPEN
 
         stats = circuit_breaker.get_stats()
         assert stats["fallback_calls"] > 0
@@ -625,8 +628,8 @@ class TestCircuitBreakerResilience:
                 await analysis_cb.call(resilience_suite.service_mesh.call_service, "analysis")
 
         # Test that analysis circuit is open but tracklist is still closed
-        assert analysis_cb.state == CircuitState.OPEN
-        assert tracklist_cb.state == CircuitState.CLOSED
+        assert analysis_cb.state == AnalysisCircuitState.OPEN
+        assert tracklist_cb.state == AnalysisCircuitState.CLOSED
 
         # Verify tracklist service still works
         result = await tracklist_cb.call(resilience_suite.service_mesh.call_service, "tracklist")
@@ -920,7 +923,7 @@ class TestBulkheadPattern:
         assert len(successful_results) > 0
 
         # Verify circuit breaker remained closed (no failures due to bulkhead protection)
-        assert circuit_breaker.state == CircuitState.CLOSED
+        assert circuit_breaker.state == AnalysisCircuitState.CLOSED
 
     async def test_priority_based_resource_allocation(self, resilience_suite: ResilienceTestSuite):
         """Test priority-based resource allocation in bulkhead pattern."""
