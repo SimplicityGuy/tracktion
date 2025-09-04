@@ -1,0 +1,28 @@
+# Spellcheck configuration for documentation
+matrix:
+  - name: Markdown
+    aspell:
+      lang: en
+      d: en_US
+    dictionary:
+      wordlists:
+        - .wordlist.txt
+      output: wordlists/spellcheck-action.dic
+    pipeline:
+      - pyspelling.filters.markdown:
+          markdown_extensions:
+            - pymdownx.superfences:
+          ignores:
+            - code_block
+            - inline_code
+      - pyspelling.filters.html:
+          comments: false
+          attributes:
+            - title
+            - alt
+          ignores:
+            - code
+            - pre
+    sources:
+      - '**/*.md'
+    default_encoding: utf-8

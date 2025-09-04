@@ -1,0 +1,345 @@
+/* Enhanced styles for Tracktion Documentation */
+
+/* Search enhancements */
+.search-filters {
+    margin-top: 0.5rem;
+    padding: 0.5rem 0;
+}
+
+.filter-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 0.25rem 0.75rem;
+    border: 1px solid var(--md-default-fg-color--lighter);
+    background: var(--md-default-bg-color);
+    color: var(--md-default-fg-color);
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: all 0.2s ease;
+}
+
+.filter-btn:hover {
+    background: var(--md-default-fg-color--lightest);
+}
+
+.filter-btn.active {
+    background: var(--md-primary-fg-color);
+    color: var(--md-primary-bg-color);
+    border-color: var(--md-primary-fg-color);
+}
+
+.search-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--md-default-bg-color);
+    border: 1px solid var(--md-default-fg-color--lighter);
+    border-top: none;
+    border-radius: 0 0 0.25rem 0.25rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.suggestion-item {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.suggestion-item:hover {
+    background: var(--md-default-fg-color--lightest);
+}
+
+/* Search result highlighting */
+mark {
+    background: var(--md-accent-fg-color--transparent);
+    color: var(--md-accent-fg-color);
+    padding: 0.1rem 0.2rem;
+    border-radius: 0.1rem;
+}
+
+/* Keyboard shortcut indicator */
+.search-shortcut {
+    position: relative;
+}
+
+.search-shortcut::after {
+    content: "Ctrl+K";
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.7rem;
+    color: var(--md-default-fg-color--light);
+    opacity: 0.7;
+}
+
+@media (max-width: 76.1875em) {
+    .search-shortcut::after {
+        display: none;
+    }
+}
+
+/* Documentation status badges */
+.doc-status {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-left: 0.5rem;
+}
+
+.doc-status--complete {
+    background: var(--md-code-bg-color);
+    color: var(--md-code-fg-color);
+}
+
+.doc-status--draft {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.doc-status--review {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+/* API endpoint styling */
+.api-endpoint {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 1rem 0;
+    padding: 1rem;
+    background: var(--md-code-bg-color);
+    border-radius: 0.25rem;
+    font-family: var(--md-code-font);
+}
+
+.api-method {
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.2rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: white;
+}
+
+.api-method--get { background: #28a745; }
+.api-method--post { background: #007bff; }
+.api-method--put { background: #ffc107; color: #212529; }
+.api-method--patch { background: #6f42c1; }
+.api-method--delete { background: #dc3545; }
+
+.api-path {
+    font-weight: 600;
+    color: var(--md-default-fg-color);
+}
+
+/* Service architecture diagrams */
+.architecture-diagram {
+    text-align: center;
+    margin: 2rem 0;
+}
+
+.service-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin: 2rem 0;
+}
+
+.service-card {
+    padding: 1.5rem;
+    border: 1px solid var(--md-default-fg-color--lighter);
+    border-radius: 0.5rem;
+    background: var(--md-default-bg-color);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.service-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.service-card h3 {
+    margin-top: 0;
+    color: var(--md-primary-fg-color);
+}
+
+/* Configuration tables */
+.config-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+
+.config-table th,
+.config-table td {
+    padding: 0.75rem;
+    border: 1px solid var(--md-default-fg-color--lighter);
+    text-align: left;
+}
+
+.config-table th {
+    background: var(--md-default-fg-color--lightest);
+    font-weight: 600;
+}
+
+.config-table code {
+    background: transparent;
+    padding: 0;
+}
+
+/* Troubleshooting sections */
+.troubleshoot-section {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    border-left: 4px solid var(--md-accent-fg-color);
+    background: var(--md-accent-fg-color--transparent);
+}
+
+.troubleshoot-section h4 {
+    margin-top: 0;
+    color: var(--md-accent-fg-color);
+}
+
+/* Tutorial progress indicators */
+.tutorial-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 1rem 0;
+    padding: 1rem;
+    background: var(--md-default-fg-color--lightest);
+    border-radius: 0.25rem;
+}
+
+.progress-step {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.8rem;
+    border: 2px solid var(--md-default-fg-color--lighter);
+    background: var(--md-default-bg-color);
+}
+
+.progress-step.active {
+    background: var(--md-primary-fg-color);
+    color: var(--md-primary-bg-color);
+    border-color: var(--md-primary-fg-color);
+}
+
+.progress-step.complete {
+    background: var(--md-accent-fg-color);
+    color: white;
+    border-color: var(--md-accent-fg-color);
+}
+
+/* Code block enhancements */
+.highlight {
+    position: relative;
+}
+
+.highlight .copy-button {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: var(--md-default-fg-color--light);
+    color: var(--md-default-bg-color);
+    border: none;
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.highlight:hover .copy-button {
+    opacity: 1;
+}
+
+/* Responsive improvements */
+@media (max-width: 76.1875em) {
+    .filter-buttons {
+        justify-content: center;
+    }
+
+    .service-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .api-endpoint {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* Print styles */
+@media print {
+    .search-filters,
+    .search-suggestions,
+    .copy-button {
+        display: none !important;
+    }
+
+    .service-card {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ccc;
+    }
+
+    .api-endpoint {
+        break-inside: avoid;
+    }
+}
+
+/* Dark mode adjustments */
+[data-md-color-scheme="slate"] .doc-status--draft {
+    background: #664d03;
+    color: #fff3cd;
+}
+
+[data-md-color-scheme="slate"] .doc-status--review {
+    background: #055160;
+    color: #d1ecf1;
+}
+
+/* Accessibility improvements */
+.filter-btn:focus,
+.suggestion-item:focus {
+    outline: 2px solid var(--md-accent-fg-color);
+    outline-offset: 2px;
+}
+
+/* Animation for loading states */
+.loading-spinner {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid var(--md-default-fg-color--lighter);
+    border-top: 2px solid var(--md-primary-fg-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

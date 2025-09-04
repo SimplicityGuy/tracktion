@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 ModelType = TypeVar("ModelType", bound=Base)
 
 
-class BaseRepository(Generic[ModelType]):  # noqa: UP046 - Python 3.11 compatibility
+class BaseRepository(Generic[ModelType]):
     """Base repository with common CRUD operations."""
 
     def __init__(self, model: type[ModelType], session: AsyncSession) -> None:

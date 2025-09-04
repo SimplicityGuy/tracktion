@@ -1,0 +1,149 @@
+# Markdown linting configuration for Tracktion documentation
+
+# Customize default rules
+default: true
+
+# Rule customizations
+MD001: false  # Heading levels should only increment by one level at a time
+MD003:        # Heading style
+  style: "atx"  # Use # style headings
+
+MD004:        # Unordered list style
+  style: "dash"  # Use - for bullets
+
+MD005: false  # Inconsistent indentation for list items at the same level
+
+MD007:        # Unordered list indentation
+  indent: 2   # Use 2 spaces for indentation
+  start_indented: false
+
+MD009:        # Trailing spaces
+  br_spaces: 2  # Allow 2 trailing spaces for line breaks
+
+MD010: false  # Hard tabs (disabled because some code examples use tabs)
+
+MD012:        # Multiple consecutive blank lines
+  maximum: 2  # Allow up to 2 consecutive blank lines
+
+MD013:        # Line length
+  line_length: 120  # Allow longer lines for documentation
+  heading_line_length: 80
+  code_block_line_length: 120
+  tables: false  # Don't check line length in tables
+
+MD022:        # Headings should be surrounded by blank lines
+  lines_above: 1
+  lines_below: 1
+
+MD024:        # Multiple headings with the same content
+  allow_different_nesting: true  # Allow same heading content at different levels
+
+MD025:        # Multiple top level headings in the same document
+  front_matter_title: ""  # Allow H1 in front matter
+
+MD026:        # Trailing punctuation in heading
+  punctuation: ".,;:!?"  # Standard punctuation to avoid
+
+MD029:        # Ordered list item prefix
+  style: "ordered"  # Use 1. 2. 3. style
+
+MD030:        # Spaces after list markers
+  ul_single: 1      # 1 space after - in unordered lists
+  ol_single: 1      # 1 space after 1. in ordered lists
+  ul_multi: 1       # 1 space for multi-line unordered list items
+  ol_multi: 1       # 1 space for multi-line ordered list items
+
+MD031:        # Fenced code blocks should be surrounded by blank lines
+  list_items: false  # Don't require blank lines around code in lists
+
+MD032:        # Lists should be surrounded by blank lines
+  list_items: false  # Don't require blank lines around nested lists
+
+MD033:        # Inline HTML
+  allowed_elements:  # Allow these HTML elements
+    - "a"
+    - "abbr"
+    - "acronym"
+    - "b"
+    - "br"
+    - "cite"
+    - "code"
+    - "dd"
+    - "del"
+    - "details"
+    - "div"
+    - "dl"
+    - "dt"
+    - "em"
+    - "h1"
+    - "h2"
+    - "h3"
+    - "h4"
+    - "h5"
+    - "h6"
+    - "i"
+    - "img"
+    - "ins"
+    - "kbd"
+    - "li"
+    - "mark"
+    - "ol"
+    - "p"
+    - "pre"
+    - "q"
+    - "s"
+    - "samp"
+    - "small"
+    - "span"
+    - "strong"
+    - "sub"
+    - "summary"
+    - "sup"
+    - "table"
+    - "tbody"
+    - "td"
+    - "th"
+    - "thead"
+    - "tr"
+    - "u"
+    - "ul"
+    - "var"
+
+MD034: false  # Bare URL used (disabled for documentation with many URLs)
+
+MD036:        # Emphasis used instead of a heading
+  punctuation: ".,;:!?。，；：！？"
+
+MD040: false  # Fenced code blocks should have a language specified (disabled for output examples)
+
+MD041:        # First line in file should be a top level heading
+  front_matter_title: ""  # Allow front matter before H1
+
+MD046:        # Code block style
+  style: "fenced"  # Use ``` style code blocks
+
+MD048:        # Code fence style
+  style: "backtick"  # Use ``` not ~~~
+
+MD049:        # Emphasis markers
+  style: "asterisk"  # Use *emphasis* and **strong**
+
+MD050:        # Strong style
+  style: "asterisk"  # Use **strong**
+
+MD051: false  # Link fragments should be valid (disabled due to false positives)
+
+MD052: false  # Reference links and images should use a label that is defined
+
+MD053: false  # Link and image reference definitions should be needed
+
+# Custom rules for documentation
+# Ignore certain patterns
+ignore:
+  # Ignore auto-generated files
+  - "node_modules/"
+  - "site/"
+  - ".mkdocs_cache/"
+
+  # Ignore template files with placeholders
+  - "docs/templates/*.md"

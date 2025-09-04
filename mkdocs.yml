@@ -1,0 +1,272 @@
+# MkDocs Configuration for Tracktion Documentation
+site_name: Tracktion Documentation
+site_description: Comprehensive documentation for the Tracktion music management system
+site_author: Tracktion Development Team
+site_url: https://docs.tracktion.io
+
+# Repository
+repo_name: tracktion/tracktion
+repo_url: https://github.com/your-org/tracktion
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2024 Tracktion Team
+
+# Configuration
+theme:
+  name: material
+  custom_dir: docs/overrides
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.tabs.link
+    - content.tooltips
+    - header.autohide
+    - navigation.expand
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.prune
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+    - toc.integrate
+
+  logo: assets/images/logo.svg
+  favicon: assets/images/favicon.png
+
+# Plugins
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - minify:
+      minify_html: true
+  - git-revision-date-localized:
+      enabled: !ENV [CI, false]
+      type: timeago
+  - git-committers:
+      repository: your-org/tracktion
+      branch: main
+  - git-authors
+  - macros
+  - include-markdown
+  - mkdocs-jupyter:
+      execute: false
+  - mike:
+      version_selector: true
+      css_dir: css
+      javascript_dir: js
+      canonical_version: latest
+      alias_type: symlink
+
+# Customization
+extra:
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-org/tracktion
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/u/tracktion
+    - icon: fontawesome/brands/slack
+      link: https://tracktion.slack.com
+  analytics:
+    provider: google
+    property: !ENV GOOGLE_ANALYTICS_KEY
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/extra.js
+
+# Extensions
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+      title: On this page
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+      emoji_index: !!python/name:materialx.emoji.twemoji
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: your-org
+      repo: tracktion
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Navigation
+nav:
+  - Home: index.md
+
+  - Getting Started:
+    - getting-started/index.md
+    - Quick Start: getting-started/quickstart.md
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+    - First Steps: getting-started/first-steps.md
+
+  - Architecture:
+    - architecture/index.md
+    - System Overview: architecture/system-overview.md
+    - Service Architecture: architecture/service-interactions.md
+    - Database Schema: architecture/database-schemas.md
+    - Message Queue: architecture/message-queue.md
+    - Design Patterns: architecture/design-patterns.md
+    - Sequence Diagrams: architecture/sequence-diagrams.md
+    - For Newcomers: development/architecture-overview-newcomers.md
+
+  - Services:
+    - services/index.md
+    - Analysis Service:
+      - services/analysis-service/index.md
+      - API Documentation: services/analysis-service/api.md
+      - Configuration: services/analysis-service/configuration.md
+    - Tracklist Service:
+      - services/tracklist-service/index.md
+      - API Documentation: services/tracklist-service/api.md
+      - Configuration: services/tracklist-service/configuration.md
+    - File Watcher:
+      - services/file-watcher/index.md
+      - Configuration: services/file-watcher/configuration.md
+    - Other Services: services/other-services.md
+
+  - API Reference:
+    - api/index.md
+    - REST APIs: api/rest-apis.md
+    - WebSocket APIs: api/websocket-apis.md
+    - Message Queue: api/message-queue.md
+    - OpenAPI Specs: api/openapi-specs.md
+    - Authentication: api/authentication.md
+    - Rate Limiting: api/rate-limiting.md
+    - Error Handling: api/error-handling.md
+
+  - Development:
+    - development/index.md
+    - Getting Started: development/getting-started.md
+    - Environment Setup: development/environment-setup.md
+    - IDE Configuration: development/ide-configuration.md
+    - Code Style Guide: development/code-style-guide.md
+    - Git Workflow: development/git-workflow.md
+    - PR Review Process: development/pr-review-process.md
+    - Testing Guide: development/testing-guide.md
+    - Type Hints Guide: development/type-hints-guide.md
+    - Error Handling: development/error-handling-strategies.md
+    - Debugging: development/debugging-techniques.md
+    - Common Tasks: development/common-tasks-playbook.md
+
+  - Operations:
+    - operations/index.md
+    - Deployment: operations/deployment-procedures.md
+    - Monitoring: operations/monitoring-setup-guide.md
+    - Performance Tuning: operations/performance-tuning-guide.md
+    - Troubleshooting: operations/troubleshooting-guide.md
+    - Common Errors: operations/common-errors-solutions.md
+    - Backup Procedures: operations/backup-procedures.md
+    - Disaster Recovery: operations/disaster-recovery-plan.md
+    - Security: operations/security-best-practices.md
+    - Rollback Procedures: operations/rollback-procedures.md
+    - Incident Response: operations/incident-response-guide.md
+
+  - Setup & Configuration:
+    - setup/index.md
+    - System Requirements: setup/system-requirements.md
+    - Installation Guide: setup/installation.md
+    - Configuration Guide: setup/configuration-guide.md
+    - Environment Variables: setup/environment-variables.md
+    - Docker Setup: setup/docker-setup.md
+    - Database Setup: setup/database-setup.md
+
+  - Tutorials & Examples:
+    - tutorials/index.md
+    - Basic Usage: tutorials/basic-usage.md
+    - Audio Processing: tutorials/audio-processing.md
+    - Playlist Management: tutorials/playlist-management.md
+    - API Integration: tutorials/api-integration.md
+    - Custom Plugins: tutorials/custom-plugins.md
+    - Performance Optimization: tutorials/performance-optimization.md
+
+  - Reference:
+    - reference/index.md
+    - Configuration Reference: reference/configuration.md
+    - CLI Reference: reference/cli.md
+    - Environment Variables: reference/environment-variables.md
+    - Error Codes: reference/error-codes.md
+    - Changelog: reference/changelog.md
+    - Migration Guides: reference/migration-guides.md
+
+  - Contributing:
+    - contributing/index.md
+    - Development Setup: contributing/development-setup.md
+    - Contribution Guidelines: contributing/guidelines.md
+    - Code of Conduct: contributing/code-of-conduct.md
+    - Issue Templates: contributing/issue-templates.md
+    - Documentation: contributing/documentation.md
+
+# Validation
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn

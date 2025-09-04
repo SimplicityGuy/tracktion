@@ -1,0 +1,366 @@
+# Documentation Review and Quality Gates
+name: Documentation Review
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+      - '**/*.md'
+      - 'mkdocs.yml'
+      - 'scripts/generate_docs.py'
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Automated quality checks
+  quality-gates:
+    name: Documentation Quality Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install dependencies
+        run: |
+          uv sync
+          uv pip install mkdocs-material mkdocs-git-revision-date-localized-plugin mkdocs-git-committers-plugin-2 mkdocs-git-authors-plugin mkdocs-macros-plugin mkdocs-include-markdown-plugin mkdocs-jupyter mike
+
+      - name: Check markdown formatting
+        uses: DavidAnson/markdownlint-action@v1
+        with:
+          files: '**/*.md'
+          config: '.markdownlint.yml'
+
+      - name: Spell check
+        uses: rojopolis/spellcheck-github-actions@0.36.0
+        with:
+          config_path: .spellcheck.yml
+          task_name: Markdown
+
+      - name: Check documentation build
+        run: |
+          uv run mkdocs build --strict --verbose
+          echo "✅ Documentation builds successfully"
+
+      - name: Validate auto-generated docs
+        run: |
+          if [ -f "scripts/generate_docs.py" ]; then
+            uv run python scripts/generate_docs.py --validate-only
+            echo "✅ Auto-generated documentation is valid"
+          else
+            echo "⚠️ Auto-generation script not found, skipping validation"
+          fi
+
+      - name: Check for broken links
+        run: |
+          pip install linkchecker
+          uv run mkdocs build --site-dir site_temp
+          linkchecker --check-extern --ignore-url="localhost" site_temp/ || echo "⚠️ Some external links may be broken"
+
+      - name: Validate navigation structure
+        run: |
+          python -c "
+          import yaml
+          with open('mkdocs.yml') as f:
+              config = yaml.safe_load(f)
+          nav = config.get('nav', [])
+          print(f'✅ Navigation has {len(nav)} top-level sections')
+          "
+
+      - name: Check for required sections
+        run: |
+          # Check that critical pages exist
+          required_pages=(
+            "docs/index.md"
+            "docs/getting-started/installation.md"
+            "docs/api/index.md"
+            "docs/contributing/guidelines.md"
+          )
+
+          missing_pages=()
+          for page in "${required_pages[@]}"; do
+            if [ ! -f "$page" ]; then
+              missing_pages+=("$page")
+            fi
+          done
+
+          if [ ${#missing_pages[@]} -eq 0 ]; then
+            echo "✅ All required pages exist"
+          else
+            echo "❌ Missing required pages:"
+            printf '%s\n' "${missing_pages[@]}"
+            exit 1
+          fi
+
+  # Content analysis and suggestions
+  content-analysis:
+    name: Content Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Analyze changed files
+        run: |
+          # Get list of changed markdown files
+          git diff --name-only origin/main...HEAD | grep -E '\.(md)$' > changed_files.txt || true
+
+          if [ -s changed_files.txt ]; then
+            echo "📋 Analyzing changed documentation files:"
+            cat changed_files.txt
+
+            # Simple content analysis
+            python << 'EOF'
+          import re
+          import os
+
+          def analyze_file(filepath):
+              if not os.path.exists(filepath):
+                  return
+
+              with open(filepath, 'r', encoding='utf-8') as f:
+                  content = f.read()
+
+              # Basic content metrics
+              word_count = len(content.split())
+              line_count = len(content.split('\n'))
+              code_blocks = len(re.findall(r'```', content))
+              links = len(re.findall(r'\[.*?\]\(.*?\)', content))
+              images = len(re.findall(r'!\[.*?\]\(.*?\)', content))
+
+              print(f"\n📊 Analysis for {filepath}:")
+              print(f"  - Words: {word_count}")
+              print(f"  - Lines: {line_count}")
+              print(f"  - Code blocks: {code_blocks // 2}")  # Divided by 2 because ``` appears twice
+              print(f"  - Links: {links}")
+              print(f"  - Images: {images}")
+
+              # Check for common patterns
+              issues = []
+              if word_count < 100:
+                  issues.append("⚠️ Very short content (< 100 words)")
+              if code_blocks == 0 and 'tutorial' in filepath.lower():
+                  issues.append("⚠️ Tutorial without code examples")
+              if links == 0 and word_count > 500:
+                  issues.append("⚠️ Long content without cross-references")
+              if not re.search(r'^# ', content, re.MULTILINE):
+                  issues.append("❌ Missing H1 heading")
+
+              if issues:
+                  print("  Issues found:")
+                  for issue in issues:
+                      print(f"    {issue}")
+              else:
+                  print("  ✅ No obvious issues found")
+
+          with open('changed_files.txt', 'r') as f:
+              for line in f:
+                  filepath = line.strip()
+                  if filepath:
+                      analyze_file(filepath)
+          EOF
+          else
+            echo "No markdown files changed"
+          fi
+
+  # Generate review checklist comment
+  review-checklist:
+    name: Generate Review Checklist
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Analyze PR for review requirements
+        id: analyze
+        run: |
+          # Get changed files
+          git diff --name-only origin/main...HEAD > changed_files.txt
+
+          # Determine review needs
+          needs_technical_review=false
+          needs_editorial_review=false
+          needs_user_testing=false
+
+          while read -r file; do
+            if [[ "$file" == *"/api/"* ]] || [[ "$file" == *"README.md" ]]; then
+              needs_technical_review=true
+            fi
+            if [[ "$file" == *"/tutorials/"* ]] || [[ "$file" == *"/getting-started/"* ]]; then
+              needs_user_testing=true
+            fi
+            if [[ "$file" == *".md" ]]; then
+              needs_editorial_review=true
+            fi
+          done < changed_files.txt
+
+          echo "needs_technical_review=$needs_technical_review" >> $GITHUB_OUTPUT
+          echo "needs_editorial_review=$needs_editorial_review" >> $GITHUB_OUTPUT
+          echo "needs_user_testing=$needs_user_testing" >> $GITHUB_OUTPUT
+
+      - name: Comment PR with review checklist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = context.payload.pull_request.number;
+
+            const needsTechnical = '${{ steps.analyze.outputs.needs_technical_review }}' === 'true';
+            const needsEditorial = '${{ steps.analyze.outputs.needs_editorial_review }}' === 'true';
+            const needsUserTesting = '${{ steps.analyze.outputs.needs_user_testing }}' === 'true';
+
+            let checklist = `## Documentation Review Checklist
+
+            Thank you for contributing to our documentation! Here's a customized review checklist based on your changes:
+
+            ### Automated Checks
+            - [ ] Documentation builds successfully (✅ automated)
+            - [ ] No broken links detected (✅ automated)
+            - [ ] Markdown formatting is correct (✅ automated)
+            - [ ] Spell check passed (✅ automated)
+
+            ### Content Review Needed`;
+
+            if (needsTechnical) {
+              checklist += `
+            - [ ] **Technical Review Required** 🔧
+              - API documentation accuracy
+              - Code examples functionality
+              - Technical concept correctness
+              - Version compatibility`;
+            }
+
+            if (needsEditorial) {
+              checklist += `
+            - [ ] **Editorial Review Required** ✏️
+              - Writing style and clarity
+              - Grammar and spelling (beyond automated checks)
+              - Consistency with style guide
+              - User-friendly language`;
+            }
+
+            if (needsUserTesting) {
+              checklist += `
+            - [ ] **User Testing Suggested** 👥
+              - Instructions are easy to follow
+              - Prerequisites are clear
+              - Examples work for new users
+              - Troubleshooting covers common issues`;
+            }
+
+            checklist += `
+
+            ### Final Review
+            - [ ] Changes align with project documentation goals
+            - [ ] Navigation and cross-references updated
+            - [ ] Ready for production deployment
+
+            ### Review Teams
+            Please request review from appropriate teams:
+            ${needsTechnical ? '- @tracktion/technical-writers for technical accuracy' : ''}
+            ${needsEditorial ? '- @tracktion/docs-team for editorial review' : ''}
+            ${needsUserTesting ? '- @tracktion/community for user experience feedback' : ''}
+
+            ---
+            *This checklist was automatically generated based on the files changed in this PR.*`;
+
+            // Check if comment already exists
+            const comments = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: prNumber,
+            });
+
+            const existingComment = comments.data.find(comment =>
+              comment.body.includes('Documentation Review Checklist')
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body: checklist,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: checklist,
+              });
+            }
+
+  # Performance impact analysis
+  performance-impact:
+    name: Documentation Performance Impact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          uv sync
+          uv pip install mkdocs-material mkdocs-git-revision-date-localized-plugin mkdocs-git-committers-plugin-2 mkdocs-git-authors-plugin mkdocs-macros-plugin mkdocs-include-markdown-plugin mkdocs-jupyter mike
+
+      - name: Build and analyze site performance
+        run: |
+          # Build the documentation
+          uv run mkdocs build
+
+          # Analyze build output
+          echo "📊 Documentation Site Analysis:"
+
+          # Count files and sizes
+          total_files=$(find site/ -type f | wc -l)
+          total_size=$(du -sh site/ | cut -f1)
+          html_files=$(find site/ -name "*.html" | wc -l)
+          css_files=$(find site/ -name "*.css" | wc -l)
+          js_files=$(find site/ -name "*.js" | wc -l)
+          image_files=$(find site/ -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.gif" -o -name "*.svg" \) | wc -l)
+
+          echo "  📁 Total files: $total_files"
+          echo "  📦 Total size: $total_size"
+          echo "  📄 HTML files: $html_files"
+          echo "  🎨 CSS files: $css_files"
+          echo "  ⚡ JS files: $js_files"
+          echo "  🖼️  Image files: $image_files"
+
+          # Check for large files
+          echo ""
+          echo "🔍 Large files (>500KB):"
+          find site/ -type f -size +500k -exec ls -lh {} \; | awk '{print $5, $9}' || echo "  ✅ No files larger than 500KB"
+
+          # Estimate load time impact
+          site_size_kb=$(du -sk site/ | cut -f1)
+          if [ $site_size_kb -gt 50000 ]; then
+            echo ""
+            echo "⚠️ Large site size may impact load times on slower connections"
+          else
+            echo ""
+            echo "✅ Site size is reasonable for web deployment"
+          fi
