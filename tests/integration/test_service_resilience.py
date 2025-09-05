@@ -31,16 +31,6 @@ from uuid import uuid4
 
 import pytest
 
-from services.analysis_service.src.circuit_breaker import (
-    CircuitBreaker as AnalysisCircuitBreaker,
-)
-from services.analysis_service.src.circuit_breaker import (
-    CircuitBreakerConfig,
-    CircuitOpenError,
-)
-from services.analysis_service.src.circuit_breaker import (
-    CircuitState as AnalysisCircuitState,
-)
 from services.tracklist_service.src.resilience import (
     CircuitState,
     ExponentialBackoff,
@@ -53,6 +43,16 @@ from shared.utils.async_timeout_handler import (
     TimeoutConfig,
     TimeoutHandler,
     TimeoutStrategy,
+)
+from shared.utils.resilience import (
+    CircuitBreaker as AnalysisCircuitBreaker,
+)
+from shared.utils.resilience import (
+    CircuitBreakerConfig,
+    CircuitOpenError,
+)
+from shared.utils.resilience import (
+    CircuitState as AnalysisCircuitState,
 )
 
 # Configure test logging
@@ -536,15 +536,18 @@ class TestCircuitBreakerResilience:
         # Configure circuit breaker for analysis service
         circuit_breaker = AnalysisCircuitBreaker("analysis_service", circuit_breaker_config, resilience_suite.metrics)
 
-        # Simulate service degradation
+        # Simulate service degradation - increase error rate to ensure failures
         for service in resilience_suite.service_mesh.services["analysis"]:
+            service.config.error_rate = 1.0  # 100% failure rate during degradation
             service.enable_failure_injection(True)
 
         # Generate requests that should trigger circuit breaker
         failed_requests = 0
         for i in range(10):
             try:
-                await circuit_breaker.call(resilience_suite.service_mesh.call_service, "analysis", f"operation_{i}")
+                await circuit_breaker.call_async(
+                    resilience_suite.service_mesh.call_service, "analysis", f"operation_{i}"
+                )
             except (Exception, CircuitOpenError):
                 failed_requests += 1
 
@@ -561,13 +564,16 @@ class TestCircuitBreakerResilience:
 
         # Restore service health
         for service in resilience_suite.service_mesh.services["analysis"]:
+            service.config.error_rate = 0.05  # Reset to original low error rate
             service.enable_failure_injection(False)
 
         # Test recovery
         success_count = 0
         for i in range(circuit_breaker_config.success_threshold + 1):
             try:
-                await circuit_breaker.call(resilience_suite.service_mesh.call_service, "analysis", f"recovery_{i}")
+                await circuit_breaker.call_async(
+                    resilience_suite.service_mesh.call_service, "analysis", f"recovery_{i}"
+                )
                 success_count += 1
             except Exception:
                 pass
@@ -598,10 +604,10 @@ class TestCircuitBreakerResilience:
 
         for _i in range(config.failure_threshold):
             with contextlib.suppress(Exception):
-                await circuit_breaker.call(resilience_suite.service_mesh.call_service, "analysis")
+                await circuit_breaker.call_async(resilience_suite.service_mesh.call_service, "analysis")
 
         # Circuit should be open, test fallback
-        result = await circuit_breaker.call(resilience_suite.service_mesh.call_service, "analysis")
+        result = await circuit_breaker.call_async(resilience_suite.service_mesh.call_service, "analysis")
 
         assert fallback_called
         assert result in fallback_responses
@@ -620,25 +626,26 @@ class TestCircuitBreakerResilience:
 
         # Fail only analysis service
         for service in resilience_suite.service_mesh.services["analysis"]:
+            service.config.error_rate = 1.0  # 100% failure rate during degradation
             service.set_healthy(False)
 
         # Trigger analysis circuit breaker
         for _i in range(circuit_breaker_config.failure_threshold):
             with contextlib.suppress(Exception):
-                await analysis_cb.call(resilience_suite.service_mesh.call_service, "analysis")
+                await analysis_cb.call_async(resilience_suite.service_mesh.call_service, "analysis")
 
         # Test that analysis circuit is open but tracklist is still closed
         assert analysis_cb.state == AnalysisCircuitState.OPEN
         assert tracklist_cb.state == AnalysisCircuitState.CLOSED
 
         # Verify tracklist service still works
-        result = await tracklist_cb.call(resilience_suite.service_mesh.call_service, "tracklist")
+        result = await tracklist_cb.call_async(resilience_suite.service_mesh.call_service, "tracklist")
         assert "tracklist" in result
         assert "success" in result
 
         # Verify analysis circuit rejects calls
         with pytest.raises(CircuitOpenError):
-            await analysis_cb.call(resilience_suite.service_mesh.call_service, "analysis")
+            await analysis_cb.call_async(resilience_suite.service_mesh.call_service, "analysis")
 
     async def test_circuit_breaker_metrics_and_monitoring(
         self, resilience_suite: ResilienceTestSuite, circuit_breaker_config: CircuitBreakerConfig
@@ -673,7 +680,7 @@ class TestCircuitBreakerResilience:
         # Open circuit
         for _i in range(config.failure_threshold):
             with contextlib.suppress(Exception):
-                await circuit_breaker.call(resilience_suite.service_mesh.call_service, "analysis")
+                await circuit_breaker.call_async(resilience_suite.service_mesh.call_service, "analysis")
 
         # Wait for half-open
         await asyncio.sleep(config.timeout + 0.1)
@@ -683,7 +690,7 @@ class TestCircuitBreakerResilience:
         for service in resilience_suite.service_mesh.services["analysis"]:
             service.set_healthy(True)
 
-        await circuit_breaker.call(resilience_suite.service_mesh.call_service, "analysis")
+        await circuit_breaker.call_async(resilience_suite.service_mesh.call_service, "analysis")
 
         # Verify monitoring hooks were called
         assert len(state_changes) >= 2  # At least open and half-open
@@ -694,7 +701,7 @@ class TestCircuitBreakerResilience:
         stats = circuit_breaker.get_stats()
         assert stats["total_calls"] > 0
         assert stats["failed_calls"] >= config.failure_threshold
-        assert len(stats.get("state_changes", [])) > 0
+        assert stats.get("state_changes", 0) > 0
 
 
 class TestRetryMechanisms:
@@ -908,7 +915,7 @@ class TestBulkheadPattern:
             async with resource_pool:
                 # Simulate resource-intensive operation
                 await asyncio.sleep(0.1)
-                return await circuit_breaker.call(resilience_suite.service_mesh.call_service, "analysis")
+                return await circuit_breaker.call_async(resilience_suite.service_mesh.call_service, "analysis")
 
         # Create more concurrent requests than bulkhead can handle
         tasks = []
@@ -2629,7 +2636,7 @@ async def test_comprehensive_resilience_integration(resilience_suite: Resilience
             try:
                 result = await retry_with_backoff(
                     timeout_handler.execute_with_timeout,
-                    circuit_breaker.call,
+                    circuit_breaker.call_async,
                     resilience_suite.service_mesh.call_service,
                     service_name,
                     operation,

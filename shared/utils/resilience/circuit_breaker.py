@@ -3,63 +3,23 @@
 import logging
 import threading
 import time
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from enum import Enum
+from collections.abc import Awaitable, Callable
 from types import TracebackType
 from typing import Any, Literal, TypeVar
+
+from .config import (
+    CircuitBreakerConfig,
+    CircuitBreakerStats,
+    CircuitState,
+    ConfigurationManager,
+    ServicePresets,
+    ServiceType,
+)
+from .exceptions import CircuitOpenError
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
-
-
-class CircuitState(Enum):
-    """Circuit breaker states."""
-
-    CLOSED = "closed"  # Normal operation
-    OPEN = "open"  # Failing, reject all calls
-    HALF_OPEN = "half_open"  # Testing if service recovered
-
-
-@dataclass
-class CircuitBreakerConfig:
-    """Configuration for circuit breaker behavior."""
-
-    # Failure threshold configuration
-    failure_threshold: int = 5  # Number of failures before opening
-    success_threshold: int = 2  # Number of successes in half-open before closing
-    timeout: float = 60.0  # Seconds to wait before trying half-open
-
-    # Time window for counting failures
-    failure_window: float = 60.0  # Time window for failure counting
-
-    # What exceptions should trigger the circuit breaker
-    expected_exceptions: tuple = (Exception,)
-
-    # Optional fallback function
-    fallback: Callable[[], Any] | None = None
-
-    # Monitoring hooks
-    on_open: Callable[[str], None] | None = None
-    on_close: Callable[[str], None] | None = None
-    on_half_open: Callable[[str], None] | None = None
-
-
-@dataclass
-class CircuitBreakerStats:
-    """Statistics for circuit breaker monitoring."""
-
-    total_calls: int = 0
-    successful_calls: int = 0
-    failed_calls: int = 0
-    rejected_calls: int = 0
-    fallback_calls: int = 0
-    last_failure_time: float | None = None
-    last_success_time: float | None = None
-    consecutive_failures: int = 0
-    consecutive_successes: int = 0
-    state_changes: list = field(default_factory=list)
 
 
 class CircuitBreaker:
@@ -70,6 +30,7 @@ class CircuitBreaker:
         name: str,
         config: CircuitBreakerConfig | None = None,
         metrics_collector: Any | None = None,
+        domain: str | None = None,
     ) -> None:
         """Initialize the circuit breaker.
 
@@ -77,10 +38,12 @@ class CircuitBreaker:
             name: Name of the circuit breaker for logging
             config: Configuration for circuit breaker behavior
             metrics_collector: Optional metrics collector for monitoring
+            domain: Domain this circuit breaker protects (extracted from URLs if not provided)
         """
         self.name = name
         self.config = config or CircuitBreakerConfig()
         self.metrics = metrics_collector
+        self.domain = domain
 
         # State management
         self._state = CircuitState.CLOSED
@@ -280,11 +243,65 @@ class CircuitBreaker:
             if self.metrics and hasattr(self.metrics, "track_external_service_call"):
                 self.metrics.track_external_service_call(self.name, False, 0.0)
 
-            raise CircuitOpenError(f"Circuit breaker '{self.name}' is OPEN - calls are being rejected")
+            raise CircuitOpenError(self.name)
 
         # Try to execute the function
         try:
             result = func(*args, **kwargs)
+            self._record_success()
+            return result
+
+        except self.config.expected_exceptions:
+            self._record_failure()
+
+            # Record metric if available
+            if self.metrics and hasattr(self.metrics, "track_external_service_call"):
+                self.metrics.track_external_service_call(self.name, False, 0.0)
+
+            raise
+
+        except Exception as e:
+            # Unexpected exceptions don't affect circuit state
+            logger.error(
+                f"Unexpected exception in circuit breaker '{self.name}': {e}",
+                exc_info=True,
+            )
+            raise
+
+    async def call_async(self, func: Callable[..., Awaitable[T]], *args: Any, **kwargs: Any) -> T:
+        """Execute an async function through the circuit breaker.
+
+        Args:
+            func: Async function to execute
+            *args: Positional arguments for the function
+            **kwargs: Keyword arguments for the function
+
+        Returns:
+            Result of the function call or fallback
+
+        Raises:
+            CircuitOpenError: If circuit is open and no fallback is configured
+            Exception: If function fails and is not in expected exceptions
+        """
+        # Check circuit state
+        if self.state == CircuitState.OPEN:
+            self.stats.rejected_calls += 1
+
+            # Use fallback if available
+            if self.config.fallback:
+                self.stats.fallback_calls += 1
+                logger.debug(f"Circuit breaker '{self.name}' using fallback")
+                return self.config.fallback()  # type: ignore[no-any-return]
+
+            # Record metric if available
+            if self.metrics and hasattr(self.metrics, "track_external_service_call"):
+                self.metrics.track_external_service_call(self.name, False, 0.0)
+
+            raise CircuitOpenError(self.name)
+
+        # Try to execute the function
+        try:
+            result = await func(*args, **kwargs)
             self._record_success()
             return result
 
@@ -366,19 +383,19 @@ class CircuitBreaker:
         return False  # Don't suppress exceptions
 
 
-class CircuitOpenError(Exception):
-    """Exception raised when circuit breaker is open."""
-
-
 def circuit_breaker(
     name: str | None = None,
     config: CircuitBreakerConfig | None = None,
+    domain: str | None = None,
+    service_type: ServiceType | None = None,
 ) -> Callable:
     """Decorator for applying circuit breaker to functions.
 
     Args:
         name: Name of the circuit breaker (defaults to function name)
         config: Circuit breaker configuration
+        domain: Domain for the circuit breaker
+        service_type: Service type for preset configuration
 
     Returns:
         Decorated function with circuit breaker protection
@@ -386,7 +403,12 @@ def circuit_breaker(
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         breaker_name = name or func.__name__
-        breaker = CircuitBreaker(breaker_name, config)
+        breaker = get_circuit_breaker(
+            name=breaker_name,
+            config=config,
+            domain=domain,
+            service_type=service_type,
+        )
 
         def wrapper(*args: Any, **kwargs: Any) -> T:
             return breaker.call(func, *args, **kwargs)
@@ -394,7 +416,101 @@ def circuit_breaker(
         # Add method to get breaker stats
         wrapper.get_circuit_stats = breaker.get_stats  # type: ignore[attr-defined]
         wrapper.reset_circuit = breaker.reset  # type: ignore[attr-defined]
+        wrapper.circuit_breaker = breaker  # type: ignore[attr-defined]
 
         return wrapper
 
     return decorator
+
+
+class CircuitBreakerManager:
+    """Manages multiple circuit breakers with domain-based organization."""
+
+    def __init__(self, config_manager: ConfigurationManager | None = None) -> None:
+        """Initialize circuit breaker manager.
+
+        Args:
+            config_manager: Configuration manager for domain-specific settings
+        """
+        self._circuit_breakers: dict[str, CircuitBreaker] = {}
+        self._config_manager = config_manager or ConfigurationManager()
+        self._lock = threading.RLock()
+
+    def get_circuit_breaker(
+        self,
+        name: str,
+        config: CircuitBreakerConfig | None = None,
+        domain: str | None = None,
+        service_type: ServiceType | None = None,
+        metrics_collector: Any | None = None,
+    ) -> CircuitBreaker:
+        """Get or create a circuit breaker.
+
+        Args:
+            name: Circuit breaker name
+            config: Optional configuration (uses domain or default if not provided)
+            domain: Domain for the circuit breaker
+            service_type: Service type for preset configuration
+            metrics_collector: Optional metrics collector
+
+        Returns:
+            Circuit breaker instance
+        """
+        with self._lock:
+            key = f"{name}:{domain or 'default'}"
+
+            if key not in self._circuit_breakers:
+                # Determine configuration
+                if config:
+                    cb_config = config
+                elif service_type:
+                    cb_config = ServicePresets.get_preset(service_type)
+                elif domain:
+                    cb_config = self._config_manager.get_domain_config(domain)
+                else:
+                    cb_config = self._config_manager.get_default_config()
+
+                # Set domain in config if provided
+                if domain and not cb_config.domain:
+                    cb_config.domain = domain
+
+                self._circuit_breakers[key] = CircuitBreaker(
+                    name=name,
+                    config=cb_config,
+                    metrics_collector=metrics_collector,
+                    domain=domain,
+                )
+
+            return self._circuit_breakers[key]
+
+
+# Global circuit breaker manager instance
+_global_manager = CircuitBreakerManager()
+
+
+def get_circuit_breaker(
+    name: str,
+    config: CircuitBreakerConfig | None = None,
+    domain: str | None = None,
+    service_type: ServiceType | None = None,
+    metrics_collector: Any | None = None,
+) -> CircuitBreaker:
+    """Get or create a circuit breaker from the global manager.
+
+    Args:
+        name: Circuit breaker name
+        config: Optional configuration
+        domain: Domain for the circuit breaker
+        service_type: Service type for preset configuration
+        metrics_collector: Optional metrics collector
+
+    Returns:
+        Circuit breaker instance
+    """
+    return _global_manager.get_circuit_breaker(
+        name=name,
+        config=config,
+        domain=domain,
+        service_type=service_type,
+        metrics_collector=metrics_collector,
+    )

@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from services.analysis_service.src.circuit_breaker import (
+from shared.utils.resilience import (
     CircuitBreaker,
     CircuitBreakerConfig,
     CircuitBreakerStats,

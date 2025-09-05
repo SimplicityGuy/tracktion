@@ -3,7 +3,6 @@
 import logging
 import random
 from collections import defaultdict
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -17,6 +16,13 @@ import pika
 from redis import Redis
 
 from services.tracklist_service.src.queue.batch_queue import Job
+
+# Import from shared resilience module
+from shared.utils.resilience import (
+    CircuitBreakerConfig,
+    ServiceType,
+    get_circuit_breaker,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -141,105 +147,6 @@ class FailedJob:
     next_retry: datetime | None = None
 
 
-class CircuitBreaker:
-    """Circuit breaker for domain protection."""
-
-    def __init__(
-        self,
-        failure_threshold: int = 5,
-        recovery_timeout: int = 60,
-        half_open_max_calls: int = 3,
-    ):
-        """Initialize circuit breaker.
-
-        Args:
-            failure_threshold: Failures before opening circuit
-            recovery_timeout: Seconds before attempting recovery
-            half_open_max_calls: Max calls in half-open state
-        """
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self.half_open_max_calls = half_open_max_calls
-
-        self.state = "closed"  # closed, open, half_open
-        self.failure_count = 0
-        self.last_failure: datetime | None = None
-        self.success_count = 0
-        self.state_changed_at = datetime.now(UTC)
-
-    def call(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        """Execute function with circuit breaker protection."""
-        if self.state == "open":
-            # Check if recovery timeout has passed
-            if (datetime.now(UTC) - self.state_changed_at).total_seconds() > self.recovery_timeout:
-                self._transition_to_half_open()
-            else:
-                raise Exception("Circuit breaker is open")
-
-        if self.state == "half_open" and self.success_count >= self.half_open_max_calls:
-            self._transition_to_closed()
-
-        try:
-            result = func(*args, **kwargs)
-            self._on_success()
-            return result
-        except Exception as e:
-            self._on_failure()
-            raise e
-
-    def _on_success(self) -> None:
-        """Handle successful call."""
-        if self.state == "half_open":
-            self.success_count += 1
-            if self.success_count >= self.half_open_max_calls:
-                self._transition_to_closed()
-        elif self.state == "closed":
-            self.failure_count = 0
-
-    def _on_failure(self) -> None:
-        """Handle failed call."""
-        self.failure_count += 1
-        self.last_failure = datetime.now(UTC)
-
-        if self.state == "half_open" or (self.state == "closed" and self.failure_count >= self.failure_threshold):
-            self._transition_to_open()
-
-    def _transition_to_open(self) -> None:
-        """Transition to open state."""
-        self.state = "open"
-        self.state_changed_at = datetime.now(UTC)
-        logger.warning(f"Circuit breaker opened after {self.failure_count} failures")
-
-    def _transition_to_half_open(self) -> None:
-        """Transition to half-open state."""
-        self.state = "half_open"
-        self.state_changed_at = datetime.now(UTC)
-        self.success_count = 0
-        logger.info("Circuit breaker transitioning to half-open")
-
-    def _transition_to_closed(self) -> None:
-        """Transition to closed state."""
-        self.state = "closed"
-        self.state_changed_at = datetime.now(UTC)
-        self.failure_count = 0
-        self.success_count = 0
-        logger.info("Circuit breaker closed")
-
-    def is_open(self) -> bool:
-        """Check if circuit is open."""
-        return self.state == "open"
-
-    def get_state(self) -> dict[str, Any]:
-        """Get circuit breaker state."""
-        return {
-            "state": self.state,
-            "failure_count": self.failure_count,
-            "success_count": self.success_count,
-            "last_failure": (self.last_failure.isoformat() if self.last_failure else None),
-            "state_changed_at": self.state_changed_at.isoformat(),
-        }
-
-
 class RetryManager:
     """Manages job retry logic and error recovery."""
 
@@ -278,13 +185,30 @@ class RetryManager:
         self.domain_policies: dict[str, RetryPolicy] = {}
 
         # Circuit breakers per domain
-        self.circuit_breakers: dict[str, CircuitBreaker] = defaultdict(CircuitBreaker)
+        self.circuit_breakers: dict[str, Any] = {}
 
         # Failed job tracking
         self.failed_jobs: dict[str, FailedJob] = {}
 
         # Failure statistics
         self.failure_stats: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+
+    def _get_circuit_breaker(self, domain: str):
+        """Get or create circuit breaker for domain."""
+        if domain not in self.circuit_breakers:
+            config = CircuitBreakerConfig(
+                failure_threshold=5,
+                timeout=60.0,
+                success_threshold=3,
+                expected_exceptions=(Exception,),
+            )
+            self.circuit_breakers[domain] = get_circuit_breaker(
+                name=f"retry_{domain}",
+                config=config,
+                service_type=ServiceType.EXTERNAL_SERVICE,
+                domain=domain,
+            )
+        return self.circuit_breakers[domain]
 
     def classify_failure(self, error: str) -> FailureType:
         """Classify failure type from error message.
@@ -330,8 +254,8 @@ class RetryManager:
         self.failure_stats[domain][failure_type.value] += 1
 
         # Check circuit breaker
-        circuit_breaker = self.circuit_breakers[domain]
-        if circuit_breaker.is_open():
+        circuit_breaker = self._get_circuit_breaker(domain)
+        if circuit_breaker.state.value == "open":
             logger.warning(f"Circuit breaker open for domain {domain}, not retrying")
             return False
 
@@ -428,7 +352,7 @@ class RetryManager:
             if failed_job.next_retry and failed_job.next_retry <= now:
                 # Check circuit breaker
                 domain = self._extract_domain(failed_job.job.url)
-                if not self.circuit_breakers[domain].is_open():
+                if self.circuit_breakers[domain].state.value != "open":
                     ready_jobs.append(failed_job.job)
                     # Remove from failed jobs (will be re-added if fails again)
                     del self.failed_jobs[job_id]
@@ -518,15 +442,13 @@ class RetryManager:
                 "domain": domain,
                 "failures": stats,
                 "circuit_breaker": (
-                    self.circuit_breakers[domain].get_state() if domain in self.circuit_breakers else None
+                    self.circuit_breakers[domain].get_stats() if domain in self.circuit_breakers else None
                 ),
             }
         return {
             domain: {
                 "failures": stats,
-                "circuit_breaker": (
-                    self.circuit_breakers[domain].get_state() if domain in self.circuit_breakers else None
-                ),
+                "circuit_breaker": self._get_circuit_breaker(domain).get_stats(),
             }
             for domain, stats in self.failure_stats.items()
         }
@@ -538,7 +460,7 @@ class RetryManager:
             domain: Domain name
         """
         if domain in self.circuit_breakers:
-            self.circuit_breakers[domain]._transition_to_closed()
+            self.circuit_breakers[domain].reset()
             logger.info(f"Circuit breaker for {domain} manually reset")
 
     async def recover_stalled_jobs(self, stall_timeout: int = 300) -> list[Job]:

@@ -17,6 +17,7 @@ from services.notification_service.src.core.base import (
     NotificationMessage,
     NotificationStatus,
 )
+from shared.utils.resilience.exceptions import CircuitOpenError
 
 
 class TestDiscordWebhookClient:
@@ -187,6 +188,36 @@ class TestDiscordWebhookClient:
 
         result = await client.validate()
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_open_error(self) -> None:
+        """Test circuit breaker open error handling."""
+        client = DiscordWebhookClient("https://discord.com/api/webhooks/test")
+
+        # Mock call_async to raise CircuitOpenError (simulating open circuit)
+        with patch.object(client.circuit_breaker, "call_async", side_effect=CircuitOpenError("discord_webhook")):
+            with pytest.raises(CircuitOpenError) as exc_info:
+                await client.send({"content": "test"})
+
+            assert "discord_webhook" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_delegates_to_call_async(self) -> None:
+        """Test that send method properly delegates to circuit breaker's call_async."""
+        client = DiscordWebhookClient("https://discord.com/api/webhooks/test")
+
+        # Mock the circuit breaker's call_async method
+        expected_result = {"status": 200, "rate_limit": {}}
+
+        with patch.object(client.circuit_breaker, "call_async", return_value=expected_result) as mock_call_async:
+            payload = {"content": "test message"}
+            result = await client.send(payload)
+
+            # Verify circuit breaker's call_async was called with correct arguments
+            mock_call_async.assert_called_once_with(client._send_internal, payload)
+
+            # Verify result is returned correctly
+            assert result == expected_result
 
 
 class TestDiscordNotificationService:

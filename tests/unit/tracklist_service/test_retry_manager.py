@@ -1,5 +1,6 @@
 """Unit tests for retry management and error recovery."""
 
+import contextlib
 from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
 
@@ -7,13 +8,13 @@ import pytest
 
 from services.tracklist_service.src.queue.batch_queue import Job, JobPriority
 from services.tracklist_service.src.retry.retry_manager import (
-    CircuitBreaker,
     FailedJob,
     FailureType,
     RetryManager,
     RetryPolicy,
     RetryStrategy,
 )
+from shared.utils.resilience import CircuitBreakerConfig, ServiceType, get_circuit_breaker
 
 
 @pytest.fixture
@@ -192,117 +193,71 @@ class TestRetryPolicy:
         assert policy.get_delay(2, FailureType.RATE_LIMIT) == 10.0  # Fixed
 
 
-class TestCircuitBreaker:
-    """Test CircuitBreaker class."""
+class TestCircuitBreakerIntegration:
+    """Test circuit breaker integration with shared implementation."""
 
-    def test_initialization(self):
-        """Test circuit breaker initialization."""
-        cb = CircuitBreaker(failure_threshold=3, recovery_timeout=30, half_open_max_calls=2)
+    def test_shared_circuit_breaker_creation(self):
+        """Test creating shared circuit breakers."""
+        config = CircuitBreakerConfig(
+            failure_threshold=3,
+            timeout=30.0,
+        )
+        cb = get_circuit_breaker(
+            name="test_circuit_breaker",
+            config=config,
+            service_type=ServiceType.EXTERNAL_SERVICE,
+            domain="test.com",
+        )
 
-        assert cb.failure_threshold == 3
-        assert cb.recovery_timeout == 30
-        assert cb.half_open_max_calls == 2
-        assert cb.state == "closed"
-        assert cb.failure_count == 0
+        assert cb.name == "test_circuit_breaker"
+        assert cb.config.failure_threshold == 3
+        assert cb.config.timeout == 30.0
+        assert cb.state.value == "closed"
 
-    def test_success_in_closed_state(self):
-        """Test successful calls in closed state."""
-        cb = CircuitBreaker(failure_threshold=3)
+    def test_circuit_breaker_basic_functionality(self):
+        """Test basic circuit breaker functionality."""
+        config = CircuitBreakerConfig(failure_threshold=2)
+        cb = get_circuit_breaker(
+            name="test_basic",
+            config=config,
+            service_type=ServiceType.EXTERNAL_SERVICE,
+            domain="test.com",
+        )
 
+        # Test successful call
         def success_func():
             return "success"
 
         result = cb.call(success_func)
         assert result == "success"
-        assert cb.state == "closed"
-        assert cb.failure_count == 0
+        assert cb.state.value == "closed"
 
-    def test_failure_opens_circuit(self):
-        """Test circuit opens after threshold failures."""
-        cb = CircuitBreaker(failure_threshold=3)
-
+        # Test failure
         def fail_func():
-            raise Exception("Test failure")
+            raise ValueError("Test failure")
 
-        # First two failures don't open circuit
-        for _ in range(2):
-            with pytest.raises(Exception, match="Test failure"):
-                cb.call(fail_func)
-            assert cb.state == "closed"
-
-        # Third failure opens circuit
-        with pytest.raises(Exception, match="Test failure"):
-            cb.call(fail_func)
-        assert cb.state == "open"
-
-    def test_open_circuit_blocks_calls(self):
-        """Test open circuit blocks calls."""
-        cb = CircuitBreaker(failure_threshold=1)
-        cb.state = "open"
-        cb.state_changed_at = datetime.now(UTC)
-
-        def test_func():
-            return "test"
-
-        with pytest.raises(Exception, match="Circuit breaker is open"):
-            cb.call(test_func)
-
-    def test_half_open_transition(self):
-        """Test transition to half-open after timeout."""
-        cb = CircuitBreaker(failure_threshold=1, recovery_timeout=1)
-
-        # Open the circuit
-        cb.state = "open"
-        cb.state_changed_at = datetime.now(UTC) - timedelta(seconds=2)
-
-        def test_func():
-            return "test"
-
-        # Should transition to half-open and allow call
-        result = cb.call(test_func)
-        assert result == "test"
-        assert cb.state == "half_open"
-
-    def test_half_open_to_closed(self):
-        """Test successful calls in half-open close circuit."""
-        cb = CircuitBreaker(half_open_max_calls=2)
-        cb.state = "half_open"
-
-        def success_func():
-            return "success"
-
-        # First successful call
-        cb.call(success_func)
-        assert cb.state == "half_open"
-
-        # Second successful call closes circuit
-        cb.call(success_func)
-        assert cb.state == "closed"
-
-    def test_half_open_to_open(self):
-        """Test failure in half-open reopens circuit."""
-        cb = CircuitBreaker()
-        cb.state = "half_open"
-
-        def fail_func():
-            raise Exception("Test failure")
-
-        with pytest.raises(Exception, match="Test failure"):
+        with pytest.raises(ValueError):
             cb.call(fail_func)
 
-        assert cb.state == "open"
+        with pytest.raises(ValueError):
+            cb.call(fail_func)
 
-    def test_get_state(self):
-        """Test getting circuit breaker state."""
-        cb = CircuitBreaker()
-        cb.failure_count = 2
-        cb.last_failure = datetime.now(UTC)
+        # Circuit should be open after threshold failures
+        assert cb.state.value == "open"
 
-        state = cb.get_state()
+    def test_circuit_breaker_stats(self):
+        """Test circuit breaker statistics."""
+        cb = get_circuit_breaker(
+            name="test_stats",
+            service_type=ServiceType.EXTERNAL_SERVICE,
+            domain="test.com",
+        )
 
-        assert state["state"] == "closed"
-        assert state["failure_count"] == 2
-        assert state["last_failure"] is not None
+        stats = cb.get_stats()
+        assert isinstance(stats, dict)
+        assert "state" in stats
+        assert "consecutive_failures" in stats
+        assert "consecutive_successes" in stats
 
 
 class TestRetryManager:
@@ -423,8 +378,20 @@ class TestRetryManager:
     async def test_handle_failure_circuit_open(self, retry_manager, sample_job):
         """Test handling failure with open circuit."""
         domain = "example.com"
-        retry_manager.circuit_breakers[domain].state = "open"
-        retry_manager.circuit_breakers[domain].state_changed_at = datetime.now(UTC)
+
+        # Get the circuit breaker and force it open by triggering failures
+        cb = retry_manager._get_circuit_breaker(domain)
+
+        # Force circuit open by exceeding failure threshold
+        def failing_function():
+            raise Exception("Test failure")
+
+        for _ in range(cb.config.failure_threshold):
+            with contextlib.suppress(Exception):
+                cb.call(failing_function)
+
+        # Circuit should be open now
+        assert cb.state.value == "open"
 
         result = await retry_manager.handle_failure(sample_job, "Network error")
 
@@ -510,11 +477,24 @@ class TestRetryManager:
     def test_reset_circuit_breaker(self, retry_manager):
         """Test manually resetting circuit breaker."""
         domain = "example.com"
-        retry_manager.circuit_breakers[domain].state = "open"
+
+        # Get circuit breaker and open it first
+        cb = retry_manager._get_circuit_breaker(domain)
+
+        # Force circuit open by exceeding failure threshold
+        def failing_function():
+            raise Exception("Test failure")
+
+        for _ in range(cb.config.failure_threshold):
+            with contextlib.suppress(Exception):
+                cb.call(failing_function)
+
+        # Verify circuit is open
+        assert cb.state.value == "open"
 
         retry_manager.reset_circuit_breaker(domain)
 
-        assert retry_manager.circuit_breakers[domain].state == "closed"
+        assert retry_manager._get_circuit_breaker(domain).state.value == "closed"
 
     @pytest.mark.asyncio
     async def test_move_to_dlq(self, retry_manager, sample_job, mock_rabbitmq):

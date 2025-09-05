@@ -9,8 +9,15 @@ import functools
 import logging
 import time
 from collections.abc import Callable
-from enum import Enum
 from typing import Any, TypeVar
+
+# Import from shared resilience module
+from shared.utils.resilience import (
+    CircuitBreakerConfig,
+    CircuitState,
+    ServiceType,
+    get_circuit_breaker,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -106,129 +113,44 @@ class RateLimitError(TracklistError):
         )
 
 
-class CircuitBreakerState(Enum):
-    """Circuit breaker states."""
-
-    CLOSED = "closed"  # Normal operation
-    OPEN = "open"  # Failing, reject calls
-    HALF_OPEN = "half_open"  # Testing recovery
+# Re-export CircuitBreakerState for backward compatibility
+CircuitBreakerState = CircuitState
 
 
-class CircuitBreaker:
-    """Circuit breaker pattern implementation."""
+# Create factory function for backward compatibility
+def create_circuit_breaker(
+    failure_threshold: int = 5,
+    recovery_timeout: int = 60,
+    expected_exception: type[Exception] = Exception,
+    name: str = "tracklist_circuit_breaker",
+):
+    """
+    Create a circuit breaker with tracklist service configuration.
 
-    def __init__(
-        self,
-        failure_threshold: int = 5,
-        recovery_timeout: int = 60,
-        expected_exception: type[Exception] = Exception,
-    ):
-        """
-        Initialize circuit breaker.
+    Args:
+        failure_threshold: Number of failures before opening circuit
+        recovery_timeout: Seconds to wait before attempting recovery
+        expected_exception: Exception type to catch
+        name: Name for the circuit breaker
 
-        Args:
-            failure_threshold: Number of failures before opening circuit
-            recovery_timeout: Seconds to wait before attempting recovery
-            expected_exception: Exception type to catch
-        """
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self.expected_exception = expected_exception
-        self.failure_count = 0
-        self.last_failure_time: float | None = None
-        self.state = CircuitBreakerState.CLOSED
+    Returns:
+        Configured CircuitBreaker instance
+    """
+    config = CircuitBreakerConfig(
+        failure_threshold=failure_threshold,
+        timeout=float(recovery_timeout),
+        expected_exceptions=(expected_exception,),
+    )
+    return get_circuit_breaker(
+        name=name,
+        config=config,
+        service_type=ServiceType.EXTERNAL_SERVICE,
+        domain="1001tracklists.com",
+    )
 
-    def call(self, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
-        """
-        Call function with circuit breaker protection.
 
-        Args:
-            func: Function to call
-            *args: Function arguments
-            **kwargs: Function keyword arguments
-
-        Returns:
-            Function result
-
-        Raises:
-            ScrapingError: If circuit is open
-            Exception: If function fails
-        """
-        if self.state == CircuitBreakerState.OPEN:
-            if self._should_attempt_reset():
-                self.state = CircuitBreakerState.HALF_OPEN
-            else:
-                raise ScrapingError(
-                    "Circuit breaker is open",
-                    details={
-                        "state": self.state.value,
-                        "failure_count": self.failure_count,
-                        "recovery_timeout": self.recovery_timeout,
-                    },
-                )
-
-        try:
-            result = func(*args, **kwargs)
-            self._on_success()
-            return result
-        except self.expected_exception as e:
-            self._on_failure()
-            raise e
-
-    async def call_async(self, func: Any, *args: Any, **kwargs: Any) -> Any:
-        """
-        Call async function with circuit breaker protection.
-
-        Args:
-            func: Async function to call
-            *args: Function arguments
-            **kwargs: Function keyword arguments
-
-        Returns:
-            Function result
-
-        Raises:
-            ScrapingError: If circuit is open
-            Exception: If function fails
-        """
-        if self.state == CircuitBreakerState.OPEN:
-            if self._should_attempt_reset():
-                self.state = CircuitBreakerState.HALF_OPEN
-            else:
-                raise ScrapingError(
-                    "Circuit breaker is open",
-                    details={
-                        "state": self.state.value,
-                        "failure_count": self.failure_count,
-                        "recovery_timeout": self.recovery_timeout,
-                    },
-                )
-
-        try:
-            result = await func(*args, **kwargs)
-            self._on_success()
-            return result
-        except self.expected_exception as e:
-            self._on_failure()
-            raise e
-
-    def _should_attempt_reset(self) -> bool:
-        """Check if circuit should attempt reset."""
-        return self.last_failure_time is not None and time.time() - self.last_failure_time >= self.recovery_timeout
-
-    def _on_success(self) -> None:
-        """Handle successful call."""
-        self.failure_count = 0
-        self.state = CircuitBreakerState.CLOSED
-
-    def _on_failure(self) -> None:
-        """Handle failed call."""
-        self.failure_count += 1
-        self.last_failure_time = time.time()
-
-        if self.failure_count >= self.failure_threshold:
-            self.state = CircuitBreakerState.OPEN
-            logger.warning(f"Circuit breaker opened after {self.failure_count} failures")
+# Use shared circuit breaker directly
+CircuitBreaker = create_circuit_breaker
 
 
 def retry(

@@ -16,7 +16,8 @@ from services.notification_service.src.core.base import (
 )
 from services.notification_service.src.core.history import NotificationHistoryLogger
 from services.notification_service.src.core.rate_limiter import PerChannelRateLimiter, RateLimitConfig
-from services.notification_service.src.core.retry import CircuitBreaker, RetryManager, RetryPolicy
+from services.notification_service.src.core.retry import RetryManager, RetryPolicy
+from shared.utils.resilience import ServiceType, get_circuit_breaker, CircuitOpenError
 from services.notification_service.src.templates.discord_templates import DiscordEmbedBuilder
 
 logger = logging.getLogger(__name__)
@@ -41,14 +42,30 @@ class DiscordWebhookClient:
         self.webhook_url = webhook_url
         self.timeout = timeout
         self.retry_manager = RetryManager(retry_policy or RetryPolicy())
-        self.circuit_breaker = CircuitBreaker(
-            failure_threshold=5,
-            recovery_timeout=60.0,
-            expected_exception=aiohttp.ClientError,
+        # Use standardized circuit breaker for external service calls (webhooks)
+        self.circuit_breaker = get_circuit_breaker(
+            name="discord_webhook",
+            service_type=ServiceType.EXTERNAL_SERVICE,
+            domain="discord.com",
         )
 
     async def send(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Send payload to Discord webhook.
+
+        Args:
+            payload: Discord webhook payload
+
+        Returns:
+            Response data from Discord
+
+        Raises:
+            aiohttp.ClientError: If request fails
+            CircuitOpenError: If circuit breaker is open
+        """
+        return await self.circuit_breaker.call_async(self._send_internal, payload)
+
+    async def _send_internal(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Internal method that performs the actual HTTP request.
 
         Args:
             payload: Discord webhook payload
@@ -100,9 +117,8 @@ class DiscordWebhookClient:
                     "rate_limit": rate_limit_info,
                 }
 
-        # Use circuit breaker and retry manager
-        result: dict[str, Any] = await self.circuit_breaker.call(lambda: self.retry_manager.execute(_send))
-        return result
+        # Use retry manager for the HTTP operation
+        return await self.retry_manager.execute(_send)
 
     async def validate(self) -> bool:
         """Validate webhook URL is working.
@@ -242,6 +258,12 @@ class DiscordNotificationService(NotificationChannel):
                 status=NotificationStatus.SENT,
                 message_id=str(response.get("status")),
                 metadata=response.get("rate_limit", {}),
+            )
+        except CircuitOpenError as e:
+            result = NotificationResult(
+                success=False,
+                status=NotificationStatus.FAILED,
+                error=f"Circuit breaker open: {e}",
             )
         except aiohttp.ClientError as e:
             result = NotificationResult(
