@@ -14,7 +14,6 @@ from typing import Any
 
 import psutil
 from redis import Redis
-
 from services.tracklist_service.src.progress.tracker import ProgressTracker
 from services.tracklist_service.src.queue.batch_queue import BatchJobQueue
 from services.tracklist_service.src.retry.retry_manager import RetryManager

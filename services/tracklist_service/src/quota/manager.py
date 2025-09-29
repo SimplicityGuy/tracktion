@@ -9,7 +9,6 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable
 
 import redis.asyncio as redis
-
 from services.tracklist_service.src.auth.models import User, UserTier
 
 from .models import QuotaAlert, QuotaLimits, QuotaResult, QuotaStatus, QuotaType, QuotaUpgrade, QuotaUsage

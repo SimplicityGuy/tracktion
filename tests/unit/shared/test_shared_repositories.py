@@ -380,7 +380,7 @@ class TestTracklistRepository:
 
     def test_create_tracklist_invalid_tracks(self, repository, mock_db_manager):
         """Test creating a tracklist with invalid tracks."""
-        _, session = mock_db_manager
+        _, _session = mock_db_manager  # session unused - only manager fixture structure needed
         recording_id = uuid4()
 
         tracks = [{"invalid": "structure"}]

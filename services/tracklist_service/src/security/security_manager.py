@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
 import redis.asyncio as redis
 from fastapi import Request, Response
-
 from services.tracklist_service.src.auth.models import User
 
 from .abuse_detector import AbuseDetector, AbuseScore

@@ -8,7 +8,6 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, HttpUrl, field_validator
-
 from services.tracklist_service.src.queue.batch_queue import BatchJobQueue
 
 logger = logging.getLogger(__name__)

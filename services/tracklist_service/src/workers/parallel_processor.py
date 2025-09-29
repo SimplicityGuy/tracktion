@@ -13,7 +13,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 import psutil
-
 from services.tracklist_service.src.queue.batch_queue import Job
 
 logger = logging.getLogger(__name__)

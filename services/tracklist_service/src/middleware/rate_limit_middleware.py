@@ -6,10 +6,9 @@ from typing import Any
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-
 from services.tracklist_service.src.auth.dependencies import authenticate_from_request
 from services.tracklist_service.src.rate_limiting.limiter import RateLimiter
+from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
 

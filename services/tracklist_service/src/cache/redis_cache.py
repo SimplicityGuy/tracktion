@@ -11,7 +11,6 @@ from typing import Any, cast
 
 import redis.asyncio as redis
 from redis.exceptions import RedisError
-
 from services.tracklist_service.src.config import get_config
 from services.tracklist_service.src.models.search_models import (
     CachedSearchResponse,

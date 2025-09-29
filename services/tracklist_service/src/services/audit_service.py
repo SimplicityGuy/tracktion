@@ -4,10 +4,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from services.tracklist_service.src.models.synchronization import AuditLog
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from services.tracklist_service.src.models.synchronization import AuditLog
 
 
 class AuditService:

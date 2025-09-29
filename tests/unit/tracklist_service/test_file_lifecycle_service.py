@@ -50,7 +50,7 @@ class TestFileLifecycleService:
         mock_session.execute.return_value = mock_result
 
         # Test
-        success, error = await lifecycle_service.handle_file_created(
+        success, _error = await lifecycle_service.handle_file_created(
             file_path="/music/new.mp3",
             sha256_hash="hash123",
             xxh128_hash="hash456",
@@ -59,7 +59,7 @@ class TestFileLifecycleService:
 
         # Verify
         assert success is True
-        assert error is None
+        assert _error is None
         mock_session.add.assert_called_once()
         mock_session.commit.assert_called_once()
 
@@ -72,7 +72,7 @@ class TestFileLifecycleService:
         mock_session.execute.return_value = mock_result
 
         # Test
-        success, error = await lifecycle_service.handle_file_created(
+        success, _error = await lifecycle_service.handle_file_created(
             file_path="/music/different.mp3",
             sha256_hash="abc123",  # Same hash as existing
             xxh128_hash="def456",
@@ -81,7 +81,7 @@ class TestFileLifecycleService:
 
         # Verify
         assert success is True
-        assert error is None
+        assert _error is None
         assert sample_recording.file_path == "/music/different.mp3"
         assert sample_recording.file_name == "different.mp3"
         mock_session.commit.assert_called_once()
@@ -95,7 +95,7 @@ class TestFileLifecycleService:
         mock_session.execute.return_value = mock_result
 
         # Test
-        success, error = await lifecycle_service.handle_file_modified(
+        success, _error = await lifecycle_service.handle_file_modified(
             file_path="/music/test.mp3",
             sha256_hash="newhash123",
             xxh128_hash="newhash456",
@@ -104,7 +104,7 @@ class TestFileLifecycleService:
 
         # Verify
         assert success is True
-        assert error is None
+        assert _error is None
         assert sample_recording.sha256_hash == "newhash123"
         assert sample_recording.xxh128_hash == "newhash456"
         assert sample_recording.file_size == 4096
@@ -123,7 +123,7 @@ class TestFileLifecycleService:
         with patch.object(lifecycle_service, "handle_file_created") as mock_create:
             mock_create.return_value = (True, None)
 
-            success, error = await lifecycle_service.handle_file_modified(
+            _success, _error = await lifecycle_service.handle_file_modified(
                 file_path="/music/new.mp3",
                 sha256_hash="hash123",
                 xxh128_hash="hash456",
@@ -142,11 +142,11 @@ class TestFileLifecycleService:
         mock_session.execute.return_value = mock_result
 
         # Test
-        success, error = await lifecycle_service.handle_file_deleted(file_path="/music/test.mp3", soft_delete=True)
+        success, _error = await lifecycle_service.handle_file_deleted(file_path="/music/test.mp3", soft_delete=True)
 
         # Verify
         assert success is True
-        assert error is None
+        assert _error is None
         assert sample_recording.deleted_at is not None
         assert sample_recording.processing_status == "deleted"
         mock_session.commit.assert_called_once()
@@ -160,11 +160,11 @@ class TestFileLifecycleService:
         mock_session.execute.return_value = mock_result
 
         # Test
-        success, error = await lifecycle_service.handle_file_deleted(file_path="/music/test.mp3", soft_delete=False)
+        success, _error = await lifecycle_service.handle_file_deleted(file_path="/music/test.mp3", soft_delete=False)
 
         # Verify
         assert success is True
-        assert error is None
+        assert _error is None
         mock_session.delete.assert_called_once_with(sample_recording)
         mock_session.commit.assert_called_once()
 
@@ -177,11 +177,11 @@ class TestFileLifecycleService:
         mock_session.execute.return_value = mock_result
 
         # Test
-        success, error = await lifecycle_service.handle_file_deleted(file_path="/music/missing.mp3", soft_delete=True)
+        success, _error = await lifecycle_service.handle_file_deleted(file_path="/music/missing.mp3", soft_delete=True)
 
         # Verify - should still succeed but with warning
         assert success is True
-        assert error is None
+        assert _error is None
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio
@@ -193,7 +193,7 @@ class TestFileLifecycleService:
         mock_session.execute.return_value = mock_result
 
         # Test
-        success, error = await lifecycle_service.handle_file_moved(
+        success, _error = await lifecycle_service.handle_file_moved(
             old_path="/music/test.mp3",
             new_path="/music/moved/test.mp3",
             sha256_hash="abc123",
@@ -202,7 +202,7 @@ class TestFileLifecycleService:
 
         # Verify
         assert success is True
-        assert error is None
+        assert _error is None
         assert sample_recording.file_path == "/music/moved/test.mp3"
         assert sample_recording.file_name == "test.mp3"
         mock_session.commit.assert_called_once()
@@ -219,7 +219,7 @@ class TestFileLifecycleService:
         with patch.object(lifecycle_service, "handle_file_created") as mock_create:
             mock_create.return_value = (True, None)
 
-            success, error = await lifecycle_service.handle_file_moved(
+            _success, _error = await lifecycle_service.handle_file_moved(
                 old_path="/music/old.mp3",
                 new_path="/music/new.mp3",
                 sha256_hash="hash123",
@@ -238,7 +238,7 @@ class TestFileLifecycleService:
         mock_session.execute.return_value = mock_result
 
         # Test
-        success, error = await lifecycle_service.handle_file_renamed(
+        success, _error = await lifecycle_service.handle_file_renamed(
             old_path="/music/test.mp3",
             new_path="/music/renamed.mp3",
             sha256_hash="abc123",
@@ -247,7 +247,7 @@ class TestFileLifecycleService:
 
         # Verify
         assert success is True
-        assert error is None
+        assert _error is None
         assert sample_recording.file_path == "/music/renamed.mp3"
         assert sample_recording.file_name == "renamed.mp3"
         mock_session.commit.assert_called_once()
@@ -264,11 +264,11 @@ class TestFileLifecycleService:
         mock_session.execute.return_value = mock_result
 
         # Test
-        success, error = await lifecycle_service.recover_soft_deleted(file_path="/music/test.mp3")
+        success, _error = await lifecycle_service.recover_soft_deleted(file_path="/music/test.mp3")
 
         # Verify
         assert success is True
-        assert error is None
+        assert _error is None
         assert sample_recording.deleted_at is None
         assert sample_recording.processing_status == "pending"
         mock_session.commit.assert_called_once()

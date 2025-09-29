@@ -19,7 +19,6 @@ from aio_pika.abc import (
     AbstractQueue,
     AbstractRobustConnection,
 )
-
 from services.tracklist_service.src.cache.redis_cache import get_cache
 from services.tracklist_service.src.config import get_config
 from services.tracklist_service.src.models.search_models import (

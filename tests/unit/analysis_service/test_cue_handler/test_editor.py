@@ -688,7 +688,7 @@ class TestCueEditor:
         editor.cue_sheet = sample_cue_sheet
 
         # Try to add INDEX 00 after INDEX 01 - should fail
-        with pytest.raises(ValueError, match="INDEX.*must be before"):
+        with pytest.raises(ValueError, match=r"INDEX.*must be before"):
             editor.set_track_index(1, 0, "01:00:00")  # INDEX 01 is at 00:00:00
 
     def test_special_character_handling(self, editor, sample_cue_sheet):

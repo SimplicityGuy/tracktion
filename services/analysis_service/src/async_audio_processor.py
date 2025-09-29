@@ -390,7 +390,7 @@ class AudioAnalysisScheduler:
         while self.running:
             try:
                 # Get next task from priority queue
-                priority_value, task_item = await asyncio.wait_for(self.priority_queue.get(), timeout=1.0)
+                _priority_value, task_item = await asyncio.wait_for(self.priority_queue.get(), timeout=1.0)
 
                 audio_file, processing_func, callback, kwargs = task_item
 

@@ -21,7 +21,6 @@ from aio_pika.abc import (
     AbstractQueue,
     AbstractRobustConnection,
 )
-
 from services.tracklist_service.src.cache.redis_cache import RedisCache
 from services.tracklist_service.src.config import get_config
 from services.tracklist_service.src.models.tracklist_models import Tracklist, TracklistRequest

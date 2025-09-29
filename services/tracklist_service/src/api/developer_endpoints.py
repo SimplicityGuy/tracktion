@@ -13,7 +13,6 @@ import redis.asyncio as redis
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
-
 from services.tracklist_service.src.analytics.usage_tracker import AggregationPeriod, UsageTracker
 from services.tracklist_service.src.auth.authentication import AuthenticationManager
 from services.tracklist_service.src.auth.models import User

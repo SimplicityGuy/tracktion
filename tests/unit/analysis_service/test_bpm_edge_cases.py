@@ -44,7 +44,7 @@ class TestBPMDetectorEdgeCases:
             mock_loader.side_effect = RuntimeError("Failed to decode audio file: corrupted header")
 
             try:
-                with pytest.raises(RuntimeError, match="BPM detection failed.*corrupted header"):
+                with pytest.raises(RuntimeError, match=r"BPM detection failed.*corrupted header"):
                     self.detector.detect_bpm(tmp_path)
             finally:
                 Path(tmp_path).unlink()
@@ -143,7 +143,7 @@ class TestBPMDetectorEdgeCases:
             mock_loader.side_effect = ValueError("Sample rate must be positive")
 
             try:
-                with pytest.raises(RuntimeError, match="BPM detection failed.*Sample rate must be positive"):
+                with pytest.raises(RuntimeError, match=r"BPM detection failed.*Sample rate must be positive"):
                     detector.detect_bpm(tmp_path)
             finally:
                 Path(tmp_path).unlink()
@@ -158,7 +158,7 @@ class TestBPMDetectorEdgeCases:
             mock_loader.side_effect = MemoryError("Cannot allocate memory for audio buffer")
 
             try:
-                with pytest.raises(RuntimeError, match="BPM detection failed.*Cannot allocate memory"):
+                with pytest.raises(RuntimeError, match=r"BPM detection failed.*Cannot allocate memory"):
                     self.detector.detect_bpm(tmp_path)
             finally:
                 Path(tmp_path).unlink()
@@ -177,7 +177,7 @@ class TestBPMDetectorEdgeCases:
             self.mock_rhythm_instance.side_effect = MemoryError("Out of memory during FFT processing")
 
             try:
-                with pytest.raises(RuntimeError, match="BPM detection failed.*Out of memory during FFT"):
+                with pytest.raises(RuntimeError, match=r"BPM detection failed.*Out of memory during FFT"):
                     self.detector.detect_bpm(tmp_path)
             finally:
                 Path(tmp_path).unlink()
@@ -231,7 +231,7 @@ class TestBPMDetectorEdgeCases:
             self.mock_rhythm_instance.side_effect = slow_rhythm_extraction
 
             try:
-                with pytest.raises(RuntimeError, match="BPM detection failed.*timeout"):
+                with pytest.raises(RuntimeError, match=r"BPM detection failed.*timeout"):
                     self.detector.detect_bpm(tmp_path)
             finally:
                 Path(tmp_path).unlink()
@@ -258,7 +258,7 @@ class TestBPMDetectorEdgeCases:
             self.mock_percival_instance.side_effect = TimeoutError("Percival algorithm timeout")
 
             try:
-                with pytest.raises(RuntimeError, match="BPM detection failed.*timeout"):
+                with pytest.raises(RuntimeError, match=r"BPM detection failed.*timeout"):
                     self.detector.detect_bpm(tmp_path)
             finally:
                 Path(tmp_path).unlink()
@@ -306,7 +306,7 @@ class TestBPMDetectorEdgeCases:
             self.mock_rhythm_instance.side_effect = RuntimeError("NaN values in audio signal")
 
             try:
-                with pytest.raises(RuntimeError, match="BPM detection failed.*NaN values"):
+                with pytest.raises(RuntimeError, match=r"BPM detection failed.*NaN values"):
                     self.detector.detect_bpm(tmp_path)
             finally:
                 Path(tmp_path).unlink()
@@ -325,7 +325,7 @@ class TestBPMDetectorEdgeCases:
             self.mock_rhythm_instance.side_effect = RuntimeError("Infinite values in audio signal")
 
             try:
-                with pytest.raises(RuntimeError, match="BPM detection failed.*Infinite values"):
+                with pytest.raises(RuntimeError, match=r"BPM detection failed.*Infinite values"):
                     self.detector.detect_bpm(tmp_path)
             finally:
                 Path(tmp_path).unlink()
@@ -440,7 +440,7 @@ class TestBPMDetectorEdgeCases:
             self.mock_rhythm_instance.side_effect = RuntimeError("Rhythm extraction failed")
 
             try:
-                with pytest.raises(RuntimeError, match="BPM detection failed.*Rhythm extraction failed"):
+                with pytest.raises(RuntimeError, match=r"BPM detection failed.*Rhythm extraction failed"):
                     self.detector.detect_bpm(tmp_path)
             finally:
                 Path(tmp_path).unlink()
@@ -467,7 +467,7 @@ class TestBPMDetectorEdgeCases:
             self.mock_percival_instance.side_effect = RuntimeError("Percival estimation failed")
 
             try:
-                with pytest.raises(RuntimeError, match="BPM detection failed.*Percival estimation failed"):
+                with pytest.raises(RuntimeError, match=r"BPM detection failed.*Percival estimation failed"):
                     self.detector.detect_bpm(tmp_path)
             finally:
                 Path(tmp_path).unlink()
@@ -570,7 +570,7 @@ class TestBPMDetectorEdgeCases:
             # Mock permission error
             mock_loader.side_effect = PermissionError("Permission denied accessing audio file")
 
-            with pytest.raises(RuntimeError, match="BPM detection failed.*Permission denied"):
+            with pytest.raises(RuntimeError, match=r"BPM detection failed.*Permission denied"):
                 self.detector.detect_bpm("/restricted/file.mp3")
 
     def test_network_file_timeout(self):
@@ -587,7 +587,7 @@ class TestBPMDetectorEdgeCases:
             # Mock network timeout during file loading
             mock_loader.side_effect = TimeoutError("Network timeout while loading remote audio file")
 
-            with pytest.raises(RuntimeError, match="BPM detection failed.*Network timeout"):
+            with pytest.raises(RuntimeError, match=r"BPM detection failed.*Network timeout"):
                 self.detector.detect_bpm("https://example.com/audio.mp3")
 
     def test_detector_with_invalid_config(self):
@@ -613,7 +613,7 @@ class TestBPMDetectorEdgeCases:
 
             try:
                 # Should propagate the error from detect_bpm
-                with pytest.raises(RuntimeError, match="BPM detection failed.*Audio processing failed"):
+                with pytest.raises(RuntimeError, match=r"BPM detection failed.*Audio processing failed"):
                     self.detector.detect_bpm_with_confidence(tmp_path)
             finally:
                 Path(tmp_path).unlink()

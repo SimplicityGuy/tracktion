@@ -148,7 +148,7 @@ async def list_recordings(
     """
     try:
         page = (offset // limit) + 1
-        recordings, total_count = await recording_repository.list_paginated(
+        recordings, _total_count = await recording_repository.list_paginated(
             page=page,
             limit=limit,
             status_filter=status,

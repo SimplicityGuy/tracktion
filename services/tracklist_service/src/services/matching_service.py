@@ -533,7 +533,7 @@ class MatchingService:
         scraped_tracklist = self._convert_to_scraped_tracklist(tracklist)
 
         # Perform matching
-        confidence, details = self.match_tracklist_to_audio(scraped_tracklist, audio_metadata)
+        confidence, _details = self.match_tracklist_to_audio(scraped_tracklist, audio_metadata)
 
         return MatchingResult(confidence_score=confidence, metadata=audio_metadata)
 

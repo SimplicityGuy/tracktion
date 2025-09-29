@@ -168,7 +168,7 @@ class EssentiaModelEvaluator:
 
             # Rhythm features
             rhythm_extractor = es.RhythmExtractor2013()
-            bpm, beats, confidence, _, _ = rhythm_extractor(audio)
+            bpm, _beats, confidence, _, _ = rhythm_extractor(audio)
             features["bpm"] = float(bpm)
             features["beat_confidence"] = float(confidence)
 

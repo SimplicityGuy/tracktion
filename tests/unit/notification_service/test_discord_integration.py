@@ -19,8 +19,9 @@ from services.notification_service.src.core.base import (
     NotificationStatus,
 )
 from services.notification_service.src.core.rate_limiter import PerChannelRateLimiter, RateLimitConfig
-from services.notification_service.src.core.retry import CircuitBreaker, RetryPolicy
+from services.notification_service.src.core.retry import RetryPolicy
 from services.notification_service.src.templates.discord_templates import DiscordEmbedBuilder
+from shared.utils.resilience import ServiceType, get_circuit_breaker
 
 
 class MockResponse:
@@ -81,7 +82,7 @@ class MockClientSession:
     async def __aenter__(self):
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, _exc_type, _exc_val, _exc_tb):
         pass
 
 
@@ -94,7 +95,7 @@ class MockPost:
     async def __aenter__(self):
         return self.response
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, _exc_type, _exc_val, _exc_tb):
         pass
 
 
@@ -134,11 +135,11 @@ class TestDiscordWebhookClientRetryLogic:
         responses = [MockResponse(status=404, text="Webhook not found")]
 
         with patch("aiohttp.ClientSession", lambda: MockClientSession(responses)):
-            with pytest.raises(aiohttp.ClientResponseError) as exc_info:
+            with pytest.raises(aiohttp.ClientResponseError) as _exc_info:
                 await client.send({"content": "test"})
 
-            assert exc_info.value.status == 404
-            assert "Discord webhook error" in str(exc_info.value)
+            assert _exc_info.value.status == 404
+            assert "Discord webhook error" in str(_exc_info.value)
 
     @pytest.mark.asyncio
     async def test_rate_limit_response(self) -> None:
@@ -149,11 +150,11 @@ class TestDiscordWebhookClientRetryLogic:
         responses = [MockResponse(status=429, headers={"X-RateLimit-Reset-After": "30"})]
 
         with patch("aiohttp.ClientSession", lambda: MockClientSession(responses)):
-            with pytest.raises(aiohttp.ClientResponseError) as exc_info:
+            with pytest.raises(aiohttp.ClientResponseError) as _exc_info:
                 await client.send({"content": "test"})
 
-            assert exc_info.value.status == 429
-            assert "Rate limited" in str(exc_info.value)
+            assert _exc_info.value.status == 429
+            assert "Rate limited" in str(_exc_info.value)
 
     @pytest.mark.asyncio
     async def test_client_initialization(self) -> None:
@@ -167,7 +168,7 @@ class TestDiscordWebhookClientRetryLogic:
         assert client.timeout == 15.0
         assert client.retry_manager.policy.max_attempts == 5
         assert client.retry_manager.policy.backoff_base == 1.5
-        assert client.circuit_breaker.failure_threshold == 5
+        assert client.circuit_breaker.config.failure_threshold == 10  # EXTERNAL_SERVICE default
 
     @pytest.mark.asyncio
     async def test_webhook_validation_success(self) -> None:
@@ -207,7 +208,7 @@ class TestDiscordWebhookClientRetryLogic:
                     async def __aenter__(self):
                         raise TimeoutError("Request timed out")
 
-                    async def __aexit__(self, exc_type, exc_val, exc_tb):
+                    async def __aexit__(self, _exc_type, _exc_val, _exc_tb):
                         pass
 
                 return TimeoutPost()
@@ -215,7 +216,7 @@ class TestDiscordWebhookClientRetryLogic:
             async def __aenter__(self):
                 return self
 
-            async def __aexit__(self, exc_type, exc_val, exc_tb):
+            async def __aexit__(self, _exc_type, _exc_val, _exc_tb):
                 pass
 
         with patch("aiohttp.ClientSession", lambda: TimeoutMockSession()), pytest.raises(asyncio.TimeoutError):
@@ -230,11 +231,11 @@ class TestDiscordWebhookClientRetryLogic:
         responses = [MockResponse(status=404, text="Not Found")]
 
         with patch("aiohttp.ClientSession", lambda: MockClientSession(responses)):
-            with pytest.raises(aiohttp.ClientResponseError) as exc_info:
+            with pytest.raises(aiohttp.ClientResponseError) as _exc_info:
                 await client.send({"content": "test"})
 
-            assert exc_info.value.status == 404
-            assert "Discord webhook error" in str(exc_info.value)
+            assert _exc_info.value.status == 404
+            assert "Discord webhook error" in str(_exc_info.value)
 
 
 class TestPerChannelRateLimiter:
@@ -352,11 +353,7 @@ class TestCircuitBreakerPattern:
     @pytest.mark.asyncio
     async def test_circuit_breaker_states(self) -> None:
         """Test circuit breaker state transitions."""
-        circuit_breaker = CircuitBreaker(
-            failure_threshold=2,
-            recovery_timeout=0.1,
-            expected_exception=ValueError,
-        )
+        circuit_breaker = get_circuit_breaker(name="test_circuit_breaker", service_type=ServiceType.EXTERNAL_SERVICE)
 
         async def failing_function():
             raise ValueError("Test error")
@@ -366,10 +363,10 @@ class TestCircuitBreakerPattern:
 
         # Should start closed (allowing requests)
         with pytest.raises(ValueError):
-            await circuit_breaker.call(failing_function)
+            await circuit_breaker.call_async(failing_function)
 
         with pytest.raises(ValueError):
-            await circuit_breaker.call(failing_function)
+            await circuit_breaker.call_async(failing_function)
 
         # Should now be open (failing fast)
         # Note: The actual circuit breaker implementation may vary
@@ -377,10 +374,8 @@ class TestCircuitBreakerPattern:
     @pytest.mark.asyncio
     async def test_circuit_breaker_with_different_exceptions(self) -> None:
         """Test circuit breaker only opens on expected exceptions."""
-        circuit_breaker = CircuitBreaker(
-            failure_threshold=1,
-            recovery_timeout=0.1,
-            expected_exception=ValueError,
+        circuit_breaker = get_circuit_breaker(
+            name="test_exception_circuit_breaker", service_type=ServiceType.EXTERNAL_SERVICE
         )
 
         async def type_error_function():
@@ -389,13 +384,13 @@ class TestCircuitBreakerPattern:
         async def value_error_function():
             raise ValueError("Wrong value")
 
-        # TypeError should not trigger circuit breaker
+        # TypeError should trigger circuit breaker (all exceptions do in shared implementation)
         with pytest.raises(TypeError):
-            await circuit_breaker.call(type_error_function)
+            await circuit_breaker.call_async(type_error_function)
 
         # ValueError should trigger circuit breaker
         with pytest.raises(ValueError):
-            await circuit_breaker.call(value_error_function)
+            await circuit_breaker.call_async(value_error_function)
 
 
 class TestAlertTypesAndFormatting:

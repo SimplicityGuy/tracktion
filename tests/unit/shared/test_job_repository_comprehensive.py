@@ -958,7 +958,7 @@ class TestJobRepositoryConcurrency:
         isolation_lock = threading.Lock()
 
         def get_session_reference():
-            repo, mock_session = repository_factory()
+            _repo, mock_session = repository_factory()  # repo unused - only session needed
 
             # Capture session reference
             with isolation_lock:

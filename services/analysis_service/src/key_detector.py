@@ -469,7 +469,7 @@ class KeyDetector:
 
         # Find the winning key/scale combination
         winner = max(key_votes.items(), key=lambda x: x[1])
-        (key, scale), total_confidence = winner
+        (key, scale), _total_confidence = winner
 
         # Calculate average confidence for the winning key
         winning_results = [r for r in results if r.key == key and r.scale == scale]

@@ -95,7 +95,10 @@ class TestTransactionManager:
         ]
 
         # Use the atomic rename context manager with simulated failure
-        with pytest.raises(RuntimeError), transaction_manager.atomic_rename(proposal_id) as (sess, prop, rec):
+        with (
+            pytest.raises(RuntimeError),
+            transaction_manager.atomic_rename(proposal_id) as (_sess, prop, rec),
+        ):
             # Simulate rename failure
             rec.file_path = "/tmp/new.ogg"
             rec.file_name = "new.ogg"

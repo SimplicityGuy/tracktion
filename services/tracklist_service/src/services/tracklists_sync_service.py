@@ -5,14 +5,13 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.tracklist_service.src.models.synchronization import SyncConfiguration, SyncEvent
 from services.tracklist_service.src.models.tracklist import TrackEntry, TracklistDB
 from services.tracklist_service.src.services.audit_service import AuditService
 from services.tracklist_service.src.services.import_service import ImportService
 from services.tracklist_service.src.services.version_service import VersionService
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

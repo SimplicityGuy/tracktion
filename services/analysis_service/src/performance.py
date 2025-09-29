@@ -135,7 +135,7 @@ class AudioStreamer:
             # Fallback to librosa if Essentia fails
             logger.info(f"Essentia failed, using librosa: {e}")
             try:
-                audio, loaded_sample_rate = librosa.load(file_path, sr=sample_rate, mono=mono)
+                audio, _loaded_sample_rate = librosa.load(file_path, sr=sample_rate, mono=mono)
                 # Convert to float32 for consistency with Essentia
                 audio = audio.astype(np.float32)
             except Exception as audio_error:

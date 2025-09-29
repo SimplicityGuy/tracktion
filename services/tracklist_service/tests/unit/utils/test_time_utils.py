@@ -3,7 +3,6 @@
 from datetime import timedelta
 
 import pytest
-
 from services.tracklist_service.src.utils.time_utils import (
     format_timedelta,
     milliseconds_to_timedelta,

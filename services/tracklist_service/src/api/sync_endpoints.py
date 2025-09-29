@@ -7,10 +7,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
-
 from services.tracklist_service.src.database import get_db_session
 from services.tracklist_service.src.models.synchronization import SyncEvent
 from services.tracklist_service.src.services.audit_service import AuditService
@@ -20,6 +16,9 @@ from services.tracklist_service.src.services.conflict_resolution_service import 
 )
 from services.tracklist_service.src.services.sync_service import SyncFrequency, SynchronizationService, SyncSource
 from services.tracklist_service.src.services.version_service import VersionService
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 
 # Database dependency using proper database connection

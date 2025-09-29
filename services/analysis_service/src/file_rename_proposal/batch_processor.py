@@ -328,7 +328,7 @@ class BatchProcessor:
                     warnings = conflicts_result["warnings"]
 
             # Calculate confidence score
-            confidence, components = self.confidence_scorer.calculate_confidence(
+            confidence, _components = self.confidence_scorer.calculate_confidence(
                 metadata=cast("dict[str, str | None]", metadata_dict),  # Metadata values are non-null in our model
                 original_filename=recording.file_name,  # Already validated above
                 proposed_filename=resolved_filename,

@@ -8,11 +8,6 @@ from uuid import UUID
 
 import aio_pika
 from aio_pika import ExchangeType, IncomingMessage
-from sqlalchemy.ext.asyncio import (  # type: ignore[attr-defined]  # SQLAlchemy 2.0 features; project uses 2.0.43 but type stubs are 1.4.x
-    async_sessionmaker,
-    create_async_engine,
-)
-
 from services.tracklist_service.src.config import get_config
 from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient, RabbitMQConfig
 from services.tracklist_service.src.messaging.sync_message_schemas import (
@@ -26,6 +21,10 @@ from services.tracklist_service.src.services.conflict_resolution_service import 
 from services.tracklist_service.src.services.cue_regeneration_service import CueRegenerationService
 from services.tracklist_service.src.services.sync_service import SynchronizationService, SyncSource
 from services.tracklist_service.src.services.version_service import VersionService
+from sqlalchemy.ext.asyncio import (  # type: ignore[attr-defined]  # SQLAlchemy 2.0 features; project uses 2.0.43 but type stubs are 1.4.x
+    async_sessionmaker,
+    create_async_engine,
+)
 
 logger = logging.getLogger(__name__)
 

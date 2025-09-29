@@ -198,7 +198,7 @@ class TestVersionService:
 
         with (
             patch.object(version_service, "get_version", return_value=None),
-            pytest.raises(ValueError, match="Version .* not found"),
+            pytest.raises(ValueError, match=r"Version .* not found"),
         ):
             await version_service.rollback_to_version(tracklist_id, 99)
 
@@ -280,7 +280,7 @@ class TestVersionService:
         mock_session.execute = AsyncMock(return_value=mock_execute_result)
         mock_session.get.return_value = None
 
-        with pytest.raises(ValueError, match="Tracklist .* not found"):
+        with pytest.raises(ValueError, match=r"Tracklist .* not found"):
             await version_service.create_version(
                 tracklist_id=tracklist_id,
                 change_type="manual_edit",

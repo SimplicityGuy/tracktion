@@ -287,7 +287,7 @@ class TestMetricsEndpoint(unittest.TestCase):
         handler = create_metrics_endpoint(collector)
 
         # Call handler
-        body, status_code, headers = handler()
+        body, status_code, _headers = handler()
 
         self.assertEqual(status_code, 500)
         self.assertIn(b"Error generating metrics", body)

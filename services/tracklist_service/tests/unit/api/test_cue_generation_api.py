@@ -9,7 +9,6 @@ from uuid import uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from services.tracklist_service.src.api.cue_generation_api import router
 from services.tracklist_service.src.models.cue_file import (
     BatchCueGenerationResponse,

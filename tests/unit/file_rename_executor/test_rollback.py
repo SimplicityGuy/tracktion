@@ -261,7 +261,7 @@ class TestRollbackMechanism:
             patch("shutil.move"),
             patch("services.analysis_service.src.file_rename_executor.executor.logger") as mock_logger,
         ):
-            result, error = executor.rollback_rename(proposal_id)
+            result, _error = executor.rollback_rename(proposal_id)  # error unused - only result checked
 
             assert result is True
 
@@ -296,7 +296,7 @@ class TestRollbackMechanism:
             patch("pathlib.Path.mkdir"),
             patch("shutil.move"),
         ):
-            result, error = executor.rollback_rename(proposal_id)
+            result, _error = executor.rollback_rename(proposal_id)  # error unused - only result checked
 
             assert result is True
 

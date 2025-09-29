@@ -14,7 +14,6 @@ from urllib.parse import urlparse
 
 import pika
 from redis import Redis
-
 from services.tracklist_service.src.queue.batch_queue import Job
 
 # Import from shared resilience module

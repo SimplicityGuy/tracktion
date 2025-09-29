@@ -7,7 +7,6 @@ from uuid import UUID, uuid4
 
 import aio_pika
 from aio_pika import ExchangeType, Message
-
 from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient, RabbitMQConfig
 from services.tracklist_service.src.messaging.sync_message_schemas import (
     BatchSyncMessage,

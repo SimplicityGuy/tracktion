@@ -10,8 +10,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
 from services.tracklist_service.src.messaging.cue_generation_handler import CueGenerationMessageHandler
 from services.tracklist_service.src.messaging.rabbitmq_client import RabbitMQClient, RabbitMQConfig
 from services.tracklist_service.src.models.cue_file import CueFormat
@@ -23,6 +21,7 @@ from services.tracklist_service.src.services.draft_service import DraftService
 from services.tracklist_service.src.services.storage_service import StorageService
 from services.tracklist_service.src.services.timing_service import TimingService
 from services.tracklist_service.src.utils.time_utils import parse_time_string
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -627,7 +626,7 @@ async def publish_draft(
 
             # Note: generate_cue_file method doesn't exist, this is placeholder
             # In real implementation, use generate_cue_content
-            success, content, error = cue_integration.generate_cue_content(
+            success, _content, error = cue_integration.generate_cue_content(
                 published,
                 cue_format=CueFormat.STANDARD,
                 audio_filename=f"audio_{published.audio_file_id}.wav",
@@ -689,7 +688,7 @@ def generate_cue_file(
 
     # Generate CUE file
     cue_service = CueIntegrationService()
-    cue_success, cue_content, cue_error = cue_service.generate_cue_content(
+    cue_success, _cue_content, cue_error = cue_service.generate_cue_content(
         tracklist=tracklist,
         cue_format=CueFormat(request.cue_format),
         audio_filename=request.audio_file_path,

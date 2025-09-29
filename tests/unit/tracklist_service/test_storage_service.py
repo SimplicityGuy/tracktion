@@ -150,7 +150,7 @@ class TestFilesystemBackend:
         assert result2.version == 2
 
         # Check current content is second version
-        success, content, error = backend.retrieve(file_path)
+        success, content, _error = backend.retrieve(file_path)
         assert success is True
         assert content == content2
 
@@ -419,7 +419,7 @@ TRACK 02 AUDIO
         assert service.file_exists(result.file_path) is True
 
         # Retrieve
-        success, retrieved, error = service.retrieve_cue_file(result.file_path)
+        success, retrieved, _error = service.retrieve_cue_file(result.file_path)
         assert success is True
         assert retrieved == content
 

@@ -3,7 +3,6 @@
 import aiohttp_cors
 from aiohttp import web
 from aiohttp.web import Application, Request, Response
-
 from services.tracklist_service.src.cache.fallback_cache import FallbackCache
 from services.tracklist_service.src.monitoring.alert_manager import AlertManager
 from services.tracklist_service.src.monitoring.dashboard import MonitoringDashboard

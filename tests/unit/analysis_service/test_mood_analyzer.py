@@ -348,17 +348,17 @@ class TestMoodAnalyzer:
         """Test voice/instrumental detection."""
         # High acoustic score -> likely voice
         mood_scores = {"acoustic": 0.8}
-        classification, confidence = mood_analyzer._detect_voice_instrumental(mood_scores)
+        classification, _confidence = mood_analyzer._detect_voice_instrumental(mood_scores)
         assert classification == "voice"
 
         # Low acoustic score -> likely instrumental
         mood_scores = {"acoustic": 0.2}
-        classification, confidence = mood_analyzer._detect_voice_instrumental(mood_scores)
+        classification, _confidence = mood_analyzer._detect_voice_instrumental(mood_scores)
         assert classification == "instrumental"
 
         # Medium score -> unknown
         mood_scores = {"acoustic": 0.5}
-        classification, confidence = mood_analyzer._detect_voice_instrumental(mood_scores)
+        classification, _confidence = mood_analyzer._detect_voice_instrumental(mood_scores)
         assert classification == "unknown"
 
     def test_calculate_overall_confidence(self, mood_analyzer):

@@ -10,9 +10,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import redis
-from sqlalchemy.orm import Session
-
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist, TracklistDB
+from sqlalchemy.orm import Session
 
 
 class DraftService:

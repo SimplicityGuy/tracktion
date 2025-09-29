@@ -9,12 +9,11 @@ import logging
 from collections.abc import Generator
 from contextlib import contextmanager
 
+from services.tracklist_service.src.config import get_config
+from services.tracklist_service.src.models.tracklist import Base
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
-
-from services.tracklist_service.src.config import get_config
-from services.tracklist_service.src.models.tracklist import Base
 
 logger = logging.getLogger(__name__)
 

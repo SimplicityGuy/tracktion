@@ -13,7 +13,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Tag
-
 from services.tracklist_service.src.models.tracklist_models import (
     CuePoint,
     Track,

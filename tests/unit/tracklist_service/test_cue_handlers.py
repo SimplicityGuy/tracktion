@@ -34,7 +34,7 @@ class TestCueValidationHandler:
     @pytest.mark.asyncio
     async def test_handle_cue_validation_success(self, cue_handler, mock_session_factory):
         """Test successful CUE validation."""
-        factory, mock_session = mock_session_factory
+        _factory, mock_session = mock_session_factory  # factory unused - only session needed
 
         # Create validation message
         cue_file_id = uuid4()
@@ -82,7 +82,7 @@ class TestCueValidationHandler:
     @pytest.mark.asyncio
     async def test_handle_cue_validation_invalid_file(self, cue_handler, mock_session_factory):
         """Test CUE validation with invalid file."""
-        factory, mock_session = mock_session_factory
+        _factory, mock_session = mock_session_factory  # factory unused - only session needed
 
         # Create validation message
         cue_file_id = uuid4()
@@ -128,7 +128,7 @@ class TestCueValidationHandler:
     @pytest.mark.asyncio
     async def test_handle_cue_validation_file_not_found(self, cue_handler, mock_session_factory):
         """Test CUE validation when file not found in database."""
-        factory, mock_session = mock_session_factory
+        _factory, mock_session = mock_session_factory  # factory unused - only session needed
 
         # Create validation message
         message = CueValidationMessage(
@@ -170,7 +170,7 @@ class TestCueConversionHandler:
     @pytest.mark.asyncio
     async def test_handle_cue_conversion_success(self, cue_handler, mock_session_factory):
         """Test successful CUE conversion."""
-        factory, mock_session = mock_session_factory
+        _factory, mock_session = mock_session_factory  # factory unused - only session needed
 
         # Create conversion message
         source_cue_id = uuid4()
@@ -236,7 +236,7 @@ class TestCueConversionHandler:
     @pytest.mark.asyncio
     async def test_handle_cue_conversion_invalid_format(self, cue_handler, mock_session_factory):
         """Test CUE conversion with invalid target format."""
-        factory, mock_session = mock_session_factory
+        _factory, mock_session = mock_session_factory  # factory unused - only session needed
 
         # Create conversion message with invalid format
         message = CueConversionMessage(
@@ -268,7 +268,7 @@ class TestCueConversionHandler:
     @pytest.mark.asyncio
     async def test_handle_cue_conversion_failure(self, cue_handler, mock_session_factory):
         """Test CUE conversion when conversion fails."""
-        factory, mock_session = mock_session_factory
+        _factory, mock_session = mock_session_factory  # factory unused - only session needed
 
         # Create conversion message
         message = CueConversionMessage(

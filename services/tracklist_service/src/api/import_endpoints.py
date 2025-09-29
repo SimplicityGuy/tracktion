@@ -13,8 +13,6 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
-
 from services.tracklist_service.src.cache.redis_cache import RedisCache
 from services.tracklist_service.src.exceptions import (
     CueGenerationError,
@@ -36,6 +34,7 @@ from services.tracklist_service.src.services.cue_integration import CueIntegrati
 from services.tracklist_service.src.services.import_service import ImportService
 from services.tracklist_service.src.services.matching_service import MatchingService
 from services.tracklist_service.src.services.timing_service import TimingService
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +255,7 @@ async def import_tracklist_from_1001tracklists(
                     "track_count": len(imported_tracklist.tracks),
                 },
             )
-            cue_success, cue_content, cue_error = cue_integration_service.generate_cue_content(
+            cue_success, _cue_content, _cue_error = cue_integration_service.generate_cue_content(
                 tracklist=imported_tracklist,
                 audio_filename=f"audio_file_{request.audio_file_id}.wav",  # Fixed parameter name
                 cue_format=CueFormat(request.cue_format),

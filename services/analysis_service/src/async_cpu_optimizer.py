@@ -514,7 +514,7 @@ class ParallelFFTOptimizer:
         if audio_file_path is not None:
             # Load real audio file
             try:
-                test_audio, loaded_sample_rate = librosa.load(audio_file_path, sr=sample_rate, mono=True)
+                test_audio, _loaded_sample_rate = librosa.load(audio_file_path, sr=sample_rate, mono=True)
                 test_audio = test_audio.astype(np.float32)
                 logger.info(f"Loaded audio file '{audio_file_path}' with {len(test_audio)} samples")
             except Exception as e:

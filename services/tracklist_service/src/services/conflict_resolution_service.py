@@ -6,11 +6,10 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.tracklist_service.src.models.tracklist import TracklistDB
 from services.tracklist_service.src.services.audit_service import AuditService
 from services.tracklist_service.src.services.version_service import VersionService
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

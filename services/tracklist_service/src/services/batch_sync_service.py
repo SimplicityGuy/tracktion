@@ -9,12 +9,11 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import psutil
-from sqlalchemy import and_, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.tracklist_service.src.messaging.sync_event_publisher import SyncEventPublisher
 from services.tracklist_service.src.models.synchronization import SyncConfiguration, SyncEvent
 from services.tracklist_service.src.services.sync_service import SynchronizationService, SyncSource, SyncStatus
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

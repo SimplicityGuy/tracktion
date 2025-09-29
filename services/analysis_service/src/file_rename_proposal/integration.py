@@ -165,7 +165,7 @@ class FileRenameProposalIntegration:
                     warnings = conflicts_result["warnings"]
 
             # Calculate confidence score
-            confidence, components = self.confidence_scorer.calculate_confidence(
+            confidence, _components = self.confidence_scorer.calculate_confidence(
                 metadata=cast("dict[str, str | None]", metadata),
                 original_filename=recording.file_name,  # Already validated above
                 proposed_filename=resolved_filename,

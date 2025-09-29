@@ -10,7 +10,6 @@ from enum import Enum
 from typing import Any, cast
 
 from redis.asyncio import Redis
-
 from services.notification_service.src.channels.discord import DiscordNotificationService
 from services.notification_service.src.core.base import (
     AlertType,

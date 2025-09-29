@@ -10,9 +10,8 @@ from typing import Any
 
 import requests
 from bs4 import BeautifulSoup
-from tenacity import retry, stop_after_attempt, wait_exponential
-
 from services.tracklist_service.src.config import get_config
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 
 class ScraperBase:

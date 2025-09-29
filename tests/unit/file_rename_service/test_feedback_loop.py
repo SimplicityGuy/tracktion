@@ -1152,7 +1152,7 @@ class TestBackpressureHandling:
             )
 
         # Additional submissions should be rejected
-        with pytest.raises(Exception, match="queue.*full|backpressure|rejected"):
+        with pytest.raises(Exception, match=r"queue.*full|backpressure|rejected"):
             await processor.submit_feedback(
                 proposal_id="prop-overflow",
                 original_filename="overflow.txt",

@@ -313,7 +313,7 @@ class ResultAggregator:
         bins = options.get("bins", 10)
 
         # Calculate histogram
-        hist, edges = pd.cut(values, bins=bins, retbins=True)
+        hist, _edges = pd.cut(values, bins=bins, retbins=True)
         counts = hist.value_counts().sort_index()
 
         return {

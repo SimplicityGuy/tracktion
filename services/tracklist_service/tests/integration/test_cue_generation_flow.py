@@ -10,9 +10,6 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from services.tracklist_service.src.models.cue_file import CueFormat
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
 from services.tracklist_service.src.services.cue_generation_service import (
@@ -22,6 +19,8 @@ from services.tracklist_service.src.services.cue_generation_service import (
 )
 from services.tracklist_service.src.services.cue_integration import CueIntegrationService
 from services.tracklist_service.src.services.draft_service import DraftService
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 
 @pytest.fixture
@@ -378,7 +377,7 @@ class TestCueIntegrationService:
         assert success is True
 
         # Convert to CDJ format
-        success, cdj_content, warnings, error = cue_integration_service.convert_cue_format(
+        success, cdj_content, _warnings, error = cue_integration_service.convert_cue_format(
             standard_content,
             CueFormat.STANDARD,
             CueFormat.CDJ,

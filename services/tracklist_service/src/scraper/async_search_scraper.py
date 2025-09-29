@@ -11,7 +11,6 @@ from urllib.parse import urlencode, urljoin
 
 import structlog
 from bs4 import BeautifulSoup, NavigableString, PageElement, Tag
-
 from services.tracklist_service.src.models.search import (
     PaginationInfo,
     SearchRequest,

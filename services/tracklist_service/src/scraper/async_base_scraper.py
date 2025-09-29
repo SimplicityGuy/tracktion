@@ -12,8 +12,8 @@ from typing import Any
 import httpx
 import structlog
 from bs4 import BeautifulSoup
-
 from services.tracklist_service.src.config import get_config
+
 from shared.utils.async_http_client import AsyncHTTPClient, HTTPClientConfig, RetryHandler, get_global_http_factory
 
 logger = structlog.get_logger(__name__)

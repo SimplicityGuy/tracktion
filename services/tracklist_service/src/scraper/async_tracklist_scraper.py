@@ -16,7 +16,6 @@ from urllib.parse import urlparse
 import structlog
 from bs4 import BeautifulSoup, PageElement, Tag
 from dateutil import parser
-
 from services.tracklist_service.src.models.tracklist_models import (
     CuePoint,
     Track,

@@ -6,13 +6,12 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.tracklist_service.src.models.cue_file import CueFileDB, CueFormat, GenerateCueRequest
 from services.tracklist_service.src.models.tracklist import TracklistDB
 from services.tracklist_service.src.services.audit_service import AuditService
 from services.tracklist_service.src.services.cue_generation_service import CueGenerationService
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

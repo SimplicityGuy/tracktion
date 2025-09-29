@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from bs4 import BeautifulSoup
-
 from services.tracklist_service.src.scrapers.resilient_extractor import (
     CSSStrategy,
     ExtractedData,

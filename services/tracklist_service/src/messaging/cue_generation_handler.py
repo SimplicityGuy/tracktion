@@ -11,7 +11,6 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 from aio_pika.abc import AbstractIncomingMessage
-
 from services.analysis_service.src.cue_handler.converter import ConversionMode, CueConverter
 from services.analysis_service.src.cue_handler.generator import CueFormat
 from services.analysis_service.src.cue_handler.validator import CueValidator

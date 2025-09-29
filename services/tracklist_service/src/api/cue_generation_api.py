@@ -16,10 +16,6 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
-
 from services.tracklist_service.src.database import get_db_session as db_session_getter
 from services.tracklist_service.src.messaging.message_schemas import (
     BatchCueGenerationMessage,
@@ -41,6 +37,10 @@ from services.tracklist_service.src.services.audio_validation_service import Aud
 from services.tracklist_service.src.services.cache_service import CacheConfig, CacheService
 from services.tracklist_service.src.services.cue_generation_service import CueGenerationService
 from services.tracklist_service.src.services.storage_service import StorageConfig, StorageService
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
+
 from shared.core_types.src.async_database import AsyncDatabaseManager
 from shared.core_types.src.async_repositories import AsyncTracklistRepository
 from shared.core_types.src.database import DatabaseManager

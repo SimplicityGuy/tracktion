@@ -43,7 +43,7 @@ def mock_rabbitmq():
 @pytest.fixture
 def retry_manager(mock_redis, mock_rabbitmq):
     """Create RetryManager instance with mocks."""
-    connection_mock, channel_mock = mock_rabbitmq
+    connection_mock, _channel_mock = mock_rabbitmq
 
     with (
         patch(

@@ -41,6 +41,7 @@ from services.tracklist_service.src.models.cue_file import GenerateCueRequest as
 
 # Import time utilities
 from services.tracklist_service.src.utils.time_utils import parse_cue_time
+
 from shared.core_types.src.database import DatabaseManager
 from shared.core_types.src.repositories import JobRepository, JobStatus
 

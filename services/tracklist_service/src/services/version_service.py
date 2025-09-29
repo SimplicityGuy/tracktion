@@ -4,11 +4,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import and_, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.tracklist_service.src.models.synchronization import TracklistVersion
 from services.tracklist_service.src.models.tracklist import TracklistDB
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class VersionService:

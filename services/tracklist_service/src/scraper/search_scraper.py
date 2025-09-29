@@ -11,7 +11,6 @@ from urllib.parse import urlencode, urljoin
 from uuid import uuid4
 
 from bs4 import BeautifulSoup, PageElement, Tag
-
 from services.tracklist_service.src.models.search_models import (
     PaginationInfo,
     SearchRequest,

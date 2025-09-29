@@ -119,19 +119,19 @@ CircuitBreakerState = CircuitState
 
 # Create factory function for backward compatibility
 def create_circuit_breaker(
+    name: str = "tracklist_circuit_breaker",
     failure_threshold: int = 5,
     recovery_timeout: int = 60,
     expected_exception: type[Exception] = Exception,
-    name: str = "tracklist_circuit_breaker",
 ):
     """
     Create a circuit breaker with tracklist service configuration.
 
     Args:
+        name: Name for the circuit breaker
         failure_threshold: Number of failures before opening circuit
         recovery_timeout: Seconds to wait before attempting recovery
         expected_exception: Exception type to catch
-        name: Name for the circuit breaker
 
     Returns:
         Configured CircuitBreaker instance

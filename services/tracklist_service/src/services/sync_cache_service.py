@@ -10,7 +10,6 @@ import redis.asyncio as redis
 from redis.asyncio import Redis
 from redis.asyncio.lock import Lock
 from redis.exceptions import LockError, RedisError
-
 from services.tracklist_service.src.config import get_config
 
 logger = logging.getLogger(__name__)

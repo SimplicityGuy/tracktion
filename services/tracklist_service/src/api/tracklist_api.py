@@ -15,7 +15,6 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import JSONResponse
-
 from services.tracklist_service.src.cache.redis_cache import RedisCache
 from services.tracklist_service.src.messaging.simple_handler import MessageHandler
 from services.tracklist_service.src.models.tracklist_models import Tracklist, TracklistRequest, TracklistResponse

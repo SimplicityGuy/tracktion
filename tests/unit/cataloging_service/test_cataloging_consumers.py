@@ -913,7 +913,7 @@ class TestMessageConsumerIntegration:
     @pytest.mark.asyncio
     async def test_consumers_can_be_created_simultaneously(self, mock_config, mock_db_manager):
         """Test that both consumers can be created without conflicts."""
-        mock_manager, mock_session = mock_db_manager
+        mock_manager, _mock_session = mock_db_manager  # session unused - only manager fixture structure needed
 
         with (
             patch("services.cataloging_service.src.message_consumer.get_config", return_value=mock_config),

@@ -9,7 +9,6 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-
 from services.tracklist_service.src.auth.admin_auth import AdminUser, require_parser_admin, require_readonly
 from services.tracklist_service.src.cache.fallback_cache import FallbackCache
 from services.tracklist_service.src.models.operation_history import OperationHistoryRepository
@@ -23,6 +22,7 @@ from services.tracklist_service.src.scrapers.resilient_extractor import (
     TextStrategy,
     XPathStrategy,
 )
+
 from shared.core_types.src.database import DatabaseManager
 
 from .models import (

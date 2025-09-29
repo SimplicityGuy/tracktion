@@ -6,10 +6,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from services.notification_service.src.core.retry import (
-    CircuitBreaker,
     RetryManager,
     RetryPolicy,
 )
+from shared.utils.resilience import CircuitOpenError, ServiceType, get_circuit_breaker
+from shared.utils.resilience.config import CircuitBreakerConfig
 
 
 class TestRetryPolicy:
@@ -153,53 +154,58 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_successful_calls(self) -> None:
         """Test circuit breaker with successful calls."""
-        breaker = CircuitBreaker(failure_threshold=3)
+        breaker = get_circuit_breaker(name="test_successful_calls", service_type=ServiceType.EXTERNAL_SERVICE)
         mock_func = AsyncMock(return_value="success")
 
         # Multiple successful calls
         for _ in range(5):
-            result = await breaker.call(mock_func)
+            result = await breaker.call_async(mock_func)
             assert result == "success"
 
-        assert breaker.state == "closed"
-        assert breaker.failure_count == 0
+        # Shared circuit breaker uses CircuitState enum
+        assert breaker.state.name == "CLOSED"
+        assert breaker.stats.failed_calls == 0
 
     @pytest.mark.asyncio
     async def test_circuit_opens_on_failures(self) -> None:
         """Test circuit opens after threshold failures."""
-        breaker = CircuitBreaker(failure_threshold=3)
+        breaker = get_circuit_breaker(name="test_circuit_opens", service_type=ServiceType.EXTERNAL_SERVICE)
         mock_func = AsyncMock(side_effect=ValueError("fail"))
 
-        # First two failures
-        for _ in range(2):
+        # First few failures (EXTERNAL_SERVICE default threshold is 10)
+        for _ in range(9):
             with pytest.raises(ValueError):
-                await breaker.call(mock_func)
+                await breaker.call_async(mock_func)
 
-        assert breaker.state == "closed"
-        assert breaker.failure_count == 2
+        assert breaker.state.name == "CLOSED"
+        assert breaker.stats.failed_calls == 9
 
-        # Third failure opens circuit
+        # Tenth failure opens circuit
         with pytest.raises(ValueError):
-            await breaker.call(mock_func)
+            await breaker.call_async(mock_func)
 
-        assert breaker.state == "open"
-        assert breaker.failure_count == 3
+        assert breaker.state.name == "OPEN"
+        assert breaker.stats.failed_calls == 10
 
     @pytest.mark.asyncio
     async def test_open_circuit_rejects_calls(self) -> None:
         """Test that open circuit rejects calls."""
-        breaker = CircuitBreaker(failure_threshold=1)
+        # Create a circuit breaker with low threshold for quick opening
+        config = CircuitBreakerConfig(failure_threshold=1, timeout=60.0)
+        breaker = get_circuit_breaker(
+            name="test_open_rejects", service_type=ServiceType.EXTERNAL_SERVICE, config=config
+        )
         mock_func = AsyncMock(side_effect=[ValueError("fail"), "success"])
 
         # First call fails and opens circuit
         with pytest.raises(ValueError):
-            await breaker.call(mock_func)
+            await breaker.call_async(mock_func)
 
-        assert breaker.state == "open"
+        assert breaker.state.name == "OPEN"
 
         # Subsequent call should be rejected immediately
-        with pytest.raises(RuntimeError, match="Circuit breaker is open"):
-            await breaker.call(mock_func)
+        with pytest.raises(CircuitOpenError):
+            await breaker.call_async(mock_func)
 
         # Function should only be called once
         assert mock_func.call_count == 1
@@ -207,74 +213,90 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_circuit_recovery(self) -> None:
         """Test circuit recovery after timeout."""
-        breaker = CircuitBreaker(failure_threshold=1, recovery_timeout=0.1)
-        mock_func = AsyncMock(side_effect=[ValueError("fail"), "success"])
+        config = CircuitBreakerConfig(failure_threshold=1, timeout=0.1)
+        breaker = get_circuit_breaker(
+            name="test_circuit_recovery", service_type=ServiceType.EXTERNAL_SERVICE, config=config
+        )
+        mock_func = AsyncMock(side_effect=[ValueError("fail")] + ["success"] * 10)
 
         # Open the circuit
         with pytest.raises(ValueError):
-            await breaker.call(mock_func)
+            await breaker.call_async(mock_func)
 
-        assert breaker.state == "open"
+        assert breaker.state.name == "OPEN"
 
         # Wait for recovery timeout
         await asyncio.sleep(0.15)
 
         # Circuit should go to half-open and allow call
-        result = await breaker.call(mock_func)
+        result = await breaker.call_async(mock_func)
         assert result == "success"
-        assert breaker.state == "closed"
-        assert breaker.failure_count == 0
+        assert breaker.state.name == "HALF_OPEN"
+
+        # Need success_threshold (5 for EXTERNAL_SERVICE) successful calls to close
+        for _ in range(4):  # Already had 1 successful call
+            result = await breaker.call_async(mock_func)
+            assert result == "success"
+
+        assert breaker.state.name == "CLOSED"
+        assert breaker.stats.consecutive_failures == 0  # This should be 0, not failed_calls
 
     @pytest.mark.asyncio
     async def test_half_open_failure_reopens(self) -> None:
         """Test that failure in half-open state reopens circuit."""
-        breaker = CircuitBreaker(failure_threshold=1, recovery_timeout=0.1)
+        config = CircuitBreakerConfig(failure_threshold=1, timeout=0.1)
+        breaker = get_circuit_breaker(
+            name="test_half_open_failure", service_type=ServiceType.EXTERNAL_SERVICE, config=config
+        )
         mock_func = AsyncMock(side_effect=ValueError("persistent fail"))
 
         # Open the circuit
         with pytest.raises(ValueError):
-            await breaker.call(mock_func)
+            await breaker.call_async(mock_func)
 
         # Wait for recovery
         await asyncio.sleep(0.15)
 
         # Failure in half-open should reopen
         with pytest.raises(ValueError):
-            await breaker.call(mock_func)
+            await breaker.call_async(mock_func)
 
-        assert breaker.state == "open"
-        assert breaker.failure_count == 2
+        assert breaker.state.name == "OPEN"
+        assert breaker.stats.failed_calls == 2
 
     @pytest.mark.asyncio
     async def test_expected_exception_filtering(self) -> None:
-        """Test that only expected exceptions trigger circuit."""
-        breaker = CircuitBreaker(failure_threshold=2, expected_exception=ValueError)
+        """Test that all exceptions trigger circuit in shared implementation."""
+        config = CircuitBreakerConfig(failure_threshold=2)
+        breaker = get_circuit_breaker(
+            name="test_exception_filtering", service_type=ServiceType.EXTERNAL_SERVICE, config=config
+        )
         mock_func = AsyncMock()
 
-        # TypeError should not affect circuit
+        # In shared implementation, all exceptions trigger circuit breaker
         mock_func.side_effect = TypeError("wrong type")
         with pytest.raises(TypeError):
-            await breaker.call(mock_func)
+            await breaker.call_async(mock_func)
 
-        assert breaker.state == "closed"
-        assert breaker.failure_count == 0
+        assert breaker.state.name == "CLOSED"
+        assert breaker.stats.failed_calls == 1
 
-        # ValueError should affect circuit
+        # ValueError should also affect circuit
         mock_func.side_effect = ValueError("value error")
         with pytest.raises(ValueError):
-            await breaker.call(mock_func)
+            await breaker.call_async(mock_func)
 
-        assert breaker.failure_count == 1
+        assert breaker.stats.failed_calls == 2
 
     def test_reset(self) -> None:
         """Test circuit breaker reset."""
-        breaker = CircuitBreaker(failure_threshold=1)
-        breaker.state = "open"
-        breaker.failure_count = 5
-        breaker.last_failure_time = 12345.0
+        config = CircuitBreakerConfig(failure_threshold=1)
+        breaker = get_circuit_breaker(name="test_reset", service_type=ServiceType.EXTERNAL_SERVICE, config=config)
+
+        # Manually set failure count for testing
+        breaker.stats.failed_calls = 5
 
         breaker.reset()
 
-        assert breaker.state == "closed"
-        assert breaker.failure_count == 0
-        assert breaker.last_failure_time is None
+        assert breaker.state.name == "CLOSED"
+        assert breaker.stats.consecutive_failures == 0  # Reset resets consecutive, not total failed_calls

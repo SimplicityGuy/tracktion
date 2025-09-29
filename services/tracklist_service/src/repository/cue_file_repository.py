@@ -6,11 +6,10 @@ import logging
 from typing import cast
 from uuid import UUID
 
+from services.tracklist_service.src.models.cue_file import CueFileDB
 from sqlalchemy import and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import select
-
-from services.tracklist_service.src.models.cue_file import CueFileDB
 
 logger = logging.getLogger(__name__)
 

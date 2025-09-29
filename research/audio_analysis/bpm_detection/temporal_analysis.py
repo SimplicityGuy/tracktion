@@ -56,7 +56,7 @@ class TemporalBPMAnalyzer:
             window = onset_env[i : i + window_frames]
 
             # Estimate tempo for this window
-            tempo, beats = librosa.beat.beat_track(
+            tempo, _beats = librosa.beat.beat_track(
                 onset_envelope=window,
                 sr=sr,
                 hop_length=hop_length,
@@ -125,7 +125,7 @@ class TemporalBPMAnalyzer:
 
             try:
                 # Extract rhythm for this window
-                bpm, beats, beats_confidence, _, beats_intervals = rhythm_extractor(window)
+                bpm, _beats, beats_confidence, _, _beats_intervals = rhythm_extractor(window)
 
                 tempos.append(float(bpm))
                 times.append(i / sr)

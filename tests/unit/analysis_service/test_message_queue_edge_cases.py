@@ -157,7 +157,7 @@ class TestMessageQueueEdgeCases:
         """Test connection drop during batch processing."""
         with patch("aio_pika.connect_robust") as mock_connect:
             # Mock successful initial connection
-            mock_connection, mock_channel, mock_queue, mock_exchange = self._setup_rabbitmq_mocks()
+            mock_connection, _mock_channel, _mock_queue, _mock_exchange = self._setup_rabbitmq_mocks()
             mock_connect.return_value = mock_connection
 
             await integration.connect()
@@ -253,7 +253,7 @@ class TestMessageQueueEdgeCases:
         """Test handling message acknowledgment failures."""
         with patch("aio_pika.connect_robust") as mock_connect:
             # Setup successful connection
-            mock_connection, mock_channel, mock_queue, mock_exchange = self._setup_rabbitmq_mocks()
+            mock_connection, _mock_channel, _mock_queue, _mock_exchange = self._setup_rabbitmq_mocks()
             mock_connect.return_value = mock_connection
 
             await integration.connect()

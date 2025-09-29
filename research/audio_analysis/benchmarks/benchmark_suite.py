@@ -408,7 +408,7 @@ class PerformanceBenchmark:
             memory_df = pd.read_csv(output_dir / "benchmark_memory.csv")
 
         # Create figure with subplots
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        _fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
         # Loading Time Comparison
         if loading_df is not None and not loading_df.empty:

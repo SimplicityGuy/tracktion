@@ -8,12 +8,12 @@ import os
 import sys
 from pathlib import Path
 
+from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 # Third-party imports
 from alembic import command
-from alembic.config import Config
 
 # Add project root to path
 project_root = Path(__file__).parent.parent

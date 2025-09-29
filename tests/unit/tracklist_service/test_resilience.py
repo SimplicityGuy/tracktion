@@ -8,7 +8,6 @@ import pytest
 from services.tracklist_service.src.exceptions import ServiceUnavailableError
 from services.tracklist_service.src.resilience import (
     CircuitBreaker,
-    CircuitState,
     ExponentialBackoff,
     HealthCheck,
     RateLimiter,
@@ -23,9 +22,9 @@ class TestCircuitBreaker:
         """Test circuit breaker initial state."""
         cb = CircuitBreaker("test", failure_threshold=3, recovery_timeout=10)
 
-        assert cb.state == CircuitState.CLOSED
-        assert cb._failure_count == 0
-        assert cb._success_count == 0
+        assert cb.state.name == "CLOSED"  # CircuitState enum has .name attribute
+        assert cb.stats.failed_calls == 0  # Use public API instead of private _failure_count
+        assert cb.stats.successful_calls == 0  # Use public API instead of private _success_count
 
     def test_successful_call(self):
         """Test successful function call."""
@@ -37,8 +36,8 @@ class TestCircuitBreaker:
         result = cb.call(test_func, 5)
 
         assert result == 10
-        assert cb.state == CircuitState.CLOSED
-        assert cb._failure_count == 0
+        assert cb.state.name == "CLOSED"
+        assert cb.stats.failed_calls == 0
 
     def test_failed_call(self):
         """Test failed function call."""
@@ -50,8 +49,8 @@ class TestCircuitBreaker:
         with pytest.raises(ValueError):
             cb.call(test_func)
 
-        assert cb._failure_count == 1
-        assert cb.state == CircuitState.CLOSED
+        assert cb.stats.failed_calls == 1
+        assert cb.state.name == "CLOSED"
 
     def test_circuit_opens_after_threshold(self):
         """Test circuit opens after failure threshold."""
@@ -65,8 +64,8 @@ class TestCircuitBreaker:
             with pytest.raises(ValueError):
                 cb.call(test_func)
 
-        assert cb.state == CircuitState.OPEN
-        assert cb._failure_count == 3
+        assert cb.state.name == "OPEN"
+        assert cb.stats.failed_calls == 3
 
     def test_open_circuit_rejects_calls(self):
         """Test open circuit rejects calls."""
@@ -79,7 +78,7 @@ class TestCircuitBreaker:
         with pytest.raises(ValueError):
             cb.call(failing_func)
 
-        assert cb.state == CircuitState.OPEN
+        assert cb.state.name == "OPEN"
 
         # Next call should be rejected
         def good_func():
@@ -106,13 +105,13 @@ class TestCircuitBreaker:
         with pytest.raises(ValueError):
             cb.call(failing_func)
 
-        assert cb.state == CircuitState.OPEN
+        assert cb.state.name == "OPEN"
 
         # Wait for recovery timeout
         time.sleep(0.15)
 
         # State should transition to half-open
-        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.state.name == "HALF_OPEN"
 
     def test_half_open_closes_on_success(self):
         """Test half-open circuit closes on success."""
@@ -135,7 +134,7 @@ class TestCircuitBreaker:
 
         # Wait for recovery timeout
         time.sleep(0.15)
-        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.state.name == "HALF_OPEN"
 
         # Successful calls in half-open state
         for _ in range(3):  # Requires 3 successes
@@ -143,7 +142,7 @@ class TestCircuitBreaker:
             assert result == "success"
 
         # Circuit should be closed
-        assert cb.state == CircuitState.CLOSED
+        assert cb.state.name == "CLOSED"
 
     def test_half_open_reopens_on_failure(self):
         """Test half-open circuit reopens on failure."""
@@ -163,14 +162,14 @@ class TestCircuitBreaker:
 
         # Wait for recovery timeout
         time.sleep(0.15)
-        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.state.name == "HALF_OPEN"
 
         # Failure in half-open state
         with pytest.raises(ValueError):
             cb.call(failing_func)
 
         # Circuit should be open again
-        assert cb.state == CircuitState.OPEN
+        assert cb.state.name == "OPEN"
 
     @pytest.mark.asyncio
     async def test_async_call(self):
@@ -183,7 +182,7 @@ class TestCircuitBreaker:
         result = await cb.async_call(async_func, 5)
 
         assert result == 10
-        assert cb.state == CircuitState.CLOSED
+        assert cb.state.name == "CLOSED"
 
     def test_reset(self):
         """Test resetting circuit breaker."""
@@ -196,14 +195,14 @@ class TestCircuitBreaker:
         with pytest.raises(ValueError):
             cb.call(failing_func)
 
-        assert cb.state == CircuitState.OPEN
+        assert cb.state.name == "OPEN"
 
         # Reset
         cb.reset()
 
-        assert cb.state == CircuitState.CLOSED
-        assert cb._failure_count == 0
-        assert cb._success_count == 0
+        assert cb.state.name == "CLOSED"
+        assert cb.stats.failed_calls == 0
+        assert cb.stats.successful_calls == 0
 
 
 class TestExponentialBackoff:

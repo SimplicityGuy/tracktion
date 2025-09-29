@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Any
 import aio_pika
 from aio_pika import ExchangeType, Message
 from aio_pika.abc import AbstractIncomingMessage
-
 from services.tracklist_service.src.config import get_config
 from services.tracklist_service.src.exceptions import MessageQueueError
 from services.tracklist_service.src.models.tracklist import ImportTracklistRequest

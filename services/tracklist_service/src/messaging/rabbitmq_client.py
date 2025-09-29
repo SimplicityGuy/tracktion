@@ -20,7 +20,6 @@ from aio_pika.abc import (
     AbstractRobustConnection,
 )
 from pydantic import BaseModel
-
 from services.tracklist_service.src.messaging.message_schemas import (
     MESSAGE_ROUTING,
     BaseMessage,

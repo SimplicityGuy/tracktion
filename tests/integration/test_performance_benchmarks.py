@@ -1772,7 +1772,7 @@ class TestCachePerformanceOptimization:
 
         # Add more items than capacity to trigger evictions
         for i in range(cache_capacity, cache_capacity + 500):
-            result, response_time = await mock_cache_with_eviction(f"new_key_{i}", f"new_value_{i}")
+            _result, response_time = await mock_cache_with_eviction(f"new_key_{i}", f"new_value_{i}")
             eviction_response_times.append(response_time)
 
         print(f"Evictions triggered: {cache_stats['evictions']}")
@@ -1785,7 +1785,7 @@ class TestCachePerformanceOptimization:
         for i in range(1000):
             key = f"new_key_{cache_capacity + (i % 100)}" if i % 3 == 0 else f"key_{i % cache_capacity}"
 
-            result, response_time = await mock_cache_with_eviction(key)
+            _result, response_time = await mock_cache_with_eviction(key)
             access_response_times.append(response_time)
 
         # Analyze eviction performance

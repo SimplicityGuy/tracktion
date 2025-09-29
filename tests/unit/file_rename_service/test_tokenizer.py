@@ -94,20 +94,20 @@ class TestPatternMatcher:
         # Test ISO date
         matches = matcher.match("2023-07-14")
         assert len(matches) > 0
-        token, start, end = matches[0]
+        token, _start, _end = matches[0]  # start/end unused - only token category checked
         assert token.category == TokenCategory.DATE
         assert token.value == "2023-07-14"
 
         # Test US date
         matches = matcher.match("07-14-2023")
         assert len(matches) > 0
-        token, start, end = matches[0]
+        token, _start, _end = matches[0]  # start/end unused - only token category checked
         assert token.category == TokenCategory.DATE
 
         # Test compact date
         matches = matcher.match("20230714")
         assert len(matches) > 0
-        token, start, end = matches[0]
+        token, _start, _end = matches[0]  # start/end unused - only token category checked
         assert token.category == TokenCategory.DATE
 
     def test_quality_pattern_matching(self):

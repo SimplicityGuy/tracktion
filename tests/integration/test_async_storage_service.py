@@ -353,7 +353,7 @@ class TestMockS3StorageServiceBasicOperations:
         s3_key = f"test/json/{uuid4()}.json"
 
         # Upload JSON
-        success, s3_url, error = storage_service.upload_content(json_content, s3_key, content_type="application/json")
+        success, _s3_url, error = storage_service.upload_content(json_content, s3_key, content_type="application/json")
         assert success is True
         assert error is None
 
@@ -374,7 +374,7 @@ class TestMockS3StorageServiceBasicOperations:
         s3_key = f"test/binary/{uuid4()}.bin"
 
         # Upload binary content
-        success, s3_url, error = storage_service.upload_content(
+        success, _s3_url, error = storage_service.upload_content(
             binary_data, s3_key, content_type="application/octet-stream"
         )
         assert success is True
@@ -396,7 +396,7 @@ class TestMockS3StorageServiceBasicOperations:
         assert storage_service.file_exists(s3_key) is False
 
         # Upload file
-        success, _, error = storage_service.upload_content(test_content, s3_key)
+        success, _s3_url, error = storage_service.upload_content(test_content, s3_key)
         assert success is True
         assert error is None
 
@@ -536,7 +536,7 @@ FILE "audio.wav" WAVE
         cue_path = f"cue_files/{uuid4()}/standard.cue"
 
         # Store CUE file
-        success, stored_path, error = storage_service.store_cue_file(cue_path, cue_content)
+        success, _stored_path, error = storage_service.store_cue_file(cue_path, cue_content)
         assert success is True
         assert error is None
 
@@ -608,7 +608,7 @@ class TestMockS3StorageServicePerformance:
 
         for i in range(num_files):
             s3_key = f"test/performance/bulk_{i}.txt"
-            success, s3_url, error = storage_service.upload_content(test_content, s3_key)
+            success, _s3_url, error = storage_service.upload_content(test_content, s3_key)
             assert success is True
             assert error is None
             uploaded_files.append(s3_key)
@@ -651,7 +651,7 @@ class TestMockS3StorageServicePerformance:
 
         # Upload large file
         start_time = time.time()
-        success, s3_url, error = storage_service.upload_content(large_content, s3_key)
+        success, _s3_url, error = storage_service.upload_content(large_content, s3_key)
         upload_duration = time.time() - start_time
 
         assert success is True
@@ -738,7 +738,7 @@ class TestAsyncStorageIntegration:
         spectrum_key = f"analysis/{recording_id}/spectrum/{analysis_type}.json"
         spectrum_json = json.dumps(spectrum_data, indent=2)
 
-        success, s3_url, error = storage_service.upload_content(spectrum_json, spectrum_key, "application/json")
+        success, _s3_url, error = storage_service.upload_content(spectrum_json, spectrum_key, "application/json")
         assert success is True
         assert error is None
 
@@ -746,7 +746,9 @@ class TestAsyncStorageIntegration:
         binary_data = bytes([i % 256 for i in range(1024)])  # 1KB of binary data
         binary_key = f"analysis/{recording_id}/spectrum/raw_data.bin"
 
-        success, binary_url, error = storage_service.upload_content(binary_data, binary_key, "application/octet-stream")
+        success, _binary_url, error = storage_service.upload_content(
+            binary_data, binary_key, "application/octet-stream"
+        )
         assert success is True
         assert error is None
 

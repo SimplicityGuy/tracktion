@@ -9,7 +9,6 @@ from enum import Enum
 from typing import Any
 
 import redis.asyncio as redis
-
 from services.tracklist_service.src.auth.models import User
 
 logger = logging.getLogger(__name__)

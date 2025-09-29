@@ -12,7 +12,6 @@ from typing import Any
 from uuid import UUID
 
 import redis
-
 from services.tracklist_service.src.config import get_config
 from services.tracklist_service.src.models.tracklist import TrackEntry, Tracklist
 from services.tracklist_service.src.models.tracklist_models import Track as ScrapedTrack
